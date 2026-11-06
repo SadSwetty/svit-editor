@@ -234,6 +234,7 @@
         <textarea id="lyrics" class="lyrics" placeholder="Встав сюди текст пісні — кожен рядок стане субтитром.&#10;&#10;[Куплет 1]&#10;Перший рядок пісні&#10;Другий рядок пісні"></textarea>
         <div class="lyrstat" id="lyrstat"></div>
         <div class="sw" data-k="song_sync" style="margin-top:8px"><div class="lb">У відео грає цей трек<small>Знято під пісню з колонки — Svit підгонить відео під імпортований трек, щоб губи й рухи збігались</small></div><i class="i up" data-tip="Svit порівнює звук кожного відео з треком і знаходить, яке місце пісні в ньому звучить. Тоді шматки відео стають на таймлайн рівно під той момент пісні.">i</i><div class="tog"></div></div>
+        <div class="liprow"><div class="lb">Ліпсінк-відео<small id="lipinfo">Познач відео, де ти співаєш у кадр — Svit поставить їх у синхрон з треком і чергуватиме з вайбовими кадрами</small></div><button class="btn" onclick="SV.lipOpen()">Вибрати</button></div>
         <div class="sw" data-k="lyrics_upper"><div class="lb">ВЕЛИКИМИ ЛІТЕРАМИ<small>Інакше — як написано в тексті</small></div><div class="tog"></div></div>
         <div class="subhead" style="margin-top:18px">Субтитри з мови</div>
           <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Розпізнана мова з відео (інтерв'ю, влоги) — тим самим стилем, що нижче</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
@@ -421,6 +422,13 @@
   <div class="adjtip">Хочеш, щоб ефекти були одним шаром над усім відео? Перетягни в DaVinci <b>Effects → Toolbox → Effects → Adjustment Clip</b> на верхню доріжку над усім таймлайном — Svit накладе ефекти саме на нього, а кліпи під ним не зачепить.</div>
   <div id="mytlhold"></div>
 </div></div></div>
+<div class="modal lipm" id="lipm" onclick="if(event.target===this)SV.lipClose()"><div class="box"><div class="bar-title"><span>Svit Editor · ліпсінк</span></div><div class="inner">
+  <div class="h1" style="font-size:20px;margin:0">Де ти співаєш у кадр?</div>
+  <div class="sub2">Познач ліпсінк-відео. Svit знайде в їхньому звуці трек і поставить шматки рівно в синхрон, а Claude чергуватиме їх з вайбовими кадрами.</div>
+  <input class="lipq" id="lipq" placeholder="Пошук за назвою" spellcheck="false">
+  <div class="liplist" id="liplist"></div>
+  <div class="row"><button class="btn" onclick="SV.lipClear()">Зняти всі</button><button class="go" onclick="SV.lipClose()">Готово</button></div>
+</div></div></div>
 <div class="modal" id="updmodal"><div class="box"><div class="bar-title"><span>Svit Editor · оновлення</span></div><div class="inner">
   <div class="h1" style="font-size:21px;margin:0" id="umt">Оновлення</div>
   <div class="sub2" id="ums"></div>
@@ -509,6 +517,7 @@ const SV = {
 
   bind(){
     $("#prompt").addEventListener("input",e=>{this.st.prompt=e.target.value; this.save()});
+    $("#lipq").addEventListener("input",()=>this.lipRender());
     $$("#tmode button").forEach(b=>b.onclick=()=>{ this.st.text_mode=b.dataset.v; this.paint(); this.save() });
     $$("#tanim button").forEach(b=>b.onclick=()=>{ this.ts().anim=b.dataset.v; this.textPaint(); this.save(); this.textAnimPlay() });
     $$("#tpos .tpos").forEach(b=>b.onclick=()=>{ this.ts().pos=b.dataset.p; this.textPaint(); this.save(); this.textPreview() });
@@ -575,7 +584,7 @@ const SV = {
     $$("#dur button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.dur_mode||"auto")));
     $("#durcust").style.display = s.dur_mode==="custom" ? "inline-flex" : "none"; if(document.activeElement!==$("#dursec")) $("#dursec").value=s.dur_custom||20;
     $("#durnote").textContent = s.music_on&&s.music&&s.music.path ? "з музикою — довжина = вибраний шматок треку" : "";
-    $("#prompt").value=s.prompt; if(document.activeElement!==$("#lyrics")) $("#lyrics").value=s.lyrics||""; this.lyrStat(); $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
+    $("#prompt").value=s.prompt; if(document.activeElement!==$("#lyrics")) $("#lyrics").value=s.lyrics||""; this.lyrStat(); this.lipInfo(); $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
     $("#whisper").value=s.whisper_model; $("#model").value=s.model;
     $$("#srcmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.source_mode));
     $$("#layout button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.layout));
@@ -1049,6 +1058,17 @@ const SV = {
     const d=this.durSec(), m=this.st.music; if(!d||!m||!m.path||!this.st.music_on) return;
     let a=m.start, b=Math.min(m.duration, a+d); if(b-a<d) a=Math.max(0,b-d);
     m.start=+a.toFixed(2); m.end=+b.toFixed(2); if(this.range) this.range.set(m.start,m.end,m.duration); this.musicLabel(); this.musicReset() },
+  lipOpen(){ const list=this.cur(); if(!list.length){ this.toast("Спершу вибери матеріал у блоці 2"); return }
+    $("#lipq").value=""; this.lipRender(); $("#lipm").classList.add("on") },
+  lipRender(){ const q=($("#lipq").value||"").toLowerCase(), sel=new Set(this.st.lipsync||[]);
+    $("#liplist").innerHTML=this.cur().filter(x=>!q||x.name.toLowerCase().includes(q)).map(x=>`<label class="lipi${sel.has(x.name)?" on":""}"><input type="checkbox" data-n="${esc(x.name)}"${sel.has(x.name)?" checked":""}><span>${esc(x.name)}</span><i>${clock(x.duration||0)}</i></label>`).join("");
+    $$("#liplist input").forEach(c=>c.onchange=()=>{ const s=new Set(this.st.lipsync||[]); c.checked?s.add(c.dataset.n):s.delete(c.dataset.n);
+      this.st.lipsync=[...s]; c.parentElement.classList.toggle("on",c.checked); this.save(); this.lipInfo() }) },
+  lipClear(){ this.st.lipsync=[]; this.save(); this.lipRender(); this.lipInfo() },
+  lipClose(){ $("#lipm").classList.remove("on"); this.lipInfo() },
+  lipInfo(){ const names=new Set(this.cur().map(x=>x.name)); const n=(this.st.lipsync||[]).filter(x=>names.has(x)).length; const el=$("#lipinfo"); if(!el) return;
+    el.textContent = n ? "Позначено: "+n+" "+plural(n,"відео","відео","відео")+" · "+(this.st.lipsync||[]).filter(x=>names.has(x)).slice(0,3).join(", ")+(n>3?"…":"")
+                     : "Познач відео, де ти співаєш у кадр — Svit поставить їх у синхрон з треком і чергуватиме з вайбовими кадрами" },
   lyrStat(){ const t=(this.st.lyrics||"").split("\n").map(x=>x.trim()).filter(x=>x&&!/^[\[(].*[\])]$/.test(x)).length;
     const el=$("#lyrstat"); if(!el) return;
     el.textContent = !t ? "" : t+" "+plural(t,"рядок","рядки","рядків")+(this.st.music_on&&this.st.music&&this.st.music.path ? " · прив'яжу до треку «"+this.st.music.name+"»" : " · увімкни «Монтаж під аудіо» і вибери трек, щоб прив'язати");

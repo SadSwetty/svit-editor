@@ -611,13 +611,19 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
             ms = job["music_info"]["start"]
             lines = []
             for sid, sy in sorted(job["sync"].items(), key=lambda x: int(x[0])):
-                lines.append(f"№{sid}: секунда джерела t звучить як момент пісні t+{sy['offset']:.2f} с; "
+                lines.append(f"№{sid}{' (ЛІПСІНК — автор співає в кадр)' if sy.get('lip') else ''}: секунда джерела t "
+                             f"звучить як момент пісні t+{sy['offset']:.2f} с; "
                              f"дубль покриває фрагмент від {max(0, sy['from'] - ms):.1f} до {sy['to'] - ms:.1f} с")
             content.append({"type": "text", "text":
                             "ДУБЛІ, СИНХРОНІЗОВАНІ З ПІСНЕЮ (lip-sync). Для цих джерел start можеш ставити будь-який — "
                             "програма сама вирівняє кожен шматок так, щоб спів і рухи збігались із треком. Твоя задача — "
                             "вибрати, ЯКИЙ дубль/ракурс показати на кожному відрізку (секунди — від початку фрагмента):\n"
-                            + "\n".join(lines)})
+                            + "\n".join(lines)
+                            + ("\n\nЛІПСІНК: автор позначив відео, де він співає під трек. Чергуй ліпсінк з вайбовими "
+                               "кадрами з решти матеріалу: ліпсінк — на ключових рядках, приспіві й сильних долях "
+                               "(30–60% часу ролика), вайбові шматки — між ними, на паузах і інструменталі. Шматки "
+                               "ліпсінку завжди ставлять у синхроні з піснею."
+                               if any(sy.get("lip") for sy in job["sync"].values()) else "")})
     content.append({"type": "text", "text": "Склади план монтажу у форматі JSON."})
     return content
 
@@ -1081,17 +1087,25 @@ class Job:
         self.progress(stage, min(0.99, overall), msg, extra)
 
     def _sync_takes(self, _m, song_path):
-        """Lip-sync: для кожного джерела шукаємо, яке місце пісні в ньому звучить."""
+        """Lip-sync: для кожного джерела шукаємо, яке місце пісні в ньому звучить.
+        Якщо автор позначив ліпсінк-відео — слухаємо лише їх і з м'якшим порогом."""
         out = {}
         try:
             env = _m.song_envelope(song_path)
         except Exception as e:
             _log(f"Синхрон дублів: трек не прочитався: {e!r}")
             return out
+        marked = set(self.s.get("lipsync") or [])
         srcs = self.job["sources"]
-        for k, src in enumerate(srcs, 1):
+        lips = [x for x in srcs if x.get("name") in marked]
+        todo = lips or srcs
+        mu = self.job.get("music") or {}
+        win = (float(mu.get("start", 0)), float(mu.get("end", 30)))
+        for k, src in enumerate(todo, 1):
             self.check()
-            self.report("sound", (k - 1) / max(1, len(srcs)), f"Синхронізую дублі з піснею · {k} з {len(srcs)}")
+            self.report("sound", (k - 1) / max(1, len(todo)), f"Синхронізую з піснею · {k} з {len(todo)}",
+                        file=src.get("name"))
+            lip = src.get("name") in marked
             try:
                 off, conf = _m.sync_offset(song_path, src["path"], env)
             except Cancelled:
@@ -1099,16 +1113,24 @@ class Job:
             except Exception as e:
                 _log(f"Синхрон «{src['name']}»: {e!r}")
                 continue
-            ok = off is not None and conf >= 2.0
-            _log(f"Синхрон «{src['name']}»: зсув {off} с, впевненість {conf} → {'так' if ok else 'ні'}")
+            ok = off is not None and conf >= (0.7 if lip else 1.2)
+            covers = off is not None and (off < win[1] and off + src["duration"] > win[0])
+            _log(f"Синхрон «{src['name']}»{' [ліпсінк]' if lip else ''}: зсув {off} с, впевненість {conf} → "
+                 f"{'так' if ok else 'ні'}{'' if covers or not ok else ' (але поза вибраним шматком пісні)'}")
             if ok:
                 out[str(src["id"])] = {"offset": off, "conf": conf, "from": round(max(0.0, off), 2),
-                                       "to": round(off + src["duration"], 2)}
-        if out and len(out) < len(srcs):
-            self.warnings.append(f"Синхрон дублів: з піснею вирівняно {len(out)} з {len(srcs)} відео "
-                                 f"(в інших не чути треку — вони підуть як звичайні кадри).")
-        elif not out:
-            self.warnings.append("Синхрон дублів: у жодному відео не вдалося почути трек — монтую без lip-sync.")
+                                       "to": round(off + src["duration"], 2), "lip": lip}
+                if lip and not covers:
+                    self.warnings.append(f"Ліпсінк «{src['name']}» знято на інший шматок пісні "
+                                         f"({off:.0f}–{off + src['duration']:.0f} с треку) — зсунь виділення треку туди.")
+        for src in lips:
+            if str(src["id"]) not in out:
+                self.warnings.append(f"Ліпсінк «{src['name']}»: не вдалося почути в ньому трек — він піде як "
+                                     f"звичайні кадри. Перевір, що в цьому відео чути пісню.")
+        if not lips:
+            if out and len(out) < len(srcs):
+                self.warnings.append(f"Синхрон: з піснею вирівняно {len(out)} з {len(srcs)} відео "
+                                     f"(в інших не чути треку — вони підуть як звичайні кадри).")
         return out
 
     def run(self):
@@ -1195,7 +1217,8 @@ class Job:
             mu = job["music"]
             job["music_info"] = _m.analyze(mu["path"], mu.get("start", 0), mu.get("end", 30))
             lyr = (s.get("lyrics") or "").strip()
-            if (s.get("cinematic") and s.get("take_sync", True)) or (lyr and s.get("song_sync", True)):
+            if (s.get("cinematic") and s.get("take_sync", True)) or (lyr and s.get("song_sync", True)) \
+                    or s.get("lipsync"):
                 job["sync"] = self._sync_takes(_m, mu["path"])
             if lyr:
                 self.report("sound", 0.96, "Слухаю спів і прив'язую слова пісні")

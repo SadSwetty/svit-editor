@@ -567,3 +567,15 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 .palette.small .pcustom{width:20px;height:20px}
 #accrow.dim{opacity:.4}
 @media(max-width:560px){.raprow{grid-template-columns:1fr}}
+.liprow{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1.5px dotted var(--ink)}
+.liprow .lb{flex:1;font:600 18px var(--serif)}
+.liprow small{display:block;font:11px var(--mono);opacity:.65;margin-top:2px}
+.modal.lipm .box{width:520px;text-align:left}
+.lipq{width:100%;box-sizing:border-box;margin:12px 0 8px;padding:8px 10px;border:1.5px solid var(--ink);background:var(--paper3);font:13px var(--mono)}
+.liplist{max-height:320px;overflow:auto;border:1.5px solid var(--ink);background:var(--paper3)}
+.lipi{display:flex;align-items:center;gap:10px;padding:7px 10px;border-bottom:1px dotted var(--ink);cursor:pointer;font:13px var(--mono)}
+.lipi span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lipi i{opacity:.6;font-style:normal}
+.lipi.on{background:#E2F55C}
+.lipi input{accent-color:#141414;width:16px;height:16px;margin:0}
+.lipm .row{margin-top:12px;justify-content:flex-end}

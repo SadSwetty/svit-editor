@@ -266,6 +266,11 @@
     "Хочеш, щоб ефекти були одним шаром над усім відео? Перетягни в DaVinci": "Want the effects as one layer over the whole video? In DaVinci drag",
     "Реперський стиль": "Rapper style", "рівно": "neat", "хаос": "chaos", "Колір ключових слів": "Key word colour",
     "Текст оживає: слова різного розміру й нахилу, частину слів розбиває на букви різного розміру, ключові слова — більші й кольором акценту. Ключові слова Svit обирає сам, або познач їх у тексті пісні *зірочками*.": "The text comes alive: words of different sizes and angles, some words split into letters of different sizes, key words bigger and in the accent colour. Svit picks key words itself, or mark them in the lyrics with *asterisks*.",
+    "Ліпсінк-відео": "Lip-sync videos", "Вибрати": "Choose", "Де ти співаєш у кадр?": "Where do you sing on camera?",
+    "Познач відео, де ти співаєш у кадр — Svit поставить їх у синхрон з треком і чергуватиме з вайбовими кадрами": "Mark the videos where you sing on camera — Svit syncs them with the track and alternates them with vibe shots",
+    "Познач ліпсінк-відео. Svit знайде в їхньому звуці трек і поставить шматки рівно в синхрон, а Claude чергуватиме їх з вайбовими кадрами.": "Mark the lip-sync videos. Svit finds the track in their sound and puts the clips exactly in sync, and Claude alternates them with vibe shots.",
+    "Пошук за назвою": "Search by name", "Зняти всі": "Clear all", "Готово": "Done", "Спершу вибери матеріал у блоці 2": "Pick footage in block 2 first",
+    "Svit Editor · ліпсінк": "Svit Editor · lip-sync",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",
@@ -333,6 +338,7 @@
   // складені рядки: [регулярний вираз, заміна]
   const PL = (n, one, many) => (Math.abs(n) === 1 ? one : many);
   const RX = [
+    [/^Позначено: (\d+) відео · (.+)$/, (m,n,r)=>`Marked: ${n} ${PL(+n,"video","videos")} · ${r}`],
     [/^Перегляд на кадрі з «(.+)» — без токенів$/, "Preview on a frame from “$1” — no tokens"],
     [/ефекти ляжуть на Adjustment Clip \((\d+)\)/, "effects go onto the Adjustment Clip ($1)"],
     [/це монтаж Svit — зуми й переходи збережу/, "this is a Svit edit — zooms and transitions are kept"],

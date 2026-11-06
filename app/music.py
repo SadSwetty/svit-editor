@@ -190,46 +190,93 @@ def preview_wav(path, start, end, sr=22050):
     return "data:audio/wav;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def sync_offset(song_path, video_path, song_env=None):
-    """Де в пісні звучить дубль: крос-кореляція «атак» звуку камери і треку.
-    Повертає (offset, впевненість): момент пісні = секунда джерела + offset."""
-    fps = SR / HOP
-    if song_env is None:
-        song_env = onset_envelope(decode_mono(song_path))
-    v = onset_envelope(decode_mono(video_path))
-    if len(v) < fps * 4:
-        return None, 0.0
-    song_env = song_env.copy()
-    v = v.copy()
-    song_env[:12] = 0
-    song_env[-12:] = 0
-    v[:12] = 0
-    v[-12:] = 0
-    # стискаємо гучні піки, щоб збігалися ритмічні малюнки, а не окремі удари
-    a = np.log1p(song_env)
-    b = np.log1p(v)
-    a = (a - a.mean()) / (a.std() or 1.0)
-    b = (b - b.mean()) / (b.std() or 1.0)
+def chroma(y, sr=SR):
+    """Гармонія по кадрах (12 нот): стійка до поганого мікрофона й кімнати, на відміну від ударів."""
+    n = 1 + (len(y) - NFFT) // HOP
+    if n < 8:
+        return np.zeros((8, 12), dtype=np.float32)
+    freqs = np.fft.rfftfreq(NFFT, 1.0 / sr)
+    ok = (freqs > 80) & (freqs < 5000)
+    pc = np.zeros(len(freqs), dtype=int)
+    pc[ok] = (np.round(12 * np.log2(freqs[ok] / 440.0)) + 69).astype(int) % 12
+    M = np.zeros((len(freqs), 12), dtype=np.float32)
+    M[np.where(ok)[0], pc[ok]] = 1.0
+    win = np.hanning(NFFT).astype(np.float32)
+    out = np.zeros((n, 12), dtype=np.float32)
+    step = 256
+    for i0 in range(0, n, step):
+        idx = np.arange(NFFT)[None, :] + HOP * np.arange(i0, min(n, i0 + step))[:, None]
+        p = np.abs(np.fft.rfft(y[idx] * win, axis=1)) ** 2
+        out[i0:i0 + len(p)] = np.log1p(100.0 * (p @ M))
+    out /= (np.linalg.norm(out, axis=1, keepdims=True) + 1e-6)
+    out -= out.mean(axis=0, keepdims=True)
+    out /= (out.std(axis=0, keepdims=True) + 1e-6)
+    return out
+
+
+def _xcorr(a, b):
     n = 1
     while n < len(a) + len(b):
         n *= 2
     cc = np.fft.irfft(np.fft.rfft(a, n) * np.conj(np.fft.rfft(b, n)), n)
-    # індекс k → зсув k (пісня = відео + k); від'ємні — у кінці масиву
-    lags = np.concatenate([cc[:len(a)], cc[n - len(b) + 1:]])
+    return np.concatenate([cc[:len(a)], cc[n - len(b) + 1:]])
+
+
+def song_features(path):
+    y = decode_mono(path)
+    return {"env": onset_envelope(y), "chroma": chroma(y)}
+
+
+def sync_offset(song_path, video_path, song_env=None, window=None):
+    """Де в пісні звучить дубль: крос-кореляція ударів і гармонії звуку камери з треком.
+    window=(початок, кінець) шматка пісні в секундах — шукаємо лише зсуви, де дубль перекриває цей шматок.
+    Повертає (offset, впевненість): момент пісні = секунда джерела + offset."""
+    fps = SR / HOP
+    if not isinstance(song_env, dict):
+        song_env = {"env": song_env} if isinstance(song_env, np.ndarray) else song_features(song_path)
+    yv = decode_mono(video_path)
+    v = onset_envelope(yv)
+    if len(v) < fps * 4:
+        return None, 0.0
+    a = song_env["env"].astype(np.float64).copy()
+    b = v.astype(np.float64).copy()
+    a[:12] = 0
+    a[-12:] = 0
+    b[:12] = 0
+    b[-12:] = 0
+    a, b = np.log1p(a), np.log1p(b)
+    a = (a - a.mean()) / (a.std() or 1.0)
+    b = (b - b.mean()) / (b.std() or 1.0)
     ks = np.concatenate([np.arange(len(a)), np.arange(-len(b) + 1, 0)])
-    # нормуємо на довжину перекриття, щоб короткі випадкові збіги не вигравали
     ov = np.minimum(len(a), ks + len(b)) - np.maximum(0, ks)
-    valid = ov > max(fps * 4, 0.6 * min(len(b), len(a)))
-    score = np.where(valid, lags / np.sqrt(np.maximum(ov, 1)), -1e9)
+    valid = ov > max(fps * 4, 0.35 * min(len(b), len(a)))
+    if window:
+        w0, w1 = window[0] * fps, window[1] * fps
+        cover = np.minimum(w1, ks + len(b)) - np.maximum(w0, ks)
+        valid &= cover > min(len(b), w1 - w0) * 0.3
+    if not valid.any():
+        return None, 0.0
+    norm = np.sqrt(np.maximum(ov, 1))
+
+    def z(x):
+        sv = x[valid]
+        return (x - sv.mean()) / (sv.std() or 1.0)
+    score = z(_xcorr(a, b) / norm)
+    ca = song_env.get("chroma")
+    if ca is not None:
+        cb = chroma(yv)
+        la, lb = min(len(ca), len(a)), min(len(cb), len(b))
+        if la == len(a) and lb == len(b):
+            cc = sum(_xcorr(ca[:, j].astype(np.float64), cb[:, j].astype(np.float64)) for j in range(12))
+            score = score + 1.3 * z(cc / norm)
+    score = np.where(valid, score, -1e9)
     i = int(np.argmax(score))
-    # впевненість: наскільки пік вищий за найкращий інший зсув (поза ±0.5 с від нього)
     far = valid & (np.abs(ks - ks[i]) > fps * 0.5)
     second = float(score[far].max()) if far.any() else 0.0
-    sv = score[valid]
-    spread = float(sv.std() or 1.0)
+    spread = float(score[valid].std() or 1.0)
     conf = float((score[i] - second) / spread)
     return round(float(ks[i] / fps), 3), round(conf, 2)
 
 
 def song_envelope(path):
-    return onset_envelope(decode_mono(path))
+    return song_features(path)
