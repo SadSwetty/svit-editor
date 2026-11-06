@@ -1377,7 +1377,14 @@ def fusion_fonts():
             fu = get_resolve().Fusion()
             raw = fu.FontManager.GetFontList() or {}
             for fam, styles in raw.items():
-                fl[str(fam)] = [str(x) for x in (styles.values() if isinstance(styles, dict) else styles or [])]
+                # Fusion віддає {родина: {стиль: файл}} — беремо НАЗВИ стилів, а не шляхи до файлів
+                if isinstance(styles, dict):
+                    keys = [str(k) for k in styles.keys()]
+                    vals = [str(v) for v in styles.values()]
+                    sts = keys if any(not k.isdigit() for k in keys) else vals
+                else:
+                    sts = [str(x) for x in (styles or [])]
+                fl[str(fam)] = [x for x in sts if "/" not in x and "\\" not in x]
         except Exception as e:
             L("Шрифти Fusion: не вдалося отримати список (%s)" % e)
         _FONTS["list"] = fl
@@ -1400,7 +1407,7 @@ def pick_font(fam, style):
             for s_ in sts:
                 if cand and s_.lower() == str(cand).lower():
                     return s_
-        return sts[0] if sts else (want or "Regular")
+        return sts[0] if sts else "Regular"
     if fam.lower() in low:
         f = low[fam.lower()]
         return f, best_style(f, style), "є"
