@@ -8,6 +8,7 @@ import argparse
 import base64
 import io
 import json
+import os
 import sys
 import threading
 import time
@@ -28,7 +29,7 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
-BRIDGE_REV = 25        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
+BRIDGE_REV = 26        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
 URLS = {"keys": "https://platform.claude.com/settings/keys",
         "billing": "https://platform.claude.com/settings/billing",
         "usage": "https://platform.claude.com/usage"}
@@ -146,6 +147,11 @@ class Api:
         self.bridge = bridge
         self.window = None
         self.cancel_event = threading.Event()
+        self._style_lock = threading.Lock()
+        self._style_gen = 0
+        self._style_pending = None
+        self._style_need = {}
+        self._style_thread = None
         self.worker = None
         self._last_push = 0.0
         self.restart_requested = False
@@ -567,7 +573,8 @@ class Api:
                                               "blur": (float(st.get("ov_blur_strength", 30)) / 100.0) if st.get("ov_blur") else 0,
                                               "halation": (float(st.get("ov_hal_strength", 40)) / 100.0) if st.get("ov_hal") else 0},
                                           "ghost": float(st.get("style_ghost", 100)) / 100.0,
-                                          "grain": float(st.get("style_grain", 100)) / 100.0,
+                                          "grain": (float(st["style_grain"]) / 100.0)
+                                          if st.get("style_grain") is not None else None,
                                           "version": result.get("version", 1)},
                                 timeout=900, on_status=on_status)
         if not resp or not resp.get("ok"):
@@ -576,7 +583,8 @@ class Api:
             raise RuntimeError((resp or {}).get("error", "DaVinci не зміг зібрати таймлайн."))
         result["folder"] = resp.get("folder", "")
         result["timelines"] = resp.get("timelines") or []
-        self._last_build = {"plan": result, "layout": st.get("layout", "one"), "timelines": result["timelines"]}
+        self._last_build = {"plan": result, "layout": st.get("layout", "one"), "timelines": result["timelines"],
+                            "orig_looks": [v.get("look") for v in result.get("videos", [])]}
         result["style"] = self._style_from_settings(st, result)
         fu = resp.get("fusion") or {}
         n_fx = sum(1 for v in result.get("videos", []) for sg in v.get("segments", [])
@@ -595,57 +603,120 @@ class Api:
     @staticmethod
     def _style_from_settings(st, result):
         looks = sorted({v.get("look") for v in result.get("videos", []) if v.get("look")})
-        return {"look": int(st.get("look_strength", 60)), "fx": int(st.get("fx_strength", 50)),
+        look = int(st.get("look_strength", 60))
+        grain = st.get("style_grain")
+        if grain is None:            # як задумано фактурою — показуємо, скільки зерна вийшло
+            m = 0.4 + 0.9 * look / 100.0
+            grain = round(100 * min(1.0, 0.35 + 0.5 * m)) if any(engine.LOOKS.get(l, {}).get("grain") or
+                                                               l in ("vhs", "camcorder", "film8", "film16",
+                                                                     "bwfilm", "lostwave") for l in looks) else 0
+        return {"look": look, "fx": int(st.get("fx_strength", 50)),
                 "speed": int(st.get("tr_speed", 60)),
                 "tone": int(st.get("auto_tone_strength", 70)) if st.get("auto_tone", True) else 0,
                 "halation": int(st.get("ov_hal_strength", 40)) if st.get("ov_hal") else 0,
                 "dreamy": int(st.get("ov_blur_strength", 30)) if st.get("ov_blur") else 0,
-                "ghost": int(st.get("style_ghost", 100)), "grain": int(st.get("style_grain", 100)),
-                "looks": looks, "look_type": ""}
+                "ghost": int(st.get("style_ghost", 100)), "grain": int(grain),
+                "grain_auto": st.get("style_grain") is None, "looks": looks, "look_type": ""}
 
+    # Живе налаштування: кожна зміна повзунка ставиться в чергу; якщо DaVinci ще оновлює попередню —
+    # її перериваємо (style_gen) і одразу беремо найсвіжішу. «Перебудова» не губиться, поки не завершиться.
     def restyle(self, p):
-        if not getattr(self, "_last_build", None) or (self.worker and self.worker.is_alive()):
+        p = dict(p or {})
+        if self.worker and self.worker.is_alive():
             return {"ok": False}
-        self.worker = threading.Thread(target=self._restyle, args=(dict(p),), daemon=True)
-        self.worker.start()
+        if not p.get("manual") and not getattr(self, "_last_build", None):
+            return {"ok": False}
+        with self._style_lock:
+            self._style_gen += 1
+            p["gen"] = "%d_%d" % (os.getpid(), self._style_gen)
+            if p.get("mode") != "tune":
+                self._style_need[bool(p.get("manual"))] = p.get("mode") or "rebuild"
+            self._style_pending = p
+            try:
+                if self.bridge.dir:
+                    (self.bridge.dir / "style_gen").write_text(p["gen"])
+            except Exception:
+                pass
+            if not (self._style_thread and self._style_thread.is_alive()):
+                self._style_thread = threading.Thread(target=self._style_loop, daemon=True)
+                self._style_thread.start()
         return {"ok": True}
+
+    def _style_loop(self):
+        while True:
+            with self._style_lock:
+                p = self._style_pending
+                self._style_pending = None
+                if p is None:
+                    return
+                need = self._style_need.get(bool(p.get("manual")))
+                if need:
+                    p["mode"] = need
+            resp = self._restyle(p)
+            if resp and not resp.get("aborted"):
+                with self._style_lock:
+                    if self._style_need.get(bool(p.get("manual"))) == p["mode"]:
+                        self._style_need.pop(bool(p.get("manual")), None)
+                with self._style_lock:
+                    last = self._style_pending is None
+                if last:
+                    self._js("restyleDone", resp)
 
     def _restyle(self, p):
         try:
-            lb = self._last_build
-            g = lambda k, d: max(0.0, float(p.get(k, d))) / 100.0
-            data = {"plan": lb["plan"], "layout": lb["layout"], "timelines": lb["timelines"],
-                    "look_strength": max(0.1, g("look", 60)), "fx_strength": g("fx", 50),
-                    "tr_speed": g("speed", 60), "tone_strength": g("tone", 70),
+            g = lambda k, d: max(0.0, float(p.get(k, d) if p.get(k) is not None else d)) / 100.0
+            data = {"look_strength": max(0.1, g("look", 60)), "fx_strength": g("fx", 50),
+                    "tr_speed": g("speed", 60), "tone_strength": g("tone", 0 if p.get("manual") else 70),
                     "overlay": {"blur": g("dreamy", 0), "halation": g("halation", 0)},
-                    "ghost": g("ghost", 100), "grain": g("grain", 100)}
+                    "ghost": g("ghost", 100), "grain": None if p.get("grain_auto") else g("grain", 0),
+                    "mode": p.get("mode", "rebuild"), "gen": p.get("gen", "")}
             lt = p.get("look_type", "")
-            if lt == "none" or float(p.get("look", 60)) <= 0:
-                data["look_override"] = ""
-            elif lt in engine.LOOKS:
-                data["look_override"] = lt
-            svlog.log("Вигляд: " + json.dumps({k: v for k, v in data.items() if k not in ("plan",)}, ensure_ascii=False))
+            if p.get("manual"):
+                data["manual"] = True
+                data["look_override"] = lt if lt in engine.LOOKS and float(p.get("look", 60)) > 0 else ""
+            else:
+                lb = self._last_build
+                data.update({"plan": lb["plan"], "layout": lb["layout"], "timelines": lb["timelines"]})
+                if lt == "none" or float(p.get("look", 60)) <= 0:
+                    data["look_override"] = ""
+                elif lt in engine.LOOKS:
+                    data["look_override"] = lt
+                else:                       # «як у монтажі» — повертаємо фактури, які обрав Claude
+                    for v, ol in zip(lb["plan"].get("videos", []), lb.get("orig_looks", [])):
+                        v["look"] = ol
+            svlog.log("Вигляд: " + json.dumps({k: v for k, v in data.items() if k != "plan"}, ensure_ascii=False))
 
             def on_status(s):
                 self._js("restyleProgress", s.get("pct", 0.5), s.get("msg", ""))
             resp = self.bridge.send("restyle", data, timeout=900, on_status=on_status)
             if not resp or not resp.get("ok"):
                 raise RuntimeError((resp or {}).get("error", "DaVinci не зміг оновити вигляд."))
+            resp["manual"] = bool(p.get("manual"))
+            if resp.get("aborted"):
+                return resp
             # наступні правки словами збиратимуться вже з цим виглядом
-            if self.last:
+            if self.last and not p.get("manual"):
                 st = self.last[2]
                 st.update({"look_strength": p.get("look"), "fx_strength": p.get("fx"), "tr_speed": p.get("speed"),
                            "auto_tone": float(p.get("tone", 0)) > 0, "auto_tone_strength": p.get("tone") or 70,
                            "ov_hal": float(p.get("halation", 0)) > 0, "ov_hal_strength": p.get("halation") or 40,
                            "ov_blur": float(p.get("dreamy", 0)) > 0, "ov_blur_strength": p.get("dreamy") or 30,
-                           "style_ghost": p.get("ghost"), "style_grain": p.get("grain")})
-            if "look_override" in data:
-                for v in lb["plan"].get("videos", []):
-                    v["look"] = data["look_override"] or None
-            self._js("restyleDone", resp)
+                           "style_ghost": p.get("ghost"),
+                           "style_grain": None if p.get("grain_auto") else p.get("grain")})
+            return resp
         except Exception as e:
             svlog.log("Вигляд: помилка " + traceback.format_exc())
+            with self._style_lock:
+                self._style_pending = None
+                self._style_need.pop(bool(p.get("manual")), None)
             self._js("restyleFail", friendly_error(e))
+            return None
+
+    def timeline_info(self):
+        try:
+            return self.bridge.send("timeline_info", {}, timeout=15)
+        except Exception as e:
+            return {"ok": False, "error": friendly_error(e)}
 
     def revise(self, text, rng=None):
         if not self.last or (self.worker and self.worker.is_alive()):

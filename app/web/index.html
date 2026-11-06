@@ -254,6 +254,7 @@
       <div class="v"><span class="coinslot" id="costcoin"></span><span id="costv">≈ 0</span><i class="i left up" data-tip="Скільки токенів приблизно забере цей монтаж: залежить від довжини матеріалу, кількості кадрів, скрінів і роликів. Точну суму програма порахує перед стартом і покаже в кінці.">i</i></div>
       <div class="s" id="costs">Виділи матеріал</div>
     </div>
+    <button class="btn mytlbtn" onclick="SV.myTimeline()" data-tip="Накласти halation, дрімі, вінтаж, зерно на таймлайн, який ти змонтував сам. Без Claude, 0 токенів.">Мій таймлайн</button>
     <button class="go" onclick="SV.start()"><svg width="16" height="16" viewBox="-10 -10 20 20"><path class="" style="transform-origin:0px 0px" d="M0 -9 C1.08 -2.25 2.25 -1.08 9 0 C2.25 1.08 1.08 2.25 0 9 C-1.08 2.25 -2.25 1.08 -9 0 C-2.25 -1.08 -1.08 -2.25 0 -9Z" fill="#FBFAF6" stroke="none"/></svg>Змонтувати</button>
   </div>
   <div class="toast" id="toast"></div>
@@ -305,12 +306,13 @@
     <div class="vids" id="vids"></div>
     <div class="note noi" id="note" style="display:none"></div>
     <div class="logrow"><button class="linkbtn" onclick="SV.openLog()">Журнал роботи</button><span>— якщо щось вийшло не так, відкрий і надішли Claude</span></div>
+    <div id="donestyle" style="width:100%;max-width:580px"></div>
     <div class="stylebox" id="stylebox">
-      <div class="lbl">Вигляд <span class="free">без нового монтажу · 0 токенів</span><i class="i" data-tip="Рухай повзунки і натисни «Застосувати» — Svit оновить ефекти прямо на готових таймлайнах у DaVinci. Монтаж і склейки не змінюються, Claude не викликається, токени не витрачаються.">i</i></div>
+      <div class="lbl">Вигляд <span class="free">наживо · 0 токенів</span><i class="i" data-tip="Рухай повзунки — Svit одразу оновлює ефекти прямо на таймлайні в DaVinci, спершу шматок під курсором. Halation, дрімі, зерно, фантоми й контраст підкручуються миттєво; фактура, сила вінтажу, ефектів і переходів — перебудовуються. Монтаж не змінюється, Claude не викликається.">i</i></div>
       <div class="fld"><label>Фактура</label><select id="st_looktype"><option value="">як у монтажі</option><option value="none">без вінтажу</option><option value="vhs">Касета VHS</option><option value="camcorder">Камкордер 90-х</option><option value="film8">Плівка 8 мм</option><option value="film16">Плівка 16 мм</option><option value="crt">Телевізор</option><option value="lostwave">Lost wave</option><option value="bwfilm">Ч/Б кіно</option><option value="dream">Vaporwave</option></select></div>
-      <div class="stgrid"><div class="stl"><label>Вінтаж <span class="val" id="stv_look"></span></label><input type="range" min="0" max="100" step="5" data-st="look"><div class="scale"><span>натяк</span><span>убита плівка</span></div></div><div class="stl"><label>Фантоми <span class="val" id="stv_ghost"></span></label><input type="range" min="0" max="200" step="5" data-st="ghost"><div class="scale"><span>без</span><span>подвійні</span></div></div><div class="stl"><label>Halation <span class="val" id="stv_halation"></span></label><input type="range" min="0" max="100" step="5" data-st="halation"><div class="scale"><span>вимк.</span><span>горить</span></div></div><div class="stl"><label>Дрімі-розмиття <span class="val" id="stv_dreamy"></span></label><input type="range" min="0" max="100" step="5" data-st="dreamy"><div class="scale"><span>вимк.</span><span>сон</span></div></div><div class="stl"><label>Зерно <span class="val" id="stv_grain"></span></label><input type="range" min="0" max="200" step="5" data-st="grain"><div class="scale"><span>без</span><span>густе</span></div></div><div class="stl"><label>Контраст <span class="val" id="stv_tone"></span></label><input type="range" min="0" max="100" step="5" data-st="tone"><div class="scale"><span>як знято</span><span>автоконтраст</span></div></div><div class="stl"><label>Сила ефектів <span class="val" id="stv_fx"></span></label><input type="range" min="0" max="100" step="5" data-st="fx"><div class="scale"><span>делікатно</span><span>на повну</span></div></div><div class="stl"><label>Швидкість переходів <span class="val" id="stv_speed"></span></label><input type="range" min="0" max="100" step="5" data-st="speed"><div class="scale"><span>повільно</span><span>блискавично</span></div></div></div>
+      <div class="stgrid"><div class="stl"><label>Вінтаж <span class="val" id="stv_look"></span></label><input type="range" min="0" max="100" step="5" data-st="look"><div class="scale"><span>натяк</span><span>убита плівка</span></div></div><div class="stl"><label>Фантоми <span class="val" id="stv_ghost"></span></label><input type="range" min="0" max="200" step="5" data-st="ghost"><div class="scale"><span>без</span><span>подвійні</span></div></div><div class="stl"><label>Halation <span class="val" id="stv_halation"></span></label><input type="range" min="0" max="100" step="5" data-st="halation"><div class="scale"><span>вимк.</span><span>горить</span></div></div><div class="stl"><label>Дрімі-розмиття <span class="val" id="stv_dreamy"></span></label><input type="range" min="0" max="100" step="5" data-st="dreamy"><div class="scale"><span>вимк.</span><span>сон</span></div></div><div class="stl"><label>Зерно <span class="val" id="stv_grain"></span></label><input type="range" min="0" max="200" step="5" data-st="grain"><div class="scale"><span>без</span><span>густе</span></div></div><div class="stl"><label>Контраст <span class="val" id="stv_tone"></span></label><input type="range" min="0" max="100" step="5" data-st="tone"><div class="scale"><span>як знято</span><span>автоконтраст</span></div></div><div class="stl mono-only"><label>Сила ефектів <span class="val" id="stv_fx"></span></label><input type="range" min="0" max="100" step="5" data-st="fx"><div class="scale"><span>делікатно</span><span>на повну</span></div></div><div class="stl mono-only"><label>Швидкість переходів <span class="val" id="stv_speed"></span></label><input type="range" min="0" max="100" step="5" data-st="speed"><div class="scale"><span>повільно</span><span>блискавично</span></div></div></div>
       <div class="strow"><div class="stprog" id="stprog"><b></b><span></span></div>
-        <button class="btn" onclick="SV.styleReset()">Скинути</button><button class="go" id="stgo" onclick="SV.styleApply()">Застосувати</button></div>
+        <button class="btn" id="stclear" onclick="SV.styleClear()">Прибрати ефекти</button><button class="btn" onclick="SV.styleReset()">Скинути</button></div>
     </div>
 
     <div class="editbox">
@@ -369,6 +371,11 @@
   <p class="wtext">І ми створили нову <b>розумну машину для нарізання шматків плівки</b>!</p>
   <div class="wsign"><span>Svit Editor <span id="wver"></span></span><span>Бобогорохія · відділ нових технологій</span></div>
   <button class="go" onclick="SV.welcomeClose()">Почати різати</button>
+</div></div></div>
+<div class="modal mytl" id="mytl" onclick="if(event.target===this)SV.myTimeline(false)"><div class="box"><div class="bar-title"><span>Svit Editor · мій таймлайн</span></div><div class="inner">
+  <div class="mytlhead"><div><div class="h1" style="font-size:20px;margin:0">Ефекти на мій таймлайн</div>
+    <div class="sub2" id="mytls">Шукаю відкритий таймлайн…</div></div><button class="btn" onclick="SV.myTimeline(false)">Закрити</button></div>
+  <div id="mytlhold"></div>
 </div></div></div>
 <div class="modal" id="updmodal"><div class="box"><div class="bar-title"><span>Svit Editor · оновлення</span></div><div class="inner">
   <div class="h1" style="font-size:21px;margin:0" id="umt">Оновлення</div>
@@ -465,8 +472,10 @@ const SV = {
     $("#zstr").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
     $("#fxstr").addEventListener("input",e=>{this.st.fx_strength=+e.target.value; this.paint(); this.save()});
     $("#zstr2").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
-    $$("#stylebox input[data-st]").forEach(r=>r.addEventListener("input",e=>{ if(!this.style) return; this.style[r.dataset.st]=+e.target.value; this.stylePaint() }));
-    $("#st_looktype").addEventListener("change",e=>{ if(!this.style) return; this.style.look_type=e.target.value; if(e.target.value&&e.target.value!=="none"&&!this.style.look) this.style.look=60; this.stylePaint() });
+    $$("#stylebox input[data-st]").forEach(r=>{
+      r.addEventListener("input",e=>{ if(!this.style) return; const k=r.dataset.st; this.style[k]=+e.target.value; if(k==="grain") this.style.grain_auto=false; this.stylePaint() });
+      r.addEventListener("change",()=>{ if(this.style){ this.styleKeep(); this.styleQueue() } }) });
+    $("#st_looktype").addEventListener("change",e=>{ if(!this.style) return; this.style.look_type=e.target.value; if(e.target.value&&e.target.value!=="none"&&!this.style.look) this.style.look=60; this.stylePaint(); this.styleKeep(); this.styleQueue() });
     $("#cines").addEventListener("input",e=>{this.st.cinematic_level=+e.target.value; this.paint(); this.save()});
     $("#tsp").addEventListener("input",e=>{this.st.tr_speed=+e.target.value; this.paint(); this.save()});
     $("#tns").addEventListener("input",e=>{this.st.auto_tone_strength=+e.target.value; this.paint(); this.save()});
@@ -814,24 +823,52 @@ const SV = {
   },
   setLang(l){ this.st.ui_lang=l; I18N.set(l); $$("#langsw button").forEach(b=>b.classList.toggle("on",b.dataset.l===l)); this.save();
     this.toast(l==="en"?"Interface: English. Claude will write titles and notes in English":"Мова: українська") },
+  // ---- «Вигляд»: живі повзунки (на фініші — для монтажу Svit, у «Моєму таймлайні» — для власного)
+  styleMode:"last", styleTimer:null, styleSent:null,
+  styleMount(mode, st){
+    this.styleMode=mode; const box=$("#stylebox");
+    (mode==="manual" ? $("#mytlhold") : $("#donestyle")).appendChild(box);
+    box.classList.toggle("manual", mode==="manual"); box.style.display="block";
+    this.style0=Object.assign({},st); this.style=Object.assign({},st); this.styleSent=Object.assign({},st);
+    $("#stprog").classList.remove("on"); this.stylePaint() },
   styleInit(r){
-    const st=(r&&r.style)||null; $("#stylebox").style.display = st ? "block" : "none"; if(!st) return;
-    this.style0=Object.assign({},st); this.style=Object.assign({},st);
-    this.stylePaint() },
+    const st=(r&&r.style)||null;
+    if(!st){ $("#stylebox").style.display="none"; return }
+    this.styleMount("last", st) },
   stylePaint(){ const s=this.style;
     $$("#stylebox input[data-st]").forEach(r=>{ const k=r.dataset.st; r.value=s[k];
-      const v=+s[k]; $("#stv_"+k).textContent = (k==="ghost"||k==="grain") ? (v===100?"як зараз":v+"%") : (v===0&&["halation","dreamy","tone"].includes(k)?"вимк.":v+"%") });
+      const v=+s[k]; $("#stv_"+k).textContent = k==="ghost" ? (v===100?"як зараз":v+"%") : (v===0&&["halation","dreamy","tone","grain"].includes(k)?"вимк.":v+"%") });
     $("#st_looktype").value = s.look_type||"" },
-  styleReset(){ this.style=Object.assign({},this.style0); this.stylePaint() },
-  async styleApply(){
-    const b=$("#stgo"); b.disabled=true; $("#stprog").classList.add("on"); this.restyleProgress(0.02,"Оновлюю вигляд…");
-    const r=await this.api("restyle", this.style);
-    if(!r||!r.ok){ b.disabled=false; $("#stprog").classList.remove("on"); this.toast("Зачекай, поки завершиться попередня дія") } },
+  styleQueue(){ clearTimeout(this.styleTimer); this.styleTimer=setTimeout(()=>this.styleSend(),220) },
+  async styleSend(mode){
+    const s=this.style, prev=this.styleSent||{};
+    if(!mode) mode = ["look_type","look","fx","speed"].some(k=>s[k]!==prev[k]) ? "rebuild" : "tune";
+    if(mode==="tune" && ["halation","dreamy","grain","ghost","tone"].every(k=>s[k]===prev[k])) return;
+    this.styleSent=Object.assign({},s);
+    $("#stprog").classList.add("on"); this.restyleProgress(0.02, mode==="tune"?"Підкручую…":"Перебудовую ефекти…");
+    const r=await this.api("restyle", Object.assign({}, s, {mode, manual:this.styleMode==="manual"}));
+    if(!r||!r.ok){ $("#stprog").classList.remove("on"); this.toast("Зачекай, поки завершиться монтаж") } },
+  styleReset(){ this.style=Object.assign({},this.style0); this.stylePaint(); this.styleQueue() },
+  styleClear(){ this.styleSent=Object.assign({},this.style); $("#stprog").classList.add("on");
+    this.restyleProgress(0.02,"Прибираю ефекти…"); this.api("restyle",{mode:"clear",manual:true}) },
+  styleKeep(){ if(this.styleMode==="manual") this.manualStyle=Object.assign({},this.style) },
   restyleProgress(p,msg){ $("#stprog b").style.width=Math.round(p*100)+"%"; $("#stprog span").textContent=msg||"" },
-  restyleDone(r){ $("#stgo").disabled=false; this.restyleProgress(1,"Готово · оновлено шматків: "+(r.count||0)+(r.fail?" · з помилками: "+r.fail:""));
-    this.style0=Object.assign({},this.style); this.toast("Вигляд оновлено в DaVinci");
-    setTimeout(()=>$("#stprog").classList.remove("on"),2500) },
-  restyleFail(m){ $("#stgo").disabled=false; $("#stprog").classList.remove("on"); this.toast(m) },
+  restyleDone(r){
+    this.restyleProgress(1,"Оновлено · шматків: "+(r.count||0)+(r.fail?" · з помилками: "+r.fail:"")+(r.skipped?" · пропущено: "+r.skipped:""));
+    if(r.skipped && r.manual) this.toast("Шматки з власними Fusion-композиціями не чіпав: "+r.skipped);
+    clearTimeout(this.stHide); this.stHide=setTimeout(()=>$("#stprog").classList.remove("on"),2500) },
+  restyleFail(m){ $("#stprog").classList.remove("on"); this.styleSent=null; this.toast(m) },
+  async myTimeline(on=true){
+    $("#mytl").classList.toggle("on",on);
+    if(!on){ if(this.result&&this.result.style) this.styleMount("last", this.style0Last||this.result.style); else $("#stylebox").style.display="none"; return }
+    if(this.styleMode==="last" && this.style) this.style0Last=Object.assign({},this.style);
+    this.styleMount("manual", this.manualStyle || {look:60,fx:50,speed:60,tone:0,halation:0,dreamy:0,ghost:100,grain:0,look_type:"none"});
+    $("#mytls").textContent="Шукаю відкритий таймлайн…";
+    const r=await this.api("timeline_info");
+    if(!r||!r.ok) $("#mytls").textContent=(r&&r.error)||"DaVinci не відповідає";
+    else if(!r.timeline) $("#mytls").textContent="У DaVinci не відкритий жоден таймлайн";
+    else $("#mytls").innerHTML=esc(r.timeline)+" · "+r.clips+" "+plural(r.clips,"кліп","кліпи","кліпів")+" · рухай повзунки — зміни одразу в DaVinci";
+  },
   welcomeClose(){ $("#welcome").classList.remove("on"); this.st.welcomed=true; this.save() },
   async openLog(){ const r=await this.api("open_log"); this.toast(r?"Журнал відкрито в TextEdit":"Не вдалося відкрити журнал") },
   copyErr(){ navigator.clipboard && navigator.clipboard.writeText($("#errm").textContent+"\n\n"+$("#errd").textContent); this.toast("Скопійовано — встав у чат з Claude") },

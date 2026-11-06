@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 25      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 26      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -544,46 +544,117 @@ def flicker_keys(a, b, depth, base=1.0, step=2.0):
 
 
 # глобальні множники вигляду (повзунки «Вигляд» після монтажу): фантоми і зерно
-STYLE = {"ghost": 1.0, "grain": 1.0}
+# ghost — множник фантомів; grain — кількість зерна 0…1 (None = як задумано фактурою); live — живе налаштування
+STYLE = {"ghost": 1.0, "grain": None, "live": False}
+SVIT_COMP = "Svit"            # композиція з монтажу Svit
+LOOK_COMP = "Svit Look"       # композиція з вікна «Мій таймлайн»
+
+
+def _nm(t, name):
+    """Фіксована назва вузла, щоб потім знайти його і підкрутити значення без перебудови."""
+    try:
+        t.SetAttrs({"TOOLS_Name": name})
+    except Exception:
+        pass
+    return t
+
+
+def _pass(t, off):
+    try:
+        t.SetAttrs({"TOOLB_PassThrough": bool(off)})
+    except Exception:
+        pass
+
+
+def look_mult(look_strength):
+    return 0.4 + 0.9 * max(0.0, min(1.0, float(look_strength)))
+
+
+def look_grain(look, m):
+    return min(1.0, 0.35 + 0.5 * m) if look in LOOKS and LOOKS[look].get("grain") else 0.0
+
+
+def ghost_blend(look, m):
+    return min(1.0, (0.25 + 0.1 * LOOKS.get(look, {}).get("shift", 1.5) * m) * STYLE["ghost"])
+
+
+def set_dreamy(bl, mg, d):
+    bl.SetInput("XBlurSize", round(8 + 30 * max(d, 0.01), 1))
+    mg.SetInput("Blend", round(0.2 + 0.55 * d, 3) if d > 0 else 0.0)
+    _pass(bl, d <= 0)
+    _pass(mg, d <= 0)
+
+
+def set_halation(t, h):
+    rid = ""
+    try:
+        rid = (t.GetAttrs() or {}).get("TOOLS_RegID", "")
+    except Exception:
+        pass
+    if "SoftGlow" in rid:
+        for inp, v in (("Threshold", 0.55 - 0.25 * h), ("Gain", 0.4 + 1.6 * h), ("XGlowSize", 8 + 40 * h),
+                       ("RedScale", 1.0), ("GreenScale", 0.42), ("BlueScale", 0.22)):
+            try:
+                t.SetInput(inp, v)
+            except Exception:
+                pass
+    else:
+        try:
+            t.SetInput("Blend", min(1.0, 0.2 + 0.8 * h))
+        except Exception:
+            pass
+    _pass(t, h <= 0)
+
+
+def set_tone(bc, tone):
+    tone = tone or {}
+    for inp, v in (("Contrast", tone.get("contrast", 0)), ("Lift", tone.get("lift", 0)),
+                   ("Gamma", tone.get("gamma", 1.0))):
+        try:
+            bc.SetInput(inp, float(v))
+        except Exception:
+            pass
+    _pass(bc, not tone)
+
+
+def set_grain(t, amt):
+    try:
+        t.SetInput("Blend", max(0.0, min(1.0, float(amt))))
+    except Exception:
+        pass
+    _pass(t, amt <= 0.02)
 
 
 def add_overlay(comp, chain, cur, ov):
-    """Ефекти «на весь ролик» (як Adjustment Clip): розмиття і halation з однаковою силою на кожному шматку."""
+    """Ефекти «на весь ролик» (як Adjustment Clip): дрімі і halation. Вузли будуються завжди
+    (на нулі — вимкнені), щоб потім їх можна було підкручувати повзунками без перебудови."""
     how = []
     blur = float(ov.get("blur") or 0)
     hal = float(ov.get("halation") or 0)
+    # дрімі (Orton): розмита копія накладається на різкий кадр режимом Screen — м'яке сяйво, а не просто мило
+    orig = cur[0]
+    bl = _nm(_tool(comp, "Blur"), "SvDreamyBlur")
+    bl.ConnectInput("Input", orig)
+    mg = _nm(_tool(comp, "Merge"), "SvDreamy")
+    mg.ConnectInput("Background", orig)
+    mg.ConnectInput("Foreground", bl)
+    try:
+        mg.SetInput("ApplyMode", "Screen")
+    except Exception:
+        pass
+    set_dreamy(bl, mg, blur)
+    cur[0] = mg
     if blur > 0:
-        # дрімі (Orton): розмита копія накладається на різкий кадр режимом Screen — м'яке сяйво, а не просто мило
-        orig = cur[0]
-        bl = _tool(comp, "Blur")
-        bl.ConnectInput("Input", orig)
-        bl.SetInput("XBlurSize", round(8 + 30 * blur, 1))
-        mg = _tool(comp, "Merge")
-        mg.ConnectInput("Background", orig)
-        mg.ConnectInput("Foreground", bl)
-        for inp, v in (("ApplyMode", "Screen"),):
-            try:
-                mg.SetInput(inp, v)
-            except Exception:
-                pass
-        mg.SetInput("Blend", round(0.2 + 0.55 * blur, 3))
-        cur[0] = mg
         how.append("dreamy %.0f%%" % (blur * 100))
+    # halation: стоковий ефект або червоно-помаранчеве світіння SoftGlow навколо світлих місць
+    if ofx_node(comp, chain, cur, "halation", min(1.0, 0.2 + 0.8 * hal)):
+        g = _nm(cur[0], "SvHal")
+    else:
+        g = _nm(chain(_tool(comp, "SoftGlow")), "SvHal")
+        cur[0] = g
+    set_halation(g, hal)
     if hal > 0:
-        if ofx_node(comp, chain, cur, "halation", min(1.0, 0.2 + 0.8 * hal)):
-            how.append("halation(стоковий)")
-        else:
-            g = chain(_tool(comp, "SoftGlow"))
-            # halation: червоно-помаранчеве світіння навколо світлих місць
-            for inp, v in (("Threshold", 0.55 - 0.25 * hal), ("Gain", 0.4 + 1.6 * hal),
-                           ("XGlowSize", 8 + 40 * hal), ("RedScale", 1.0), ("GreenScale", 0.42),
-                           ("BlueScale", 0.22)):
-                try:
-                    g.SetInput(inp, v)
-                except Exception:
-                    pass
-            cur[0] = g
-            how.append("halation %.0f%%" % (hal * 100))
+        how.append("halation %.0f%%" % (hal * 100))
     return "+".join(how)
 
 
@@ -603,21 +674,22 @@ def add_look(comp, chain, cur, name, m, lut_ok=False, a=0.0, b=100.0):
         if key == "shake":
             bl = min(0.6, p["weave"] * 150 * m)          # ледь помітне хитання кадру
         elif key == "prism":
-            bl = min(1.0, (0.25 + 0.1 * p.get("shift", 1.5) * m) * STYLE["ghost"])    # фантоми (нерухомі)
+            bl = max(0.03, ghost_blend(name, m))       # фантоми (нерухомі); 0 — вимикаємо вузол
         elif key == "grain":
-            bl = min(1.0, blend * STYLE["grain"])
+            continue                                   # зерно — окремим вузлом SvGrain
         elif key == "vignette":
             bl = min(1.0, p.get("vig", 0.3) * 1.3 * m)
         if bl > 0.02 and ofx_node(comp, chain, cur, key, bl):
             used.append(key)
+            if key == "prism":
+                _nm(cur[0], "SvGhost")
+                _pass(cur[0], ghost_blend(name, m) <= 0.02)
     if used:
         how.append("стокові:" + "+".join(used))
     if "analog" in used:
         p.pop("hblur", None)
     if "glow" in used:
         p.pop("glow", None)
-    if "grain" in used:
-        p.pop("grain", None)
     if p.get("hblur") or p.get("blur"):
         bl = chain(_tool(comp, "Blur"))
         if p.get("hblur"):
@@ -657,14 +729,6 @@ def add_look(comp, chain, cur, name, m, lut_ok=False, a=0.0, b=100.0):
         gl.SetInput("Gain", 0.3 + 0.6 * p["glow"] * m)
         cur[0] = gl
         how.append("glow")
-    if p.get("grain") and STYLE["grain"] > 0.02:
-        g = chain(_tool(comp, "FilmGrain"))
-        try:
-            g.SetInput("Blend", min(1.0, STYLE["grain"]))
-        except Exception:
-            pass
-        cur[0] = g
-        how.append("grain")
     return "+".join(how)
 
 
@@ -833,7 +897,7 @@ def keyframe(comp, tool, inp, keys, a, b):
 COMP_TMP = HOME / "comps"
 
 
-def commit_comp(ti, comp, label, verbose=False):
+def commit_comp(ti, comp, label, verbose=False, comp_name=SVIT_COMP):
     """DaVinci показує на сторінці Edit лише «збережені» композиції. Зібрану скриптом композицію
     експортуємо у файл і імпортуємо назад штатною функцією — як при ручному Import Fusion Composition —
     робимо її активною, а чернетку видаляємо."""
@@ -856,7 +920,7 @@ def commit_comp(ti, comp, label, verbose=False):
                 except Exception:
                     pass
             try:
-                ti.RenameFusionCompByName(added[-1], "Svit")
+                ti.RenameFusionCompByName(added[-1], comp_name)
             except Exception:
                 pass
             res += ", активна=%s, лишились=%s" % (added[-1], ti.GetFusionCompNameList())
@@ -870,7 +934,8 @@ def commit_comp(ti, comp, label, verbose=False):
 
 
 def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_strength=0.6,
-                 tin=None, tout=None, lut_ok=False, verbose=False, overlay=None, tone=None, speed=0.6):
+                 tin=None, tout=None, lut_ok=False, verbose=False, overlay=None, tone=None, speed=0.6,
+                 comp_name=SVIT_COMP):
     """Плавний наїзд і ефекти через Fusion: MediaIn → [сповільнення] → [рух/тряска] → [розмиття] →
     [Ч/Б] → [світіння] → [зерно] → [спалах] → MediaOut. Повертає (зроблено, помилки)."""
     fx = set(fx or ()) - {"slowmo"}          # швидкість відео не змінюємо
@@ -879,7 +944,7 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
     tout = tout if tout in TRANSITIONS else None
     overlay = overlay or {}
     has_ov = any(float(v or 0) > 0 for v in overlay.values())
-    if not fx and not ratio and not look and not tin and not tout and not has_ov and not tone:
+    if not fx and not ratio and not look and not tin and not tout and not has_ov and not tone and not STYLE["live"]:
         return [], []
     done, errs = [], []
     comp = None
@@ -920,18 +985,12 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
             except Exception as e:
                 errs.append("%s: %s" % (name, e))
 
-        if tone:
-            def f():
-                bc = chain(_tool(comp, "BrightnessContrast"))
-                for inp, v in (("Contrast", tone.get("contrast", 0)), ("Lift", tone.get("lift", 0)),
-                               ("Gamma", tone.get("gamma", 1.0))):
-                    try:
-                        bc.SetInput(inp, float(v))
-                    except Exception:
-                        pass
-                cur[0] = bc
-                return "c%+.2f g%.2f" % (tone.get("contrast", 0), tone.get("gamma", 1))
-            step("автоконтраст", f)
+        def f():
+            bc = _nm(chain(_tool(comp, "BrightnessContrast")), "SvTone")
+            set_tone(bc, tone)
+            cur[0] = bc
+            return ("c%+.2f g%.2f" % (tone.get("contrast", 0), tone.get("gamma", 1))) if tone else "вимк."
+        step("автоконтраст", f)
         fl_n = max(1.0, round(1 + (1 - float(speed)) * 5))      # спалах: 1…6 кадрів
         stock_shake = False
         if "shake" in fx and ofx_node(comp, chain, cur, "shake", 0.25 + 0.35 * k):
@@ -956,8 +1015,24 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
                 return add_look(comp, chain, cur, look, 0.4 + 0.9 * max(0.0, min(1.0, float(look_strength))), lut_ok,
                                 a, b)
             step("look:" + look, f)
-        if has_ov:
-            step("на весь ролик", lambda: add_overlay(comp, chain, cur, overlay))
+        step("на весь ролик", lambda: add_overlay(comp, chain, cur, overlay))
+        # зерно: одним вузлом SvGrain (кількість з повзунка або як задумано фактурою)
+        gr = STYLE["grain"]
+        if gr is None:
+            gr = look_grain(look, look_mult(look_strength))
+            if "grain" in fx:
+                gr = max(gr, min(1.0, 0.4 + 0.6 * k))
+        fx = fx - {"grain"}
+
+        def f():
+            if ofx_node(comp, chain, cur, "grain", max(0.05, gr)):
+                g = _nm(cur[0], "SvGrain")
+            else:
+                g = _nm(chain(_tool(comp, "FilmGrain")), "SvGrain")
+                cur[0] = g
+            set_grain(g, gr)
+            return "%.0f%%" % (gr * 100) if gr > 0.02 else "вимк."
+        step("зерно", f)
         if "blur_in" in fx:
             def f():
                 bl = chain(_tool(comp, "Blur"))
@@ -979,16 +1054,6 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
                 g.SetInput("Gain", 0.4 + 0.8 * k)
                 cur[0] = g
             step("glow", f)
-        if "grain" in fx and look and LOOKS.get(look, {}).get("grain"):
-            fx = fx - {"grain"}                 # зерно вже є у фактурі — не накладаємо вдруге
-        if STYLE["grain"] <= 0.02:
-            fx = fx - {"grain"}
-        if "grain" in fx and ofx_node(comp, chain, cur, "grain", min(1.0, (0.4 + 0.6 * k) * STYLE["grain"])):
-            done.append("grain(стоковий)")
-        elif "grain" in fx:
-            def f():
-                cur[0] = chain(_tool(comp, "FilmGrain"))
-            step("grain", f)
         if "rgb" in fx:
             def f():
                 if ofx_node(comp, chain, cur, "prism", 1.0):
@@ -1048,7 +1113,7 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
             except Exception:
                 pass
     if comp is not None and done:
-        cr = commit_comp(ti, comp, label, verbose)
+        cr = commit_comp(ti, comp, label, verbose, comp_name)
         if verbose or not cr.startswith("export ok"):
             L("  commit %s: %s" % (label, cr))
     L("  Fusion %s: %s%s" % (label, ", ".join(done) or "—", ("; ПОМИЛКИ: " + " | ".join(errs)) if errs else ""))
@@ -1204,14 +1269,15 @@ def add_subs(mp, srt):
 
 
 def style_params(data, plan):
-    """Параметри вигляду з налаштувань (спільні для монтажу і для «Вигляд» після монтажу)."""
+    """Параметри вигляду з налаштувань (спільні для монтажу, «Вигляду» після монтажу і «Мого таймлайну»)."""
     fxs = float(data.get("fx_strength", 0.5))
     lks = float(data.get("look_strength", 0.6))
     ov = {k: float(v) for k, v in (data.get("overlay") or {}).items() if float(v or 0) > 0}
     spd = float(data.get("tr_speed", 0.6))
     ts = float(data.get("tone_strength", 0))
     STYLE["ghost"] = float(data.get("ghost", 1.0))
-    STYLE["grain"] = float(data.get("grain", 1.0))
+    g = data.get("grain")
+    STYLE["grain"] = None if g is None else float(g)
     tone = {}
     if ts > 0:
         for sid, t in (plan.get("tone") or {}).items():
@@ -1220,13 +1286,92 @@ def style_params(data, plan):
     return fxs, lks, ov, spd, ts, tone
 
 
-def restyle(sess, data):
-    """«Вигляд» після монтажу: перебудовує Fusion-ефекти на вже готових таймлайнах з новими рівнями.
-    Шматки, склейки й монтаж не змінюються, Claude не викликається."""
+def manual_tone(ts):
+    """Контраст для власного таймлайну (без аналізу кадрів): помірна S-подібна добавка."""
+    return {"contrast": 0.18 * ts, "lift": 0.0, "gamma": 1.0 - 0.06 * ts} if ts > 0 else {}
+
+
+def current_frame(tl):
+    try:
+        fps = int(round(timeline_fps(tl)))
+        return int(round(tc_to_sec(tl.GetCurrentTimecode(), fps) * fps))
+    except Exception:
+        return None
+
+
+def playhead_first(tl, entries):
+    """Спершу шматок під курсором, далі — ті, що ближче до нього (щоб зміни було видно одразу)."""
+    f = current_frame(tl)
+    if f is None:
+        return entries
+
+    def dist(e):
+        try:
+            a, b = e[0].GetStart(), e[0].GetEnd()
+        except Exception:
+            return 10 ** 9
+        return 0 if a <= f < b else min(abs(a - f), abs(b - 1 - f))
+    return sorted(entries, key=dist)
+
+
+def comp_of(ti, name):
+    try:
+        names = list(ti.GetFusionCompNameList() or [])
+    except Exception:
+        return None
+    if name not in names:
+        return None
+    try:
+        return ti.GetFusionCompByName(name)
+    except Exception:
+        return None
+
+
+def foreign_comp(ti, mine):
+    """Чи має шматок свою (не нашу) Fusion-композицію з вузлами — таку не чіпаємо."""
+    try:
+        names = list(ti.GetFusionCompNameList() or [])
+    except Exception:
+        return False
+    for nm in names:
+        if nm == mine:
+            continue
+        if nm in (SVIT_COMP, LOOK_COMP):
+            return True
+        try:
+            c = ti.GetFusionCompByName(nm)
+            if c and len(c.GetToolList(False) or {}) > 2:     # не лише MediaIn → MediaOut
+                return True
+        except Exception:
+            return True
+    return False
+
+
+def style_targets(sess, data):
+    """[(таймлайн, [(шматок, info), …]), …] і кількість пропущених шматків."""
     project = sess.project
+    cur_tl = project.GetCurrentTimeline()
+    skipped = 0
+    if data.get("manual"):
+        if not cur_tl:
+            raise RuntimeError("У DaVinci не відкритий жоден таймлайн.")
+        ents = []
+        for idx in range(1, (cur_tl.GetTrackCount("video") or 1) + 1):
+            for ti in cur_tl.GetItemListInTrack("video", idx) or []:
+                try:
+                    mpi = ti.GetMediaPoolItem()
+                except Exception:
+                    mpi = None
+                if not mpi:
+                    continue                      # титри, генератори, adjustment clips
+                if foreign_comp(ti, LOOK_COMP):
+                    skipped += 1
+                    continue
+                ents.append((ti, {"look": data.get("look_override") or None, "src": None,
+                                  "label": "#%d" % (len(ents) + 1)}))
+        return [(cur_tl, ents)], skipped
     plan = data["plan"]
     videos = plan.get("videos") or []
-    fxs, lks, ov, spd, ts, tone = style_params(data, plan)
     if data.get("look_override") is not None:
         for v in videos:
             v["look"] = data["look_override"] or None
@@ -1240,45 +1385,165 @@ def restyle(sess, data):
         groups = [(by_name.get(names[0]), videos)] if names else []
     else:
         groups = [(by_name.get(n), [v]) for n, v in zip(names, videos)]
-    only = data.get("only_video")
-    if only is not None and data.get("layout") != "one":
-        groups = [g for i, g in enumerate(groups) if i == int(only)]
     groups = [g for g in groups if g[0] is not None]
     if not groups:
         raise RuntimeError("Не знайшов таймлайни цього монтажу в проекті DaVinci (можливо, їх перейменували або видалили).")
-    total = sum(len(v["segments"]) for _, vs in groups for v in vs) or 1
-    done_n, stats = 0, {"ok": 0, "fail": 0, "errors": []}
-    L("=== Вигляд: таймлайнів %d, шматків %d, вінтаж %.0f%%, ефекти %.0f%%, halation %s, дрімі %s, фантоми %.0f%%, "
-      "зерно %.0f%%, контраст %.0f%%" % (len(groups), total, lks * 100, fxs * 100, ov.get("halation", 0),
-                                          ov.get("blur", 0), STYLE["ghost"] * 100, STYLE["grain"] * 100, ts * 100))
+    out = []
     for tl, vids in groups:
-        project.SetCurrentTimeline(tl)
         items = sorted(tl.GetItemListInTrack("video", 1) or [], key=lambda t: t.GetStart())
         flat = [(v, k, sg) for v in vids for k, sg in enumerate(v["segments"])]
         if len(items) != len(flat):
             L("  «%s»: на таймлайні %d шматків, у плані %d — оновлюю по порядку" % (tl.GetName(), len(items), len(flat)))
+        ents = []
         for ti, (v, k, sg) in zip(items, flat):
             segs = v["segments"]
             ze = sg.get("zoom_end")
-            ratio = ze / max(sg.get("zoom", 1.0), 0.01) if ze and abs(ze - sg.get("zoom", 1.0)) > 0.005 else None
-            tin = sg.get("tr") if k > 0 else None
-            tout = segs[k + 1].get("tr") if k + 1 < len(segs) else None
-            tn = tone.get(str(sg["source"]))
-            # стара композиція Svit прибирається, нова збирається з новими рівнями
+            ents.append((ti, {"look": v.get("look"), "src": str(sg["source"]), "label": "#%d" % (k + 1),
+                              "ratio": ze / max(sg.get("zoom", 1.0), 0.01)
+                              if ze and abs(ze - sg.get("zoom", 1.0)) > 0.005 else None,
+                              "fx": sg.get("fx") or (), "tin": sg.get("tr") if k > 0 else None,
+                              "tout": segs[k + 1].get("tr") if k + 1 < len(segs) else None}))
+        out.append((tl, ents))
+    # спершу таймлайн, відкритий зараз
+    if cur_tl is not None:
+        cn = cur_tl.GetName()
+        out.sort(key=lambda g: 0 if g[0].GetName() == cn else 1)
+    return out, skipped
+
+
+def tune_item(ti, info, P, comp_name):
+    """Підкручує значення в уже зібраній композиції. False — потрібна перебудова."""
+    comp = comp_of(ti, comp_name)
+    if not comp:
+        return False
+    find = lambda n: comp.FindTool(n)
+    bl, mg, hal, tn, gr = (find("SvDreamyBlur"), find("SvDreamy"), find("SvHal"), find("SvTone"), find("SvGrain"))
+    if not (bl and mg and hal and tn and gr):
+        return False
+    m = look_mult(P["lks"])
+    look = info.get("look")
+    try:
+        comp.Lock()
+    except Exception:
+        pass
+    try:
+        set_dreamy(bl, mg, P["ov"].get("blur", 0))
+        set_halation(hal, P["ov"].get("halation", 0))
+        set_tone(tn, P["tone"](info))
+        g = STYLE["grain"]
+        if g is None:
+            g = look_grain(look, m)
+            if "grain" in (info.get("fx") or ()):
+                g = max(g, min(1.0, 0.4 + 0.6 * P["fxs"]))
+        set_grain(gr, g)
+        gh = find("SvGhost")
+        if gh:
+            b = ghost_blend(look, m)
             try:
-                for nm in (ti.GetFusionCompNameList() or []):
-                    ti.DeleteFusionCompByName(nm)
+                gh.SetInput("Blend", max(0.0, b))
             except Exception:
                 pass
-            dn, errs = apply_fusion(ti, ratio, sg.get("fx") or (), fxs, "#%d" % (k + 1), v.get("look"), lks,
-                                    tin, tout, overlay=ov, tone=tn, speed=spd)
-            stats["ok"] += 1 if not errs else 0
-            stats["fail"] += 1 if errs else 0
-            done_n += 1
-            if done_n % 3 == 0 or done_n == total:
-                sess.status(done_n / float(total), "Оновлюю вигляд · %d з %d" % (done_n, total))
-    L("=== Вигляд готово: оновлено %d, з помилками %d" % (stats["ok"], stats["fail"]))
-    return {"ok": True, "count": done_n, "fail": stats["fail"]}
+            _pass(gh, b <= 0.02)
+    finally:
+        try:
+            comp.Unlock()
+        except Exception:
+            pass
+    return True
+
+
+def restyle(sess, data):
+    """«Вигляд»: змінює ефекти на готових таймлайнах без нового монтажу.
+    mode: tune — лише підкрутити значення у вузлах (миттєво); rebuild — перебудувати композиції
+    (нова фактура, сила вінтажу, ефектів, швидкість переходів); clear — прибрати ефекти «Мого таймлайну».
+    Якщо поки йде оновлення прийшла нова зміна (style_gen), поточне перериваємо — далі піде новіше."""
+    mode = data.get("mode", "rebuild")
+    manual = bool(data.get("manual"))
+    comp_name = LOOK_COMP if manual else SVIT_COMP
+    gen = str(data.get("gen", ""))
+    gen_file = sess.dir / "style_gen"
+    fxs, lks, ov, spd, ts, tone = style_params(data, data.get("plan") or {})
+    STYLE["live"] = True
+    P = {"ov": ov, "lks": lks, "fxs": fxs,
+         "tone": (lambda info: manual_tone(ts)) if manual else (lambda info: tone.get(info.get("src")))}
+    groups, skipped = style_targets(sess, data)
+    total = sum(len(e) for _, e in groups) or 1
+    if manual and not sum(len(e) for _, e in groups):
+        raise RuntimeError("На відкритому таймлайні немає відеокліпів, які можна змінити."
+                           + (" Пропущено шматків зі своїми Fusion-композиціями: %d." % skipped if skipped else ""))
+    L("=== Вигляд (%s%s): шматків %d, вінтаж %.0f%%, ефекти %.0f%%, halation %s, дрімі %s, фантоми %.0f%%, "
+      "зерно %s, контраст %.0f%%" % (mode, ", мій таймлайн" if manual else "", total, lks * 100, fxs * 100,
+                                     ov.get("halation", 0), ov.get("blur", 0), STYLE["ghost"] * 100,
+                                     "авто" if STYLE["grain"] is None else "%.0f%%" % (STYLE["grain"] * 100), ts * 100))
+    project = sess.project
+    orig_tl = project.GetCurrentTimeline()
+    stats = {"ok": 0, "fail": 0, "tuned": 0, "rebuilt": 0}
+    n = 0
+    t0 = time.time()
+    aborted = False
+    try:
+        for tl, ents in groups:
+            switched = False
+            if orig_tl is None or tl.GetName() != orig_tl.GetName():
+                if mode != "tune":
+                    project.SetCurrentTimeline(tl)
+                    switched = True
+            for ti, info in playhead_first(tl, ents):
+                if gen and gen_file.exists() and gen_file.read_text().strip() != gen:
+                    aborted = True
+                    break
+                errs = []
+                if mode == "clear":
+                    try:
+                        for nm in (ti.GetFusionCompNameList() or []):
+                            if nm == LOOK_COMP:
+                                ti.DeleteFusionCompByName(nm)
+                    except Exception as e:
+                        errs.append(str(e))
+                elif mode == "tune" and tune_item(ti, info, P, comp_name):
+                    stats["tuned"] += 1
+                else:
+                    try:
+                        # чужі композиції вже відсіяні — стару нашу (і порожні) прибираємо
+                        for nm in (ti.GetFusionCompNameList() or []):
+                            ti.DeleteFusionCompByName(nm)
+                    except Exception:
+                        pass
+                    _, errs = apply_fusion(ti, info.get("ratio"), info.get("fx") or (), fxs, info["label"],
+                                           info.get("look"), lks, info.get("tin"), info.get("tout"),
+                                           overlay=ov, tone=P["tone"](info), speed=spd, comp_name=comp_name)
+                    stats["rebuilt"] += 1
+                stats["fail" if errs else "ok"] += 1
+                n += 1
+                if n == 1 or n % 3 == 0 or n == total:
+                    sess.status(n / float(total), "Оновлюю вигляд · %d з %d" % (n, total))
+            if switched and orig_tl is not None:
+                project.SetCurrentTimeline(orig_tl)
+            if aborted:
+                break
+    finally:
+        STYLE["live"] = False
+    L("=== Вигляд %s за %.1f с: підкручено %d, перебудовано %d, з помилками %d, пропущено %d"
+      % ("перервано новішою зміною" if aborted else "готово", time.time() - t0, stats["tuned"], stats["rebuilt"],
+         stats["fail"], skipped))
+    tl_name = groups[0][0].GetName() if groups else ""
+    return {"ok": True, "count": n, "fail": stats["fail"], "aborted": aborted, "skipped": skipped,
+            "tuned": stats["tuned"], "rebuilt": stats["rebuilt"], "timeline": tl_name}
+
+
+def timeline_info(sess):
+    tl = sess.project.GetCurrentTimeline()
+    if not tl:
+        return {"ok": True, "timeline": "", "clips": 0}
+    n = 0
+    for idx in range(1, (tl.GetTrackCount("video") or 1) + 1):
+        for ti in tl.GetItemListInTrack("video", idx) or []:
+            try:
+                if ti.GetMediaPoolItem():
+                    n += 1
+            except Exception:
+                pass
+    return {"ok": True, "timeline": tl.GetName(), "clips": n}
 
 
 def build(sess, data):
@@ -1449,6 +1714,8 @@ def main():
                         sess.respond(cid, build(sess, data))
                     elif cmd == "restyle":
                         sess.respond(cid, restyle(sess, data))
+                    elif cmd == "timeline_info":
+                        sess.respond(cid, timeline_info(sess))
                 except Exception as e:
                     tb = traceback.format_exc()
                     L("ПОМИЛКА в команді %s:\n%s" % (cmd, tb))
