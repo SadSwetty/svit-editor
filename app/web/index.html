@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<title>Svit Editor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#f6bd4f"/><stop offset="1" stop-color="#ff7a1a"/></linearGradient></defs></svg>
+
+<!-- ============================== АКТИВАЦІЯ -->
+<section class="view" id="v-activate">
+  <div class="scroll">
+    <header class="mast">
+      <div class="mast-top"><span class="tag ink">SVIT/ED</span><span>AI-монтаж · Claude × DaVinci</span><span class="sp"></span><span class="tag" id="vertag">v—</span></div>
+      <div class="mast-main"><div><h1 class="logo">Svit<br><em>Editor</em></h1>
+        <div class="sub">Пишеш словами — <mark>воно ріже</mark>.<br>Зум, ритм, субтитри, кошторис.</div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div>
+      <div class="ruler"></div>
+    </header>
+    <div class="h1" style="margin-top:18px">Вітаю в Svit Editor</div>
+    <div class="sub2">Щоб монтувати, програмі потрібен ключ Claude — це як пароль. Вставляється один раз.</div>
+    <div class="steps3">
+      <div class="s3"><div class="n">1</div><div class="tx">Створи ключ на сайті Claude<small>Увійди → Create Key → скопіюй</small></div>
+        <button class="btn" onclick="SV.api('open_url','keys')">Відкрити сайт</button></div>
+      <div class="s3"><div class="n">2</div><div class="tx">Поповни баланс<small>Кількох доларів вистачить надовго</small></div>
+        <button class="btn" onclick="SV.api('open_url','billing')">Поповнити</button></div>
+      <div class="s3"><div class="n">3</div><div class="tx">Встав ключ сюди</div></div>
+    </div>
+    <div class="keyrow"><input id="key" type="password" placeholder="sk-ant-…" spellcheck="false">
+      <button class="eye" onclick="SV.toggleKey()" title="Показати"><svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="#141414" stroke-width="2"><path d="M1 8 Q11 -3 21 8 Q11 19 1 8Z"/><circle cx="11" cy="8" r="3" fill="#141414"/></svg></button></div>
+    <div class="msg" id="keymsg"></div>
+    <button class="go wide" id="keybtn" onclick="SV.saveKey()">Перевірити і зберегти</button>
+    <div style="text-align:center;margin-top:12px"><button class="btn ghost" id="keyback" style="display:none" onclick="SV.show('main')">Назад</button></div>
+  </div>
+</section>
+
+<!-- ============================== ГОЛОВНЕ -->
+<section class="view" id="v-main">
+  <div class="scroll">
+    <header class="mast">
+      <div class="mast-top"><span class="tag ink">SVIT/ED</span><span>AI-монтаж · Claude × DaVinci</span><span class="sp"></span><span class="tag" id="vertag">v—</span><div class="iconbtn" id="pin" onclick="SV.togglePin()" title="Тримати вікно поверх DaVinci"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.8a2 2 0 0 1-1.1 1.8l-1.8.9A2 2 0 0 0 5 15.2V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.8a2 2 0 0 0-1.1-1.8l-1.8-.9A2 2 0 0 1 15 10.8V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></div><div class="iconbtn" onclick="SV.sheet(true)" title="Налаштування"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="square"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><rect x="14" y="4.5" width="4" height="5"/><rect x="8" y="14.5" width="4" height="5"/></svg></div></div>
+      <div class="mast-main"><div><h1 class="logo">Svit<br><em>Editor</em></h1>
+        <div class="sub">Пишеш словами — <mark>воно ріже</mark>.<br>Зум, ритм, субтитри, кошторис.</div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div>
+      <div class="ruler"></div>
+    </header>
+
+    <div class="upd" id="updbar"><svg width="22" height="22" viewBox="-10 -10 20 20"><path class="" style="transform-origin:0px 0px" d="M0 -9 C1.08 -2.25 2.25 -1.08 9 0 C2.25 1.08 1.08 2.25 0 9 C-1.08 2.25 -2.25 1.08 -9 0 C-2.25 -1.08 -1.08 -2.25 0 -9Z" fill="#141414" stroke="none"/></svg>
+      <div class="tx"><b id="updt">Доступна нова версія</b><small id="upds">Оновлення займе менше хвилини</small></div>
+      <button class="btn ghost" style="background:transparent;color:var(--text);border:1px solid var(--line2);font-weight:500" onclick="SV.updInfo()">Що нового</button>
+      <button class="btn" onclick="SV.updStart()">Оновити</button></div>
+
+    <div class="card">
+      <div class="ttl"><span class="num">1</span>Що змонтувати<span class="sp"></span>
+        <i class="i" data-tip="Головне поле. Опиши своїми словами, що хочеш отримати: скільки відео, про що, які моменти брати, де робити зум, як кадрувати. Чим конкретніше — тим краще.">i</i></div>
+      <textarea id="prompt" placeholder="Наприклад: з усіх записів концертів зроби 5 вертикальних відео по 20–30 секунд. Бери дропи й моменти, де зал співає. На ударних — різкий зум, тримай мене в центрі кадру."></textarea>
+      <div class="chips" id="examples"></div>
+      <div class="refs">
+        <div class="refhead"><span>Референси — чим надихатись</span><span class="sp"></span>
+          <i class="i" data-tip="Відео й кадри, які тобі подобаються. Svit Editor порахує їхній темп склейок і покаже Claude кадри з різних планів — монтаж вийде в схожому дусі. Посилання завантажуються в мінімальній якості лише для аналізу і видаляються.">i</i></div>
+        <div class="linkrow"><input id="reflink" placeholder="Встав посилання: TikTok · Reels · Shorts · YouTube" spellcheck="false"><button class="btn" onclick="SV.addLink()">Додати</button></div>
+        <div class="drop" id="drop">
+          <div class="thumbs" id="thumbs"></div>
+          <div class="hint" id="drophint">Перетягни сюди відео чи скріни, які подобаються</div>
+          <button class="btn" onclick="SV.pickRefVideos()">Відео</button><button class="btn" onclick="SV.pickShots()">Скріни</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ttl"><span class="num">2</span>Матеріал<span class="sp"></span>
+        <i class="i" data-tip="Звідки брати відео в DaVinci. Можна виділити багато кліпів одразу або взяти всю папку Media Pool — наприклад, усі записи концертів.">i</i></div>
+      <div class="seg" id="srcmode">
+        <button data-v="selected">Виділені</button><button data-v="folder">Папка Media Pool</button><button data-v="timeline">З таймлайну</button><button data-v="dropped">Перетягнуті</button>
+      </div>
+      <div class="mat">
+        <div><div class="big" id="matbig">—</div><div class="sub" id="matsub">Виділи кліпи в DaVinci</div></div>
+        <span class="sp"></span>
+        <button class="btn" id="clearbtn" style="display:none" onclick="SV.clearDropped()">Очистити</button>
+        <button class="btn" onclick="SV.refresh()">↻ Оновити</button>
+      </div>
+      <div class="names" id="names"></div>
+      <div class="warn" id="nobridge" style="display:none">Svit Editor відкритий не з DaVinci. Запускай його через DaVinci: Workspace → Scripts → Svit Editor.</div>
+    </div>
+
+    <div class="card" id="musiccard">
+      <div class="ttl"><span class="num">3</span>Музика<span class="sp"></span>
+        <i class="i" data-tip="Додай трек — Svit Editor знайде темп і удари, а Claude поріже відео під біт. Трек ляже на аудіодоріжку, звук камер вимкнеться.">i</i></div>
+      <div class="sw" data-k="music_on"><div class="lb">Монтаж під аудіо<small>Склейки на біт, трек на аудіодоріжці</small></div><div class="tog"></div></div>
+      <div id="musicbody">
+        <div class="mempty" id="mempty"><span>Перетягни аудіофайл у вікно або</span><button class="btn" onclick="SV.pickMusic()">Вибрати трек</button></div>
+        <div id="mfull" style="display:none">
+          <div class="mhead"><b id="mname">—</b><span class="mono" id="mdur"></span><span class="sp"></span>
+            <button class="btn" id="mplay" onclick="SV.playMusic()">Прослухати</button><button class="btn" onclick="SV.pickMusic()">Інший трек</button></div>
+          <div class="wave" id="wave"><canvas id="wavec"></canvas></div>
+          <div class="mrange"><span id="mrange">—</span><span class="mono">тягни ручки — вибери шматок пісні</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="advtoggle" id="advtoggle" onclick="SV.toggleAdv()">
+      <div class="lb"><b>Розширені налаштування</b><small id="advsum">9:16 · 30 fps · нормальна динаміка · легкі зуми</small></div>
+      <span class="chev">⌄</span>
+    </div>
+
+    <div class="card adv" id="adv">
+      <div class="tabs" id="tabs">
+        <button data-t="frame">Кадр</button><button data-t="pace">Динаміка</button><button data-t="zoom">Зуми</button><button data-t="fx">Ефекти</button><button data-t="color">Колір</button><button data-t="result">Результат</button><button data-t="analysis">Аналіз</button>
+      </div>
+
+      <div class="tab" data-t="frame">
+        <div class="fld"><label>Співвідношення сторін <i class="i left" data-tip="Розмір готових відео. Якщо джерело іншої форми, кадр сам наблизиться й обріжеться, а Claude вибере, яку частину показати.">i</i></label>
+          <div class="fmts" id="fmts"></div></div>
+        <div class="fld" style="margin-top:16px"><label>Частота кадрів (FPS) <i class="i left" data-tip="Скільки кадрів за секунду матиме таймлайн і готове відео. 24 — кіно, 25 — стандарт для Європи, 30 — соцмережі, 60 — дуже плавно. «Як у джерела» — без змін.">i</i></label>
+          <div class="seg" id="fps"><button data-v="src">Як у джерела</button><button data-v="24">24</button><button data-v="25">25</button><button data-v="30">30</button><button data-v="60">60</button></div></div>
+        <div class="subhead">Cinematic <span class="beta">бета</span><i class="i" data-tip="Режим для кліпів, лірик-відео і короткого кіно. Claude монтує не як швидку нарізку для TikTok, а як кліп: довші плани, що дихають, повільні плавні наїзди, склейки на фразах і рядках пісні, крупні плани на приспів, деталі між куплетами. Якщо ти зняв кілька дублів під трек — увімкни музику, і Svit сам вирівняє дублі з піснею, щоб губи збігались.">i</i></div>
+        <div class="sw" data-k="cinematic" style="margin-top:6px"><div class="lb">Cinematic mode<small>Монтаж як у кліпах і кіно, а не як швидка нарізка</small></div><div class="tog"></div></div>
+        <div class="cinehelp">Для кліпу, лірик-відео, короткого фільму. Довші плани, повільні наїзди, склейки на фразах пісні, крупні плани на приспів.</div>
+        <div class="fld ovopt" id="cineopt"><label>Кінематографічність <span class="val" id="cinev"></span></label>
+          <input type="range" id="cines" min="10" max="100" step="5">
+          <div class="scale"><span>легко</span><span>кліп</span><span>кіно</span></div></div>
+        <div class="sw ovopt" data-k="take_sync" id="syncopt"><div class="lb">Синхрон дублів (lip-sync)<small>Кілька дублів під трек — Svit знайде, де в пісні кожен, і різатиме між ними в синхроні. Потрібна музика в блоці 3</small></div><div class="tog"></div></div>
+      </div>
+
+
+      <div class="tab" data-t="pace">
+        <div class="fld"><label>Темп нарізки <i class="i left" data-tip="Як часто будуть склейки. Швидка — короткі шматки для TikTok і Reels. Повільна — довгі плани з природними паузами, як у влогах на YouTube.">i</i></label>
+          <div class="paces" id="paces">
+            <div class="pace" data-v="fast"><div class="pi"><svg viewBox="0 0 44 44" fill="none" stroke="#141414" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M25 3 L9 24 H20 L16 41 L35 17 H23 Z" fill="#FBFAF6"/><path d="M4 10 h5 M2 17 h4 M38 30 h4"/></svg></div><b>Швидка</b><small>TikTok, Reels. Склейки кожні 1–2 с, без пауз</small></div>
+            <div class="pace" data-v="normal"><div class="pi"><svg viewBox="0 0 44 44" fill="none" stroke="#141414" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><path d="M12 40 L19 5 H25 L32 40 Z" fill="#FBFAF6"/><path d="M22 33 L31 10"/><rect x="28" y="12" width="6" height="5" fill="#141414"/><path d="M10 40 H34"/></svg></div><b>Нормальна</b><small>Баланс. Шматки 3–6 с, ритм тримається</small></div>
+            <div class="pace" data-v="slow"><div class="pi"><svg viewBox="0 0 44 44" fill="none" stroke="#141414" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"><circle cx="22" cy="24" r="11" fill="#FBFAF6"/><path d="M22 24 m0 -5 a5 5 0 1 1 -5 5 a2.5 2.5 0 1 1 2.5 -2.5"/><path d="M4 36 H34 Q40 36 40 30 L40 24"/><path d="M36 22 L33 12 M40 22 L42 13"/><circle cx="33" cy="11" r="1.5" fill="#141414"/><circle cx="42" cy="12" r="1.5" fill="#141414"/></svg></div><b>Повільна</b><small>YouTube, влог. Довгі плани, природні паузи</small></div>
+          </div></div>
+        <div class="fld" style="margin-top:16px"><label>Абстрактність ідей <span class="val" id="abval"></span> <i class="i left" data-tip="Наскільки сміливо Claude вигадує. Ліворуч — класичний зрозумілий монтаж за правилами. Посередині — асоціативні склейки, візуальні рими, нелінійність. Праворуч — артхаус: монтаж як сон чи знайдена плівка, lost wave, dreamcore, свідоме ламання правил.">i</i></label>
+          <input type="range" id="abstr" min="0" max="100" step="5">
+          <div class="scale"><span>класика</span><span>творчо</span><span>артхаус</span></div>
+          <div class="abhint" id="abhint"></div></div>
+      </div>
+
+      <div class="tab" data-t="zoom">
+        <div class="sw" data-k="zoom_crop"><div class="lb">Кадрування<small>Статично наближує і зсуває кадр, щоб головне було в центрі</small></div><i class="i" data-tip="Наприклад, горизонтальне відео у вертикальному форматі: Claude вибере, яку частину кадру показати і наскільки наблизити. Це не ефект — просто правильний кадр.">i</i><div class="tog"></div></div>
+        <div class="sw" data-k="zoom_dynamic"><div class="lb">Динамічний зум<small>Легкий плавний рух — наїзди й від'їзди, щоб картинка жила</small></div><i class="i up" data-tip="На кожному шматку кадр повільно наближається або віддаляється на кілька відсотків. Робиться через Fusion, тож експорт трохи довший.">i</i><div class="tog"></div></div>
+        <div id="zoomopts">
+          <div class="fld" style="margin-top:12px"><label>Сила руху <span class="val" id="zval"></span></label>
+            <input type="range" id="zstr" min="0" max="100" step="5">
+            <div class="scale"><span>ледь-ледь</span><span>помітно</span><span>виразно</span></div></div>
+        </div>
+      </div>
+
+      <div class="tab" data-t="fx">
+        <div class="sw" data-k="fx_on"><div class="lb">Ефекти <span class="beta">бета</span><small>Claude ставить їх сам — під біт, референси й настрій</small></div><i class="i" data-tip="Ефекти робляться через Fusion у DaVinci, тож експорт трохи довший. Познач, які дозволено — Claude використає їх лише там, де вони підсилюють момент.">i</i><div class="tog"></div></div>
+        <div id="fxopts">
+          <div class="fxgrid" id="fxgrid"><div class="fxcard" data-fx="shake"><b>Тряска</b><small>на ударах і дропах</small></div><div class="fxcard" data-fx="flash"><b>Спалах</b><small>різке світло на сильній долі</small></div><div class="fxcard" data-fx="fade_in"><b>З темряви</b><small>проявлення: початок, нова частина</small></div><div class="fxcard" data-fx="blur_in"><b>З розмиття</b><small>мрійливий вхід у кадр</small></div><div class="fxcard" data-fx="rgb"><b>RGB-глітч</b><small>розшарування кольорів на склейці</small></div><div class="fxcard" data-fx="glow"><b>Світіння</b><small>сцена, світло, прожектори</small></div><div class="fxcard" data-fx="bw"><b>Чорно-біле</b><small>драма, ностальгія</small></div><div class="fxcard" data-fx="grain"><b>Зерно</b><small>плівкова фактура</small></div></div>
+          <div class="fld" style="margin-top:14px"><label>Сила ефектів <span class="val" id="fxval"></span></label>
+            <input type="range" id="fxstr" min="10" max="100" step="5">
+            <div class="scale"><span>делікатно</span><span>помітно</span><span>на повну</span></div></div>
+        </div>
+        <div class="subhead">Повільний зум</div>
+        <div class="sw" data-k="zoom_dynamic" style="margin-top:6px"><div class="lb">Плавний наїзд / від'їзд<small>Автоматизація зуму на кожному шматку (ключові кадри у Fusion)</small></div><div class="tog"></div></div>
+        <div class="fld ovopt" id="fxzoom"><label>Сила зуму <span class="val" id="zval2"></span></label>
+          <input type="range" id="zstr2" min="0" max="100" step="5">
+          <div class="scale"><span>ледь-ледь</span><span>помітно</span><span>виразно</span></div></div>
+
+        <div class="subhead">На весь ролик <span class="beta">бета</span><i class="i" data-tip="Як Adjustment Clip поверх нарізки: ефект однаковий на всьому ролику. Накладається на кожен шматок у Fusion — правиться там же, у вузлах Blur і SoftGlow (halation).">i</i></div>
+        <div class="sw" data-k="ov_blur" style="margin-top:6px"><div class="lb">Дрімі-розмиття<small>М'яке сяйво як уві сні: розмита копія світиться поверх різкого кадру</small></div><div class="tog"></div></div>
+        <div class="fld ovopt" id="ovblur"><label>Сила розмиття <span class="val" id="ovbv"></span></label>
+          <input type="range" id="ovbs" min="5" max="100" step="5">
+          <div class="scale"><span>ледь</span><span>м'яко</span><span>сильно</span></div></div>
+        <div class="sw" data-k="ov_hal" style="margin-top:6px"><div class="lb">Halation<small>Червоно-помаранчеве світіння навколо світла, як на плівці</small></div><div class="tog"></div></div>
+        <div class="fld ovopt" id="ovhal"><label>Сила halation <span class="val" id="ovhv"></span></label>
+          <input type="range" id="ovhs" min="5" max="100" step="5">
+          <div class="scale"><span>натяк</span><span>помітно</span><span>горить</span></div></div>
+
+        <div class="subhead">Переходи <span class="beta">бета</span><i class="i" data-tip="Переходи між шматками через Fusion: кінець одного плану і початок наступного анімуються разом. Більшість склейок лишаються прямими — Claude ставить переходи на сильні долі, зміни частин і настрою.">i</i></div>
+        <div class="sw" data-k="tr_on" style="margin-top:6px"><div class="lb">Переходи між планами<small>Claude ставить їх сам, приблизно на кожну 3–5-ту склейку</small></div><div class="tog"></div></div>
+        <div class="fld ovopt" id="trspd"><label>Швидкість переходів і спалаху <span class="val" id="tsv"></span></label>
+          <input type="range" id="tsp" min="0" max="100" step="5">
+          <div class="scale"><span>повільно</span><span>середньо</span><span>блискавично</span></div></div>
+        <div class="fxgrid" id="trgrid"><div class="fxcard trcard" data-tr="zoom"><b>Наїзд</b><small>різкий зум з розмиттям, на біт</small></div><div class="fxcard trcard" data-tr="whip"><b>Свайп</b><small>змах кадру вбік</small></div><div class="fxcard trcard" data-tr="dip"><b>Через чорне</b><small>зміна частини, драма</small></div><div class="fxcard trcard" data-tr="white"><b>Через біле</b><small>кульмінація, дроп</small></div><div class="fxcard trcard" data-tr="glitch"><b>Глітч</b><small>кольори смикаються</small></div><div class="fxcard trcard" data-tr="blur"><b>Розмиття</b><small>м'яко, як спогад</small></div></div>
+        <div class="subhead">Вінтаж / плівка <span class="beta">бета</span><i class="i" data-tip="Фактура на весь ролик: касета, плівка, старий телевізор. Робиться у Fusion на кожному шматку — експорт довший. Claude монтує в дусі обраної фактури.">i</i></div>
+        <div class="lkgrid" id="lkgrid"><div class="lkcard lk-none" data-lk="none"><i></i><b>Без вінтажу</b><small>чиста картинка</small></div><div class="lkcard lk-auto" data-lk="auto"><i></i><b>Авто</b><small>Claude обере за запитом</small></div><div class="lkcard lk-vhs" data-lk="vhs"><i></i><b>Касета VHS</b><small>шум, трекінг, кольори з'їжджають</small></div><div class="lkcard lk-camcorder" data-lk="camcorder"><i></i><b>Камкордер 90-х</b><small>Hi8, тепло, аматорськи</small></div><div class="lkcard lk-film8" data-lk="film8"><i></i><b>Плівка 8 мм</b><small>хроніка: зерно, мерехтіння</small></div><div class="lkcard lk-film16" data-lk="film16"><i></i><b>Плівка 16 мм</b><small>інді-кіно, м'яко</small></div><div class="lkcard lk-crt" data-lk="crt"><i></i><b>Телевізор</b><small>рядки, віньєтка, світіння</small></div><div class="lkcard lk-lostwave" data-lk="lostwave"><i></i><b>Lost wave</b><small>вицвіле, «знайдена плівка»</small></div><div class="lkcard lk-bwfilm" data-lk="bwfilm"><i></i><b>Ч/Б кіно</b><small>контраст, мерехтіння</small></div><div class="lkcard lk-dream" data-lk="dream"><i></i><b>Vaporwave</b><small>рожеве світіння, мрія</small></div></div>
+        <div class="fld" id="lkopts" style="margin-top:14px"><label>Сила вінтажу <span class="val" id="lkval"></span></label>
+          <input type="range" id="lkstr" min="10" max="100" step="5">
+          <div class="scale"><span>натяк</span><span>помітно</span><span>убита плівка</span></div></div>
+      </div>
+
+      <div class="tab" data-t="color">
+        <div class="sw" data-k="auto_tone"><div class="lb">Автоконтраст і експозиція<small>Svit дивиться на кожне відео й сам підбирає контраст, чорне й гаму</small></div><i class="i" data-tip="Пласке (лог) відео отримає більше контрасту, темне — трохи світліше, підняті чорні опустяться. Кожне джерело — окремо. Правиться у Fusion: вузол BrightnessContrast першим у ланцюжку.">i</i><div class="tog"></div></div>
+        <div class="fld ovopt" id="toneopt"><label>Сила корекції <span class="val" id="tnv"></span></label>
+          <input type="range" id="tns" min="10" max="100" step="5">
+          <div class="scale"><span>делікатно</span><span>помітно</span><span>повністю</span></div></div>
+        <div class="subhead">Камера і лог <span class="beta">скоро</span></div>
+        <div class="soon">
+          <div class="grid">
+            <div class="fld"><label>Камера</label><select disabled><option>напр. Sony A7 IV</option></select></div>
+            <div class="fld"><label>Лог-профіль / гама</label><select disabled><option>напр. S-Log3 / S-Gamut3.Cine</option></select></div>
+          </div>
+          <button class="btn" disabled>Підібрати автоматично</button>
+          <small>У наступному оновленні: вкажеш камеру й лог, у якому знімав, і Svit правильно переведе в нормальний колір.</small>
+        </div>
+      </div>
+
+      <div class="tab" data-t="result">
+        <div class="grid" style="margin-bottom:16px">
+          <div class="fld"><label>Скільки відео зробити <i class="i left" data-tip="Скільки окремих готових роликів зробити з усього матеріалу. «Авто» — Claude візьме кількість з твого запиту.">i</i></label><select id="num"></select></div>
+          <div class="fld"><label>Довжина кожного відео <i class="i" data-tip="Скільки триватиме КОЖЕН готовий ролик (а не відео-джерело). «Авто» — за запитом.">i</i></label><select id="len"></select></div>
+        </div>
+        <div class="fld"><label>Розміщення <i class="i left" data-tip="«Один таймлайн» — усі ролики підряд, кожен позначений маркером. «Окремі» — кожен ролик на своєму таймлайні.">i</i></label>
+          <div class="seg" id="layout"><button data-v="one">Усе на одному таймлайні</button><button data-v="separate">Кожне відео окремо</button></div></div>
+        <div style="margin-top:8px">
+          <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Слова на окремій доріжці, стиль — в Inspector</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
+          <div class="sw" data-k="auto_render"><div class="lb">Одразу експортувати MP4<small>У папку Фільми → Svit Editor</small></div><i class="i up" data-tip="Після монтажу DaVinci сам експортує кожен ролик окремим MP4.">i</i><div class="tog"></div></div>
+        </div>
+      </div>
+
+      <div class="tab" data-t="analysis">
+        <div class="sw" data-k="transcribe"><div class="lb">Слухати слова<small>Для інтерв'ю, влогів і субтитрів. На довгих концертах займає час</small></div><i class="i" data-tip="Розпізнає слова й тексти пісень з таймкодами. Працює на твоєму Маці, безкоштовно.">i</i><div class="tog"></div></div>
+        <div class="sw" data-k="frames"><div class="lb">Дивитись кадри<small>Щоб правильно кадрувати й обирати красиві моменти</small></div><i class="i up" data-tip="Claude подивиться маленькі кадри з відео: де сцена, де люди, що відбувається.">i</i><div class="tog"></div></div>
+        <div class="grid" style="margin-top:10px">
+          <div class="fld"><label>Мова відео</label><select id="lang"></select></div>
+          <div class="fld"><label>Якість розпізнавання <i class="i up" data-tip="Точніше — повільніше. Нова якість один раз докачається.">i</i></label><select id="whisper"></select></div>
+        </div>
+        <div class="fld" style="margin-top:12px"><label>Модель Claude <i class="i left up" data-tip="Sonnet — найкращий баланс. Opus — найрозумніший для складних запитів. Haiku — найдешевший для простих задач.">i</i></label><select id="model"></select></div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">
+    <div class="cost">
+      <div class="lbl">Кошторис · токени</div>
+      <div class="v"><span class="coinslot" id="costcoin"></span><span id="costv">≈ 0</span><i class="i left up" data-tip="Скільки токенів приблизно забере цей монтаж: залежить від довжини матеріалу, кількості кадрів, скрінів і роликів. Точну суму програма порахує перед стартом і покаже в кінці.">i</i></div>
+      <div class="s" id="costs">Виділи матеріал</div>
+    </div>
+    <button class="go" onclick="SV.start()"><svg width="16" height="16" viewBox="-10 -10 20 20"><path class="" style="transform-origin:0px 0px" d="M0 -9 C1.08 -2.25 2.25 -1.08 9 0 C2.25 1.08 1.08 2.25 0 9 C-1.08 2.25 -2.25 1.08 -9 0 C-2.25 -1.08 -1.08 -2.25 0 -9Z" fill="#FBFAF6" stroke="none"/></svg>Змонтувати</button>
+  </div>
+  <div class="toast" id="toast"></div>
+  <div class="dropov" id="dropov"><div class="dz">
+    <svg class="doodle" viewBox="0 0 110 110" fill="none" stroke="#141414" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><rect x="14" y="56" width="82" height="44" fill="#E2F55C"/><path d="M14 56 L28 40 H82 L96 56"/><path d="M55 6 V44"/><path d="M42 31 L55 44 L68 31"/><path d="M30 72 h50 M30 84 h34"/></svg>
+    <b>Кидай сюди</b><small>Кліпи з DaVinci · файли з Finder · папку · трек для музики</small></div></div>
+</section>
+
+<!-- ============================== ПРОГРЕС -->
+<section class="view" id="v-progress">
+  <div class="center">
+    <div class="sparks" style="position:absolute;--h:-900px"></div>
+    <svg class="worker doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg>
+    <div class="ring"><svg viewBox="0 0 120 120"><circle class="bg" cx="60" cy="60" r="52" fill="none" stroke-width="8"/>
+      <circle class="fg" id="ringfg" cx="60" cy="60" r="52" fill="none" stroke-width="8" stroke-dasharray="326.7" stroke-dashoffset="326.7"/></svg>
+      <div class="pct"><span><span id="pctn">0</span><small>%</small></span></div></div>
+    <div class="stage" id="stage">Починаю…</div>
+    <div class="file" id="pfile"></div>
+    <div class="bar"><b id="pbar"></b></div>
+    <div class="meta"><span>Минуло <b id="elapsed">0:00</b></span><span>Залишилось <b id="eta">—</b></span><span>Токени <b id="pcost">0</b></span></div>
+    <div class="steps" id="steps"></div>
+    <div class="row"><button class="btn ghost" onclick="SV.cancel()">Скасувати</button></div>
+  </div>
+</section>
+
+<!-- ============================== ГОТОВО -->
+<section class="view" id="v-done">
+  <div class="center">
+    <svg class="check" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45"/></svg>
+    <svg class="stamp" viewBox="0 0 150 150"><g fill="none" stroke="#2F3CFF"><circle cx="75" cy="75" r="68" stroke-width="5"/><circle cx="75" cy="75" r="56" stroke-width="2" stroke-dasharray="4 5"/></g>
+      <text x="75" y="90" text-anchor="middle" font-family="Zvin Cond, Georgia" font-weight="900" font-size="36" fill="#2F3CFF">ГОТОВО</text>
+      <text x="75" y="110" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" letter-spacing="2" fill="#2F3CFF">SVIT/ED · OK</text>
+      <text x="75" y="46" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" letter-spacing="2" fill="#2F3CFF">★ МОНТАЖ ★</text></svg>
+    <div class="h1" id="donet">Готово!</div>
+    <div class="sub2" id="dones"></div>
+    <div class="vids" id="vids"></div>
+    <div class="note noi" id="note" style="display:none"></div>
+    <div class="logrow"><button class="linkbtn" onclick="SV.openLog()">Журнал роботи</button><span>— якщо щось вийшло не так, відкрий і надішли Claude</span></div>
+    <div class="editbox">
+      <div class="ttl" style="margin-bottom:8px">Що змінити?<span class="sp"></span>
+        <i class="i up" data-tip="Напиши правку словами — Claude змінить план, а в DaVinci з'явиться нова версія таймлайну (попередня залишиться для порівняння). Правки дешеві: матеріал уже проаналізований.">i</i></div>
+      <div class="vpick" id="vpick"></div>
+      <div class="mtl" id="mtl"><div class="blocks" id="mtlb"></div></div>
+      <div class="mtlinfo"><div class="seg" id="emode"><button data-v="full">Весь ролик</button><button data-v="range">Тільки ділянку</button></div>
+        <span class="mono" id="erange"></span><span class="sp"></span><span class="mono" id="ecost"></span></div>
+      <div class="editrow">
+        <textarea id="edittext" placeholder="Наприклад: другий ролик зроби довшим, прибери склейку на 0:12, менше зумів у третьому"></textarea>
+        <button class="go" onclick="SV.revise()">Змінити</button>
+      </div>
+      <div class="chips" id="editchips"></div>
+    </div>
+    <div class="row">
+      <button class="btn" onclick="SV.api('open_path', SV.result.captions)">Підписи для постів</button>
+      <button class="btn" onclick="SV.show('main')">Новий монтаж</button>
+      <button class="go" onclick="SV.api('quit')">Закрити</button>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== ПОМИЛКА -->
+<section class="view" id="v-error">
+  <div class="center">
+    <svg class="errsvg doodle" viewBox="0 0 96 86" fill="none" stroke="#2F3CFF" stroke-width="7" stroke-linejoin="miter"><path d="M48 6 L91 80 H5 Z"/><rect x="43" y="28" width="10" height="28" fill="#2F3CFF" stroke="none"/><rect x="43" y="62" width="10" height="9" fill="#2F3CFF" stroke="none"/></svg>
+    <div class="h1" id="errt">Щось пішло не так</div>
+    <div class="sub2" id="errm" style="max-width:520px"></div>
+    <div class="errhint">Звіт про збій уже відкрито в TextEdit — скопіюй його і надішли Claude.</div>
+    <details style="margin-top:16px;max-width:560px;width:100%;text-align:left"><summary style="font-size:13px;color:var(--muted);font-weight:400">Технічні деталі</summary>
+      <pre id="errd" style="white-space:pre-wrap;font-size:11.5px;color:#bbb;background:var(--field);padding:10px;border-radius:10px;margin-top:8px;max-height:200px;overflow:auto;user-select:text"></pre></details>
+    <div class="row"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.copyErr()">Скопіювати деталі</button><button class="go" onclick="SV.show('main')">Назад</button></div>
+  </div>
+</section>
+
+<!-- ============================== ОНОВЛЕННЯ -->
+<div class="modal welcome" id="welcome"><div class="box"><div class="bar-title"><span>Svit Editor · вітання</span></div><div class="inner">
+  <svg class="doodle wmasc" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg>
+  <div class="wtag">Офіційне повідомлення</div>
+  <h2>Привіт!</h2>
+  <p class="wtext">Це <mark>айтішники Бобогорохії</mark>! Ми раді повідомити, що наше суспільство перейшло в епоху нових технологій!</p>
+  <p class="wtext">І ми створили нову <b>розумну машину для нарізання шматків плівки</b>!</p>
+  <div class="wsign"><span>Svit Editor <span id="wver"></span></span><span>Бобогорохія · відділ нових технологій</span></div>
+  <button class="go" onclick="SV.welcomeClose()">Почати різати</button>
+</div></div></div>
+<div class="modal" id="updmodal"><div class="box"><div class="bar-title"><span>Svit Editor · оновлення</span></div><div class="inner">
+  <div class="h1" style="font-size:21px;margin:0" id="umt">Оновлення</div>
+  <div class="sub2" id="ums"></div>
+  <div class="notes" id="umn" style="display:none"></div>
+  <div class="bar" id="umbar" style="display:none"><b id="umb"></b></div>
+  <div class="row" id="umrow"></div>
+</div></div></div>
+
+<!-- ============================== НАЛАШТУВАННЯ -->
+<div class="sheet" id="sheet" onclick="if(event.target===this)SV.sheet(false)">
+  <div class="pane">
+    <div class="h1" style="font-size:20px;margin:0 0 12px">Налаштування</div>
+    <div class="kv"><span>Ключ Claude</span><span id="keyinfo">—</span></div>
+    <div class="kv"><span>Токенів цього місяця</span><span id="spend">0</span></div>
+    <div class="kv"><span>Версія</span><span id="ver">—</span></div>
+    <div class="kv"><span>Мова інтерфейсу</span><span class="langsw" id="langsw"><button data-l="uk" onclick="SV.setLang('uk')">UA</button><button data-l="en" onclick="SV.setLang('en')">EN</button></span></div>
+    <div class="row" style="justify-content:flex-start">
+      <button class="btn" onclick="SV.changeKey()">Змінити ключ</button>
+      <button class="btn" onclick="SV.api('open_url','usage')">Витрати на сайті</button>
+    </div>
+    <div class="kv" style="margin-top:14px"><span>Оновлення</span><span id="updstate">—</span></div>
+    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.checkUpdate(true)">Перевірити оновлення</button></div>
+    <div class="kv" style="margin-top:14px"><span>Журнали</span><span>~/.svit-editor/logs</span></div>
+    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.api('open_logs_folder')">Папка журналів</button></div>
+  </div>
+</div>
+
+<script src="i18n.js"></script>
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const NUMS = [["Авто — як у запиті",""],...Array.from({length:20},(_,i)=>[String(i+1),String(i+1)])];
+const LENS = [["Авто — як у запиті","на твій розсуд, з урахуванням запиту"],["До 15 секунд","до 15 секунд"],["15–30 секунд","15–30 секунд"],["30–60 секунд","30–60 секунд"],["1–3 хвилини","1–3 хвилини"],["3–10 хвилин","3–10 хвилин"]];
+const FMTS = [["9:16","Вертикальне",14,24],["4:5","Instagram",18,22],["1:1","Квадрат",20,20],["4:3","Класичне",22,17],["16:9","Горизонтальне",27,15],["src","Як у джерела",22,16]];
+const PACES = {fast:"швидка динаміка",normal:"нормальна динаміка",slow:"повільна динаміка"};
+const LANGS = [["Автовизначення",""],["Українська","uk"],["English","en"]];
+const WHISP = [["Швидко","small"],["Точно","medium"],["Максимально точно","large-v3"]];
+const MODELS = [["Sonnet — швидко й вигідно","claude-sonnet-5-5"],["Opus — найрозумніший","claude-opus-5-5"],["Haiku — найдешевший","claude-haiku-5-5"]];
+const EXAMPLES = [
+ ["Концерт → кліпи","З усіх записів концертів зроби 5 вертикальних відео по 20–30 секунд. Бери найенергійніші моменти: дропи, де зал співає, кульмінації. Початок кожного — одразу на піку. На ударних моментах роби різкий зум 1.3–1.5, тримай мене в центрі кадру."],
+ ["Інтерв'ю → цитати","Знайди 4 найсильніші думки з інтерв'ю, кожна 30–45 секунд, з цікавим хуком на початку. Виріжи паузи й слова-паразити. На ключовій фразі легкий зум 1.15."],
+ ["Бекстейдж → смішне","Збери 3 короткі смішні моменти з бекстейджу, до 20 секунд кожен, з панчлайном у кінці."],
+ ["Тизер треку","Зроби одне відео на 15 секунд: тизер треку. Найемоційніша частина приспіву, склейки в ритм, наприкінці зум на обличчя."]];
+const EDIT_CHIPS = ["Коротші шматки, швидший ритм","Менше зумів","Сильніший початок","Інший фінал — на кульмінації","Довші плани, спокійніше"];
+const STEPS = [["listen","Слухаю слова"],["sound","Шукаю найгучніші моменти"],["look","Дивлюсь кадри"],["refs","Вивчаю референси"],["plan","Монтую"],["build","Збираю таймлайн у DaVinci"]];
+
+const SV = {
+  st:{}, shots:[], sources:{}, result:null, t0:0, timer:null, lastPct:0,
+  async api(name,...a){ try{ return await window.pywebview.api[name](...a) }catch(e){ console.error(e); return null } },
+
+  async init(){
+    sparks();
+    fill("#num",NUMS); fill("#len",LENS); fill("#lang",LANGS); fill("#whisper",WHISP); fill("#model",MODELS);
+    $("#examples").innerHTML = EXAMPLES.map((e,i)=>`<span class="chip" onclick="SV.example(${i})">${e[0]}</span>`).join("");
+    $("#fmts").innerHTML = FMTS.map(f=>`<div class="fmt" data-v="${f[0]}"><i style="width:${f[2]}px;height:${f[3]}px"></i><span class="t">${f[0]==="src"?"Як є":f[0]}</span><span style="font-size:10.5px;color:var(--dim)">${f[1]}</span></div>`).join("");
+    const s = await this.api("init") || {};
+    this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
+      auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
+      fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
+    this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
+    this.sources = s.sources || {};
+    this.shots = s.shots || [];
+    this.refs = s.refs || [];
+    this.bridge = !!s.bridge;
+    this.onTop = s.on_top!==false; $("#pin").classList.toggle("on",this.onTop);
+    $("#ver").textContent = s.version || "—";
+    $$("#langsw button").forEach(b=>b.classList.toggle("on",b.dataset.l===(this.st.ui_lang||"uk")));
+    if(this.st.ui_lang==="en") setTimeout(()=>I18N.set("en"),0);
+    if(!this.st.welcomed){ $("#wver").textContent = s.version || ""; setTimeout(()=>$("#welcome").classList.add("on"), 250) }
+    $$("#vertag").forEach(e=>e.textContent = "v"+(s.version||"—"));
+    this.keyInfo(s.key_tail); RATE = s.rate || 1000;
+    $("#costcoin").innerHTML = coin(26);
+    $("#spend").innerHTML = coin(16) + " " + money(s.spend||0);
+    this.bind(); this.paint(); this.renderShots(); this.renderSources();
+    $("#nobridge").style.display = this.bridge ? "none" : "block";
+    this.show(s.has_key ? "main" : "activate");
+    setTimeout(()=>this.checkUpdate(false),1500);
+    if(this.st.music && this.st.music.path){ this.api("set_music", this.st.music.path).then(r=>{ if(r && !r.error){ this.mPeaks=r.peaks; this.renderMusic() } }) }
+    window.addEventListener("resize",()=>this.drawWave());
+  },
+  keyInfo(t){ $("#keyinfo").textContent = t ? "підключено …"+t : "не вставлено" },
+
+  bind(){
+    $("#prompt").addEventListener("input",e=>{this.st.prompt=e.target.value; this.save()});
+    for(const id of ["num","len","lang","whisper","model"]) $("#"+id).addEventListener("change",()=>this.read());
+    $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
+    $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
+    $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $$("#zstyle button").forEach(b=>b.onclick=()=>{this.st.zoom_style=b.dataset.v; this.paint(); this.save()});
+    $$(".pace").forEach(b=>b.onclick=()=>{this.st.pace=b.dataset.v; this.paint(); this.save()});
+    $$("#tabs button").forEach(b=>b.onclick=()=>{this.st.adv_tab=b.dataset.t; this.paint(); this.save()});
+    $("#zstr").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
+    $("#fxstr").addEventListener("input",e=>{this.st.fx_strength=+e.target.value; this.paint(); this.save()});
+    $("#zstr2").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
+    $("#cines").addEventListener("input",e=>{this.st.cinematic_level=+e.target.value; this.paint(); this.save()});
+    $("#tsp").addEventListener("input",e=>{this.st.tr_speed=+e.target.value; this.paint(); this.save()});
+    $("#tns").addEventListener("input",e=>{this.st.auto_tone_strength=+e.target.value; this.paint(); this.save()});
+    $("#ovbs").addEventListener("input",e=>{this.st.ov_blur_strength=+e.target.value; this.paint(); this.save()});
+    $("#ovhs").addEventListener("input",e=>{this.st.ov_hal_strength=+e.target.value; this.paint(); this.save()});
+    $("#lkstr").addEventListener("input",e=>{this.st.look_strength=+e.target.value; this.paint(); this.save()});
+    $("#abstr").addEventListener("input",e=>{this.st.abstract=+e.target.value; this.paint(); this.save()});
+    $$(".trcard").forEach(c=>c.onclick=()=>{ const k=c.dataset.tr, a=this.st.tr_allowed||[];
+      this.st.tr_allowed = a.includes(k) ? a.filter(x=>x!==k) : a.concat([k]); this.paint(); this.save() });
+    $$(".lkcard").forEach(c=>c.onclick=()=>{ this.st.look=c.dataset.lk; this.paint(); this.save() });
+    $$(".fxcard[data-fx]").forEach(c=>c.onclick=()=>{ const k=c.dataset.fx, a=this.st.fx_allowed||[];
+      this.st.fx_allowed = a.includes(k) ? a.filter(x=>x!==k) : a.concat([k]); this.paint(); this.save() });
+    $$(".fmt").forEach(b=>b.onclick=()=>{this.st.format=b.dataset.v; this.paint(); this.save()});
+    $$(".sw").forEach(b=>b.onclick=e=>{ if(e.target.classList.contains("i")) return; const k=b.dataset.k; this.st[k]=!this.st[k]; this.paint(); this.save()});
+    const d=$("#drop");
+    ["dragenter","dragover"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.add("over")}));
+    ["dragleave","drop"].forEach(ev=>d.addEventListener(ev,e=>{e.preventDefault();d.classList.remove("over")}));
+    d.addEventListener("drop",e=>{ this.dropTarget="refs"; this.dropFiles(e.dataTransfer.files); this.dragOverlay(false) });
+    $("#reflink").addEventListener("keydown",e=>{ if(e.key==="Enter") this.addLink() });
+    $("#reflink").addEventListener("paste",()=>setTimeout(()=>{ if(/https?:\/\//.test($("#reflink").value)) this.addLink() },50));
+    let depth=0;
+    document.addEventListener("dragenter",e=>{ if(!$("#v-main").classList.contains("on")) return; depth++; if(!e.target.closest || !e.target.closest("#drop")) this.dragOverlay(true) });
+    document.addEventListener("dragleave",()=>{ depth=Math.max(0,depth-1); if(!depth) this.dragOverlay(false) });
+    document.addEventListener("dragover",e=>e.preventDefault());
+    document.addEventListener("drop",e=>{ e.preventDefault(); depth=0; this.dragOverlay(false) });
+    $("#key").addEventListener("keydown",e=>{ if(e.key==="Enter") this.saveKey() });
+  },
+  read(){
+    const s=this.st; s.num=$("#num").value; s.len=$("#len").selectedIndex; s.language=$("#lang").value;
+    s.whisper_model=$("#whisper").value; s.model=$("#model").value; this.save();
+  },
+  paint(){
+    const s=this.st;
+    $("#prompt").value=s.prompt; $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
+    $("#whisper").value=s.whisper_model; $("#model").value=s.model;
+    $$("#srcmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.source_mode));
+    $$("#layout button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.layout));
+    $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
+    $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
+    $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $$("#zstyle button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.zoom_style));
+    $$(".pace").forEach(b=>b.classList.toggle("on",b.dataset.v===s.pace));
+    $$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
+    $$(".tab").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
+    const z=$("#zstr"); z.value=s.zoom_strength; z.style.setProperty("--p",s.zoom_strength+"%");
+    $("#zval").textContent = "до ±" + Math.round(motionMax(s.zoom_strength)*100) + "%";
+    $("#zoomopts").classList.toggle("off",!s.zoom_dynamic);
+    $$(".fxcard[data-fx]").forEach(c=>c.classList.toggle("on",(s.fx_allowed||[]).includes(c.dataset.fx)));
+    $("#fxopts").classList.toggle("off",!s.fx_on);
+    const f=$("#fxstr"); f.value=s.fx_strength; $("#fxval").textContent=s.fx_strength+"%";
+    $("#cineopt").classList.toggle("off",!s.cinematic); $("#syncopt").classList.toggle("off",!s.cinematic);
+    $("#cines").value=s.cinematic_level; $("#cinev").textContent=s.cinematic_level+"%";
+    $("#fxzoom").classList.toggle("off",!s.zoom_dynamic);
+    $("#zstr2").value=s.zoom_strength; $("#zval2").textContent="до ±"+Math.round(motionMax(s.zoom_strength)*100)+"%";
+    $("#trspd").classList.toggle("off",!s.tr_on);
+    $("#tsp").value=s.tr_speed; { const fr=Math.round(2+(100-s.tr_speed)/100*10); $("#tsv").textContent=fr+" кадр. · спалах "+Math.max(1,Math.round(1+(100-s.tr_speed)/100*5)) }
+    $("#toneopt").classList.toggle("off",!s.auto_tone);
+    $("#tns").value=s.auto_tone_strength; $("#tnv").textContent=s.auto_tone_strength+"%";
+    $("#ovblur").classList.toggle("off",!s.ov_blur); $("#ovhal").classList.toggle("off",!s.ov_hal);
+    $("#ovbs").value=s.ov_blur_strength; $("#ovbv").textContent=s.ov_blur_strength+"%";
+    $("#ovhs").value=s.ov_hal_strength; $("#ovhv").textContent=s.ov_hal_strength+"%";
+    $$(".trcard").forEach(c=>c.classList.toggle("on",(s.tr_allowed||[]).includes(c.dataset.tr)));
+    $("#trgrid").classList.toggle("off",!s.tr_on);
+    $$(".lkcard").forEach(c=>c.classList.toggle("on",c.dataset.lk===(s.look||"none")));
+    $("#lkopts").classList.toggle("off",(s.look||"none")==="none");
+    $("#lkstr").value=s.look_strength; $("#lkval").textContent=s.look_strength+"%";
+    $("#abstr").value=s.abstract; $("#abval").textContent=s.abstract+"%";
+    const ab=s.abstract; $("#abhint").textContent = ab<=15?"Класика: чиста історія, суворі правила монтажу":ab<=40?"Основа класична + 1–2 знахідки: match cut, контраст тиші й вибуху":ab<=65?"Асоціативно: візуальні рими, нелінійність, сміливий ритм":ab<=85?"Експеримент: кліпове мислення, свідомі jump cut'и, контрасти":"Артхаус: монтаж як сон чи знайдена плівка — lost wave, dreamcore";
+    $("#musicbody").classList.toggle("on",!!s.music_on);
+    this.renderMusic();
+    $("#adv").classList.toggle("on",!!s.adv_open); $("#advtoggle").classList.toggle("on",!!s.adv_open);
+    const fmt = s.format==="src" ? "як у джерела" : s.format;
+    $("#advsum").textContent = [fmt, s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
+      s.fx_on&&(s.fx_allowed||[]).length ? "ефектів: "+s.fx_allowed.length : "без ефектів",
+      s.tr_on&&(s.tr_allowed||[]).length ? "переходів: "+s.tr_allowed.length : "без переходів",
+      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
+    this.estimate();
+  },
+  save(){ clearTimeout(this._sv); this._sv=setTimeout(()=>this.api("save_settings",this.st),300); this.estimate() },
+
+  // ---- музика
+  mPeaks:null, range:null, audio:null,
+  async pickMusic(){ const r=await this.api("pick_music"); if(r) this.musicSet(r) },
+  musicLoading(name){ this.st.music_on=true; this.paint(); $("#mempty").innerHTML="<span>Слухаю «"+esc(name)+"»…</span>" },
+  musicSet(r){
+    if(!r) return;
+    if(r.error){ this.toast(r.error); this.renderMusic(); return }
+    const old=this.st.music||{};
+    const keep = old.path===r.path;
+    const a = keep ? old.start : Math.min(r.duration*0.25, Math.max(0,r.duration-30));
+    const b = keep ? old.end : Math.min(r.duration, a+30);
+    this.st.music={path:r.path,name:r.name,duration:r.duration,start:a,end:b}; this.mPeaks=r.peaks;
+    this.st.music_on=true; this.paint(); this.save();
+    if(!keep) this.toast("Трек додано: вибери шматок пісні");
+  },
+  renderMusic(){
+    const m=this.st.music;
+    if(!m || !m.path){ $("#mempty").style.display="flex"; $("#mfull").style.display="none";
+      $("#mempty").innerHTML='<span>Перетягни аудіофайл у вікно або</span><button class="btn" onclick="SV.pickMusic()">Вибрати трек</button>'; return }
+    $("#mempty").style.display="none"; $("#mfull").style.display="block";
+    $("#mname").textContent=m.name; $("#mdur").textContent=tfmt(m.duration);
+    if(!this.range){ this.range=RangeUI($("#wave"),{max:m.duration,a:m.start,b:m.end,minSpan:3,
+      onChange:(a,b,fin)=>{ this.st.music.start=+a.toFixed(2); this.st.music.end=+b.toFixed(2); this.musicLabel(); if(fin){ this.save(); this.stopMusic() } }}) }
+    else this.range.set(m.start,m.end,m.duration);
+    this.musicLabel(); requestAnimationFrame(()=>this.drawWave());
+  },
+  musicLabel(){ const m=this.st.music; $("#mrange").textContent=tfmt(m.start)+" – "+tfmt(m.end)+" · "+Math.round(m.end-m.start)+" с" },
+  drawWave(){
+    const c=$("#wavec"), p=this.mPeaks; if(!c || !p) return;
+    const w=c.clientWidth, h=c.clientHeight, dpr=window.devicePixelRatio||1;
+    if(!w) return; c.width=w*dpr; c.height=h*dpr; const g=c.getContext("2d"); g.scale(dpr,dpr); g.clearRect(0,0,w,h);
+    g.fillStyle="#141414"; const n=p.length, bw=w/n;
+    for(let i=0;i<n;i+=2){ const v=Math.max(0.03,p[i])*(h*0.42); g.fillRect(i*bw, h/2-v, Math.max(1,bw*1.4), v*2) }
+    g.fillRect(0,h/2-0.5,w,1);
+  },
+  async playMusic(){
+    if(this.audio){ this.stopMusic(); return }
+    const m=this.st.music; $("#mplay").textContent="…";
+    const url=await this.api("music_preview", m.path, m.start, m.end);
+    if(!url){ $("#mplay").textContent="Прослухати"; this.toast("Не вдалося відтворити"); return }
+    this.audio=new Audio(url); this.audio.onended=()=>this.stopMusic(); this.audio.play(); $("#mplay").textContent="Стоп";
+  },
+  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio=null } const b=$("#mplay"); if(b) b.textContent="Прослухати" },
+
+  // ---- редактор після монтажу
+  ed:{video:0, mode:"full", a:0, b:0}, edRange:null,
+  renderEditor(r){
+    const vids=r.videos||[]; if(!vids.length) return;
+    const e=this.ed; if(e.video>=vids.length) e.video=0;
+    $("#vpick").innerHTML = vids.length>1 ? vids.map((v,i)=>`<span class="chip ${i===e.video?"":""}" style="${i===e.video?"background:#141414;color:#FBFAF6":""}" onclick="SV.pickVideo(${i})"><span class="noi">${i+1} · ${esc(v.title)}</span></span>`).join("") : "";
+    const v=vids[e.video], tot=v.duration||v.segments.reduce((a,s)=>a+s.end-s.start,0);
+    let pos=0;
+    $("#mtlb").innerHTML=v.segments.map(sg=>{ const d=sg.end-sg.start; const h=`<div class="blk s${sg.source%6}" style="width:${d/tot*100}%" title="джерело ${sg.source}: ${sg.start.toFixed(1)}–${sg.end.toFixed(1)} с">${d/tot>0.06?"#"+sg.source:""}<i>${d/tot>0.09?tfmt(pos):""}</i></div>`; pos+=d; return h }).join("");
+    if(!this.edRange) this.edRange=RangeUI($("#mtl"),{max:tot,a:0,b:tot,minSpan:0.5,onChange:(a,b,fin)=>{ e.a=a; e.b=b; e.mode=(b-a)<tot-0.2?"range":"full"; this.edPaint(tot); if(fin) this.edCost(tot) }});
+    e.a=0; e.b=tot; e.mode="full"; this.edRange.set(0,tot,tot); this.edTot=tot; this.edPaint(tot); this.edCost(tot);
+    $$("#emode button").forEach(b=>b.onclick=()=>{ if(b.dataset.v==="full"){ e.mode="full"; e.a=0; e.b=tot; this.edRange.set(0,tot,tot) }
+      else { e.mode="range"; if(e.b-e.a>=tot-0.2){ e.a=tot*0.35; e.b=tot*0.65; this.edRange.set(e.a,e.b,tot) } } this.edPaint(tot); this.edCost(tot) });
+  },
+  pickVideo(i){ this.ed.video=i; this.renderEditor(this.result) },
+  edPaint(tot){ const e=this.ed; $$("#emode button").forEach(b=>b.classList.toggle("on",b.dataset.v===e.mode));
+    $("#erange").textContent = e.mode==="range" ? tfmt(e.a)+"–"+tfmt(e.b)+" ("+(e.b-e.a).toFixed(1)+" с)" : "весь ролик · "+tot.toFixed(1)+" с";
+    $("#edittext").placeholder = e.mode==="range" ? "Що зробити з цією ділянкою? Можна порожньо — Claude сам підбере кращі кадри" : "Наприклад: другий ролик зроби довшим, менше зумів у третьому"; },
+  async edCost(tot){ const e=this.ed; const r=await this.api("estimate_edit", e.mode==="range"? e.b-e.a : tot, e.mode!=="range");
+    $("#ecost").innerHTML = r&&r.cost ? "≈ "+coin(13)+" "+money(r.cost) : "" },
+
+  toggleAdv(){ this.st.adv_open=!this.st.adv_open; this.paint(); this.save();
+    if(this.st.adv_open) setTimeout(()=>$("#adv").scrollIntoView({behavior:"smooth",block:"nearest"}),80) },
+  example(i){ const p=$("#prompt"); p.value=I18N.t(EXAMPLES[i][1]); this.st.prompt=p.value; p.focus(); p.classList.remove("shake"); this.save() },
+
+  async refresh(){
+    $("#matsub").textContent="Оновлюю…";
+    const r = await this.api("refresh_sources", this.st.source_mode);
+    if(r) this.sources[this.st.source_mode]=r;
+    this.renderSources(); this.save();
+  },
+  cur(){ return this.sources[this.st.source_mode] || [] },
+  renderSources(){
+    const list=this.cur(), tot=list.reduce((a,b)=>a+(b.duration||0),0);
+    if(!list.length){ $("#matbig").textContent="Нічого не вибрано";
+      $("#matsub").textContent = {selected:"Виділи кліпи в Media Pool і натисни «Оновити»",folder:"Відкрий потрібну папку в Media Pool і натисни «Оновити»",timeline:"Відкрий таймлайн з кліпами і натисни «Оновити»",dropped:"Перетягни кліпи з DaVinci або Finder прямо в це вікно"}[this.st.source_mode];
+      $("#clearbtn").style.display="none";
+      $("#names").innerHTML=""; return }
+    $("#matbig").textContent = list.length + " " + plural(list.length,"відео","відео","відео");
+    const longest=Math.max(...list.map(x=>x.duration||0));
+    $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '');
+    $("#clearbtn").style.display = this.st.source_mode==="dropped" ? "inline-block" : "none";
+    const restDur=list.slice(6).reduce((a,b)=>a+(b.duration||0),0);
+    $("#names").innerHTML = list.slice(0,6).map(x=>`<span title="${esc(x.name)}">${esc(x.name)} <i>${clock(x.duration||0)}</i></span>`).join("") + (list.length>6?`<span>+${list.length-6} <i>${clock(restDur)}</i></span>`:"");
+  },
+
+  async estimate(){
+    clearTimeout(this._es); this._es=setTimeout(async()=>{
+      const list=this.cur(), tot=list.reduce((a,b)=>a+(b.duration||0),0);
+      if(!tot){ $("#costv").textContent="≈ 0"; $("#costs").textContent="Виділи матеріал, щоб побачити ціну"; return }
+      const e = await this.api("estimate", this.st, tot, list.length, this.shots.length, (this.refs||[]).length);
+      if(!e) return;
+      $("#costv").textContent = "≈ " + money(e.cost_low) + "–" + money(e.cost_high);
+      const c=$("#costcoin .coin"); if(c){ c.classList.remove("flip"); void c.getBoundingClientRect(); c.classList.add("flip") }
+      $("#costs").textContent = "~" + dur(e.seconds) + " роботи · " + (MODELS.find(m=>m[1]===this.st.model)||["Sonnet"])[0].split(" —")[0];
+    },120);
+  },
+
+  async pickShots(){ const r=await this.api("pick_screenshots"); if(r){ this.shots=this.shots.concat(r); this.renderShots(); this.save() } },
+  dragOverlay(on){ $("#dropov").classList.toggle("on",on) },
+  droppedStart(n){ this.st.source_mode="dropped"; this.paint(); $("#matbig").textContent="Додаю…"; $("#matsub").textContent=n+" "+plural(n,"файл","файли","файлів")+" — шукаю в Media Pool"; },
+  dropped(list){ this.sources.dropped=list; this.st.source_mode="dropped"; this.paint(); this.renderSources(); this.save();
+    this.toast(list.length ? "Додано: "+list.length+" "+plural(list.length,"кліп","кліпи","кліпів") : "Не вдалося додати кліпи") },
+  droppedFail(msg){ this.renderSources(); this.toast(msg) },
+  async clearDropped(){ await this.api("clear_dropped"); this.sources.dropped=[]; this.renderSources(); this.save() },
+  async togglePin(){ this.onTop=!this.onTop; $("#pin").classList.toggle("on",this.onTop); await this.api("set_on_top",this.onTop);
+    this.toast(this.onTop ? "Вікно завжди поверх DaVinci" : "Вікно більше не закріплене") },
+  dropFiles(files){
+    [...files].filter(f=>f.type.startsWith("image/")).forEach(f=>{
+      const rd=new FileReader(); rd.onload=async()=>{ const r=await this.api("add_dropped",f.name,rd.result);
+        if(r){ this.shots.push(r); this.renderShots(); this.save() } }; rd.readAsDataURL(f) });
+  },
+  renderShots(){
+    const sh=this.shots.map((s,i)=>`<div class="thumb"><img src="${s.thumb}"><b onclick="SV.rmShot(${i})">✕</b></div>`);
+    const rf=(this.refs||[]).map((r,i)=> r.url
+      ? `<div class="thumb link" title="${esc(r.url)}"><span class="plat">${esc(r.label)}</span><span class="url">${esc(r.url.replace(/^https?:\/\/(www\.)?/,"").slice(0,22))}</span><b onclick="SV.removeRef(${i})">✕</b></div>`
+      : `<div class="thumb vid" title="${esc(r.label)}">${r.thumb?`<img src="${r.thumb}">`:""}<span class="play"></span><b onclick="SV.removeRef(${i})">✕</b></div>`);
+    $("#thumbs").innerHTML=rf.concat(sh).join("");
+    const n=(this.refs||[]).length, m=this.shots.length;
+    $("#drophint").textContent = (n||m) ? [n?n+" "+plural(n,"референс","референси","референсів"):"", m?m+" "+plural(m,"скрін","скріни","скрінів"):""].filter(Boolean).join(" + ")+" — можна додати ще"
+      : "Перетягни сюди відео чи скріни, які подобаються";
+    this.estimate();
+  },
+  takeDropTarget(){ const t=this.dropTarget||"material"; this.dropTarget=null; return t },
+  async addLink(){ const el=$("#reflink"), v=el.value.trim(); if(!v) return;
+    const r=await this.api("add_ref_link", v);
+    if(r && r.error){ this.toast(r.error); el.classList.remove("shake"); void el.offsetWidth; el.classList.add("shake"); return }
+    if(r && r.added){ this.refs=(this.refs||[]).concat(r.added); el.value=""; this.renderShots(); if(r.added.length) this.toast("Референс додано") } },
+  refAdded(card){ if(card){ this.refs=(this.refs||[]).concat([card]); this.renderShots(); this.toast("Референс додано") } },
+  async pickRefVideos(){ const r=await this.api("pick_ref_videos"); if(r && r.length){ this.refs=(this.refs||[]).concat(r); this.renderShots() } },
+  async removeRef(i){ await this.api("remove_ref", i); this.refs.splice(i,1); this.renderShots() },
+  rmShot(i){ this.shots.splice(i,1); this.renderShots(); this.api("set_shots",this.shots.map(s=>s.path)); this.save() },
+
+  toggleKey(){ const k=$("#key"); k.type = k.type==="password"?"text":"password" },
+  async saveKey(){
+    const k=$("#key").value.trim(), m=$("#keymsg"), b=$("#keybtn");
+    m.className="msg";
+    if(!k.startsWith("sk-ant-")){ m.textContent="Ключ має починатися з sk-ant-"; m.classList.add("shake"); return }
+    b.textContent="Перевіряю…"; m.textContent="";
+    const r = await this.api("check_key", k);
+    b.textContent="Перевірити і зберегти";
+    if(r && r.ok){ m.className="msg ok"; m.textContent="✓ Ключ працює"; this.keyInfo(k.slice(-4)); setTimeout(()=>this.show("main"),700) }
+    else { m.textContent=(r&&r.msg)||"Не вдалося перевірити ключ"; m.classList.add("shake") }
+  },
+  changeKey(){ this.sheet(false); $("#keyback").style.display="inline-block"; $("#key").value=""; this.show("activate") },
+
+  sheet(on){ $("#sheet").classList.toggle("on",on) },
+  show(v){ $$(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v)) },
+  toast(t){ const e=$("#toast"); e.textContent=t; e.classList.add("on"); clearTimeout(this._t); this._t=setTimeout(()=>e.classList.remove("on"),2600) },
+
+  async start(){
+    this.lastPct=0;
+    if(!this.st.prompt.trim()){ const p=$("#prompt"); p.classList.remove("shake"); void p.offsetWidth; p.classList.add("shake"); p.focus(); this.toast("Напиши, що змонтувати, або вибери приклад"); return }
+    if(!this.bridge){ this.toast("Відкрий Svit Editor через DaVinci: Workspace → Scripts"); return }
+    if(!this.cur().length){ this.toast("Спершу вибери матеріал і натисни «Оновити»"); return }
+    if(!this.st.transcribe && !this.st.frames){ this.toast("Увімкни «Слухати слова» або «Дивитись кадри»"); return }
+    const skip = {listen:!this.st.transcribe, look:!this.st.frames, refs:!(this.refs||[]).length};
+    $("#steps").innerHTML = STEPS.map(s=>`<div class="st ${skip[s[0]]?"skip":""}" data-s="${s[0]}"><span class="dot"></span>${s[1]}</div>`).join("");
+    this.setPct(0); $("#stage").textContent="Починаю…"; $("#pfile").textContent=""; $("#pcost").textContent=$("#costv").textContent.replace("≈ ","≈"); $("#eta").textContent="—";
+    this.t0=Date.now(); clearInterval(this.timer); this.timer=setInterval(()=>this.tick(),1000);
+    this.show("progress");
+    const r = await this.api("start", this.st);
+    if(r && r.error){ this.fail(r.error, r.details||"") }
+  },
+  revise(){
+    const t=$("#edittext"), text=t.value.trim(), e=this.ed;
+    const rng = e.mode==="range" ? {video:e.video, start:+e.a.toFixed(2), end:+e.b.toFixed(2)} : null;
+    if(!text && !rng){ t.classList.remove("shake"); void t.offsetWidth; t.classList.add("shake"); t.focus(); return }
+    $("#steps").innerHTML = [["plan","Вношу правки"],["build","Оновлюю таймлайн у DaVinci"]]
+      .map(s=>`<div class="st" data-s="${s[0]}"><span class="dot"></span>${s[1]}</div>`).join("");
+    this.lastPct=0; this.setPct(0); $("#stage").textContent="Вношу правки…"; $("#pfile").textContent=""; $("#pcost").textContent="0"; $("#eta").textContent="—";
+    this.t0=Date.now(); clearInterval(this.timer); this.timer=setInterval(()=>this.tick(),1000);
+    this.show("progress"); this.api("revise", text, rng);
+  },
+  editChip(i){ const t=$("#edittext"); t.value = (t.value.trim()? t.value.trim()+". " : "") + EDIT_CHIPS[i]; t.focus() },
+  cancel(){ this.api("cancel"); $("#stage").textContent="Скасовую…" },
+  tick(){
+    const s=(Date.now()-this.t0)/1000; $("#elapsed").textContent=clock(s);
+    if(this.lastPct>0.04){ const left=s/this.lastPct-s; $("#eta").textContent= left<60?"менше хвилини":"~"+clock(left) }
+  },
+  setPct(p){
+    this.lastPct=p; const pc=Math.round(p*100);
+    $("#pctn").textContent=pc; $("#pbar").style.width=pc+"%";
+    $("#ringfg").style.strokeDashoffset = 326.7*(1-p);
+  },
+  // виклики з Python
+  progress(stage,p,msg,extra){
+    extra=extra||{};
+    this.setPct(Math.max(this.lastPct,p));
+    $("#stage").textContent=msg; $("#pfile").textContent=extra.file||"";
+    if(extra.cost_live!=null) $("#pcost").textContent=money(extra.cost_live);
+    else if(extra.cost_estimate!=null) $("#pcost").textContent="≈"+money(extra.cost_estimate);
+    let passed=true;
+    $$("#steps .st").forEach(el=>{ if(el.classList.contains("skip")) return;
+      const s=el.dataset.s; if(s===stage){passed=false; el.className="st act"} else el.className = passed?"st ok":"st" });
+  },
+  done(r){
+    clearInterval(this.timer); this.result=r; this.setPct(1);
+    $$("#steps .st:not(.skip)").forEach(el=>el.className="st ok");
+    setTimeout(()=>{
+      const n=r.videos.length;
+      const ver = r.version||1;
+      $("#donet").textContent = ver>1 ? "Правку внесено · версія " + ver : "Готово · " + n + " " + plural(n,"відео","відео","відео");
+      $("#edittext").value="";
+      this.renderEditor(r);
+      $("#editchips").innerHTML = EDIT_CHIPS.map((c,i)=>`<span class="chip" onclick="SV.editChip(${i})">${c}</span>`).join("");
+      $("#dones").innerHTML = "Витрачено " + coin(15) + " <b>" + money(r.cost) + "</b> · цього місяця " + money(r.month_total) + (ver>1 ? " · нова версія таймлайну вже в DaVinci" : " · таймлайн уже в DaVinci");
+      $("#vids").innerHTML = r.videos.map((v,i)=>`<div class="vid" style="animation-delay:${.1+i*.06}s"><div class="n">${i+1}</div><div><div class="t noi">${esc(v.title)}</div><div class="w noi">${esc(v.why||"")}</div></div><div class="d">${dur(v.duration)}</div></div>`).join("");
+      const nt=[r.notes?I18N.t("Коментар монтажера: ")+r.notes:"", I18N.t(r.fusion_line||"")].filter(Boolean).join("\n\n");
+      if(nt){ $("#note").style.display="block"; $("#note").textContent=nt } else $("#note").style.display="none";
+      $("#spend").innerHTML=coin(16)+" "+money(r.month_total);
+      this.show("done");
+      $(".stamp").replaceWith($(".stamp").cloneNode(true));
+    },700);
+  },
+  fail(msg,details){
+    clearInterval(this.timer);
+    if(msg==="cancelled"){ this.show("main"); this.toast("Монтаж скасовано"); return }
+    $("#errm").textContent=msg; $("#errd").textContent=details||""; this.show("error");
+  },
+  // ---- оновлення
+  upd:null, updating:false,
+  async checkUpdate(loud){
+    $("#updstate").textContent="Перевіряю…";
+    const r = await this.api("check_update"); this.upd=r;
+    if(!r){ $("#updstate").textContent="—"; return }
+    if(r.error){ $("#updstate").textContent="Немає зв'язку"; if(loud) this.toast(r.error); return }
+    if(r.available){
+      $("#updstate").textContent="Доступна "+r.version;
+      $("#updt").textContent="Доступна версія "+r.version; $("#upds").textContent="У тебе "+r.current+" · оновлення займе менше хвилини";
+      $("#updbar").classList.add("on");
+      if(loud){ this.sheet(false); this.updInfo() }
+    } else { $("#updstate").textContent="Остання версія ✓"; if(loud) this.toast("У тебе остання версія") }
+  },
+  modal(on){ $("#updmodal").classList.toggle("on",on) },
+  updInfo(){
+    const r=this.upd; if(!r) return;
+    $("#umt").textContent="Svit Editor "+r.version; $("#ums").textContent="Зараз у тебе "+r.current;
+    $("#umn").style.display = r.notes ? "block":"none"; $("#umn").textContent=r.notes||"";
+    $("#umbar").style.display="none";
+    $("#umrow").innerHTML='<button class="btn" onclick="SV.modal(false)">Пізніше</button><button class="go" onclick="SV.updStart()">Оновити</button>';
+    this.modal(true);
+  },
+  updStart(){
+    if(this.updating||!this.upd) return; this.updating=true;
+    $("#umt").textContent="Оновлюю до "+this.upd.version; $("#ums").textContent="Не закривай вікно";
+    $("#umn").style.display="none"; $("#umbar").style.display="block"; $("#umb").style.width="0%"; $("#umrow").innerHTML="";
+    this.modal(true); this.api("install_update", this.upd.url, this.upd.version);
+  },
+  updProgress(p,msg){ $("#umb").style.width=Math.round(p*100)+"%"; $("#ums").textContent=msg },
+  updDone(v){
+    this.updating=false; $("#umb").style.width="100%";
+    $("#umt").textContent="Оновлено до "+v+" ✓"; $("#ums").textContent="Перезапущу Svit Editor, щоб увімкнути нову версію";
+    $("#umrow").innerHTML='<button class="go" onclick="SV.api(\'restart\')">Перезапустити</button>';
+    $("#updbar").classList.remove("on");
+  },
+  updFail(msg){
+    this.updating=false; $("#umt").textContent="Не вдалося оновити"; $("#ums").textContent=msg; $("#umbar").style.display="none";
+    $("#umrow").innerHTML='<button class="btn" onclick="SV.modal(false)">Закрити</button><button class="go" onclick="SV.updStart()">Спробувати ще</button>';
+  },
+  setLang(l){ this.st.ui_lang=l; I18N.set(l); $$("#langsw button").forEach(b=>b.classList.toggle("on",b.dataset.l===l)); this.save();
+    this.toast(l==="en"?"Interface: English. Claude will write titles and notes in English":"Мова: українська") },
+  welcomeClose(){ $("#welcome").classList.remove("on"); this.st.welcomed=true; this.save() },
+  async openLog(){ const r=await this.api("open_log"); this.toast(r?"Журнал відкрито в TextEdit":"Не вдалося відкрити журнал") },
+  copyErr(){ navigator.clipboard && navigator.clipboard.writeText($("#errm").textContent+"\n\n"+$("#errd").textContent); this.toast("Скопійовано — встав у чат з Claude") },
+};
+
+function motionMax(p){ return 0.02 + (p/100)*0.13 }
+function tfmt(t){ t=Math.max(0,t); const m=Math.floor(t/60), x=t-m*60; return m+":"+(x<10?"0":"")+x.toFixed(1) }
+
+// подвійний повзунок: el — контейнер (position:relative), max — тривалість
+function RangeUI(el, opts){
+  const shL=document.createElement("div"), shR=document.createElement("div"), sel=document.createElement("div"),
+        h1=document.createElement("div"), h2=document.createElement("div");
+  shL.className=shR.className="rshade"; sel.className="rsel"; h1.className=h2.className="rh";
+  [shL,shR,sel,h1,h2].forEach(x=>el.appendChild(x));
+  const st={max:opts.max||1,a:opts.a||0,b:opts.b||1,min:opts.minSpan||0.5};
+  function pos(){ const pa=st.a/st.max*100, pb=st.b/st.max*100;
+    shL.style.left="0"; shL.style.width=pa+"%"; shR.style.left=pb+"%"; shR.style.right="0";
+    sel.style.left=pa+"%"; sel.style.width=(pb-pa)+"%"; h1.style.left=pa+"%"; h2.style.left=pb+"%" }
+  function drag(kind){ return e=>{ e.preventDefault(); e.stopPropagation(); const r=el.getBoundingClientRect(), x0=e.clientX, a0=st.a, b0=st.b;
+    const mv=ev=>{ const dt=(ev.clientX-x0)/r.width*st.max;
+      if(kind==="a") st.a=Math.min(Math.max(0,a0+dt), st.b-st.min);
+      else if(kind==="b") st.b=Math.max(Math.min(st.max,b0+dt), st.a+st.min);
+      else { const w=b0-a0; st.a=Math.min(Math.max(0,a0+dt), st.max-w); st.b=st.a+w }
+      pos(); opts.onChange && opts.onChange(st.a,st.b,false) };
+    const up=()=>{ window.removeEventListener("pointermove",mv); window.removeEventListener("pointerup",up); opts.onChange && opts.onChange(st.a,st.b,true) };
+    window.addEventListener("pointermove",mv); window.addEventListener("pointerup",up) } }
+  h1.addEventListener("pointerdown",drag("a")); h2.addEventListener("pointerdown",drag("b")); sel.addEventListener("pointerdown",drag("m"));
+  pos();
+  return { set(a,b,max){ if(max) st.max=max; st.a=a; st.b=b; pos() }, get(){ return [st.a,st.b] } };
+}
+function fill(sel,arr){ $(sel).innerHTML=arr.map(a=>`<option value="${esc(a[1])}">${esc(a[0])}</option>`).join("") }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])) }
+function plural(n,a,b,c){ n=Math.abs(n)%100; const n1=n%10; if(n>10&&n<20) return c; if(n1>1&&n1<5) return b; if(n1===1) return a; return c }
+function dur(s){ s=Math.round(s); if(s>=3600) return Math.floor(s/3600)+" год "+Math.floor(s%3600/60)+" хв"; if(s>=300) return Math.round(s/60)+" хв"; if(s>=60) return Math.floor(s/60)+" хв"+(s%60?" "+s%60+" с":""); return s+" с" }
+function clock(s){ s=Math.round(s); const m=Math.floor(s/60), h=Math.floor(m/60); return h? h+":"+String(m%60).padStart(2,"0")+":"+String(s%60).padStart(2,"0") : m+":"+String(s%60).padStart(2,"0") }
+let RATE=1000;
+function tokN(usd){ usd=usd||0; return usd>0 ? Math.max(1, Math.round(usd*RATE)) : 0 }
+function money(usd){ return tokN(usd).toLocaleString("uk-UA") }
+function coin(size){ return `<svg class="coin" width="${size}" height="${size}" viewBox="0 0 100 100" aria-hidden="true"><g fill="none" stroke="#141414" stroke-linecap="round" stroke-linejoin="round"> <circle cx="51.5" cy="52" r="45" fill="#141414" stroke="none"/> <circle cx="50" cy="50" r="45" fill="#E2F55C" stroke-width="3"/> <circle cx="50" cy="50" r="37.5" stroke-width="1.6" stroke-dasharray="1.2 3.2"/> <g stroke-width="3.2"> <path d="M50 19 L54.5 26.5 L50 34 L45.5 26.5 Z" fill="#141414"/> <path d="M44 26.5 H56" stroke-width="2.4"/> <path d="M50 34 V69"/> <path d="M28 21 L33.5 28 V58 Q33.5 69.5 44 69.5 H56 Q66.5 69.5 66.5 58 V28 L72 21"/> <path d="M50 64 Q41.5 63.5 41.5 52 V46"/> <path d="M50 64 Q58.5 63.5 58.5 52 V46"/> <path d="M38.5 47.5 L41.5 40.5 L44.5 47.5 Z M55.5 47.5 L58.5 40.5 L61.5 47.5 Z" fill="#141414" stroke-width="1.6"/> <path d="M46.5 69.5 L50 76.5 L53.5 69.5" fill="#E2F55C"/> <path d="M46.5 60 H53.5" stroke-width="2.4"/> </g> </g></svg>` }
+function sparks(){ $$(".sparks").forEach(box=>{ box.innerHTML=""; for(let i=0;i<14;i++){ const e=document.createElement("i");
+  e.style.left=(30+Math.random()*68)+"%"; e.style.setProperty("--dx",(Math.random()*60-30)+"px");
+  e.style.animationDuration=(4+Math.random()*5)+"s"; e.style.animationDelay=(-Math.random()*8)+"s"; box.appendChild(e) } }) }
+
+if(window.pywebview && window.pywebview.api) SV.init(); else window.addEventListener("pywebviewready",()=>SV.init());
+</script>
+</body>
+</html>

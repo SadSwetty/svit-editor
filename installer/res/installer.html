@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="uk"><head><meta charset="utf-8"><title>Svit Editor</title>
+<link rel="stylesheet" href="style.css">
+<style>
+.view{padding:14px 22px 18px;align-items:stretch;overflow-y:auto}
+.view .body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:10px}
+.mast{margin-bottom:4px}
+.mast{padding:10px 14px 8px}
+.mast .logo{font-size:52px}
+.mast .mascot{width:120px;height:94px;margin:-6px 0 -2px}
+.mast .ruler{margin-top:6px}
+h1{font:900 34px/1.05 var(--cond);text-transform:uppercase;max-width:100%;overflow-wrap:anywhere}
+p{font:12px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.04em;color:var(--ink2);margin-top:10px;max-width:470px}
+.feat{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap;justify-content:center}
+.feat span{border:1.5px solid var(--ink);border-radius:999px;padding:4px 11px;font:11.5px var(--mono)}
+.feat span:nth-child(1){background:var(--mark);transform:rotate(-1.5deg)}
+.feat span:nth-child(2){background:var(--lilac);transform:rotate(1deg)}
+.feat span:nth-child(3){background:var(--mint);transform:rotate(-.6deg)}
+.link{margin-top:12px;background:none;border:0;font:11px var(--mono);text-transform:uppercase;letter-spacing:.06em;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.link:hover{background:var(--mark)}
+.actions{display:flex;flex-direction:column;align-items:center;margin-top:18px}
+.pct{font:900 64px/1 var(--cond)}
+.pct small{font:700 28px var(--cond)}
+.bar{max-width:none;margin-top:14px}
+.msg2{margin-top:10px;font:12px var(--mono);text-transform:uppercase;min-height:18px}
+.chips2{display:flex;justify-content:center;gap:6px;margin-top:16px;flex-wrap:wrap}
+.chips2 .st{border:1.5px solid var(--ink);padding:3px 8px;background:var(--paper3)}
+.chips2 .st.ok{text-decoration:none;background:var(--ink);color:var(--paper3)}
+.chips2 .st.act{background:var(--mark);animation:none}
+.chips2 .st .dot{display:none}
+.hint{margin-top:16px;font:10.5px var(--mono);text-transform:uppercase;color:var(--muted)}
+.how{margin-top:14px;display:flex;gap:6px;align-items:center;font:12px var(--mono);text-transform:uppercase}
+.how span{border:1.5px solid var(--ink);padding:4px 8px;background:var(--paper3)}
+.how b{border:1.5px solid var(--ink);padding:4px 8px;background:var(--mark)}
+pre{margin-top:12px;max-height:80px;overflow:auto;font:11px var(--mono);background:var(--paper3);border:1.5px dashed var(--ink);padding:8px;text-align:left;width:100%;white-space:pre-wrap;user-select:text}
+.stamp{width:96px;height:96px}
+.row{margin-top:16px}
+</style></head>
+<body>
+
+<section class="view on" id="v-welcome"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <h1 id="wt">Встановити Svit Editor</h1>
+    <p id="ws">AI-монтаж на Claude прямо в DaVinci Resolve. Встановлення займе 5–15 хвилин: більшість часу качається модель розпізнавання мови.</p>
+    <div class="feat"><span>Монтаж за запитом</span><span>Зум і кадрування</span><span>Субтитри</span></div>
+    <div class="actions"><button class="go" id="gobtn" onclick="post('install')"><svg width="16" height="16" viewBox="-10 -10 20 20"><path class="" style="transform-origin:0px 0px" d="M0 -9 C1.08 -2.25 2.25 -1.08 9 0 C2.25 1.08 1.08 2.25 0 9 C-1.08 2.25 -2.25 1.08 -9 0 C-2.25 -1.08 -1.08 -2.25 0 -9Z" fill="#FBFAF6" stroke="none"/></svg><span id="golbl">Встановити</span></button>
+    <button class="link" onclick="post('quit')">Не зараз</button></div>
+  </div>
+</section>
+
+<section class="view" id="v-progress"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <div class="pct"><span id="pn">0</span><small>%</small></div>
+    <div class="bar"><b id="pb"></b></div>
+    <div class="msg2" id="pm">Починаю…</div>
+    <div class="chips2" id="steps">
+      <div class="st" data-s="check"><span class="dot"></span>Перевірка</div>
+      <div class="st" data-s="env"><span class="dot"></span>Середовище</div>
+      <div class="st" data-s="deps"><span class="dot"></span>Компоненти</div>
+      <div class="st" data-s="model"><span class="dot"></span>Модель мови</div>
+      <div class="st" data-s="files"><span class="dot"></span>DaVinci</div>
+    </div>
+    <div class="hint">Вікно можна згорнути — встановлення продовжиться</div>
+  </div>
+</section>
+
+<section class="view" id="v-python"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <h1>Потрібен Python</h1>
+    <p>Svit Editor працює на Python — це безкоштовна програма з python.org. Я завантажу й відкрию її встановлення: тисни «Продовжити» до кінця, потім повертайся сюди.</p>
+    <div class="row"><button class="btn" onclick="post('quit')">Скасувати</button><button class="go" onclick="post('python')">Завантажити Python</button></div>
+  </div>
+</section>
+
+<section class="view" id="v-pywait"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <h1>Встанови Python</h1>
+    <p>Відкрилось вікно встановлення Python. Пройди його до кінця, а потім натисни кнопку нижче.</p>
+    <div class="row"><button class="btn" onclick="post('python')">Завантажити ще раз</button><button class="go" onclick="post('install')">Готово — продовжити</button></div>
+  </div>
+</section>
+
+<section class="view" id="v-done"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <svg class="stamp" viewBox="0 0 150 150"><g fill="none" stroke="#2F3CFF"><circle cx="75" cy="75" r="68" stroke-width="5"/><circle cx="75" cy="75" r="56" stroke-width="2" stroke-dasharray="4 5"/></g>
+      <text x="75" y="90" text-anchor="middle" font-family="Zvin Cond, Georgia" font-weight="900" font-size="36" fill="#2F3CFF">ГОТОВО</text>
+      <text x="75" y="110" text-anchor="middle" font-family="SF Mono, Menlo, monospace" font-size="9" letter-spacing="2" fill="#2F3CFF">SVIT/ED · OK</text></svg>
+    <h1 id="dt" style="margin-top:10px">Svit Editor готовий</h1>
+    <p id="ds">Перезапусти DaVinci і відкрий:</p>
+    <div class="how"><span>Workspace</span>→<span>Scripts</span>→<b>Svit Editor</b></div>
+    <div class="row"><button class="btn" onclick="post('quit')">Закрити</button><button class="go" onclick="post('davinci')">Відкрити DaVinci</button></div>
+  </div>
+</section>
+
+<section class="view" id="v-error"><header class="mast"><div class="mast-top"><span class="tag ink">SVIT/ED</span><span>Інсталятор</span><span class="sp"></span><span class="tag ver">v—</span></div>
+  <div class="mast-main"><div><div class="logo">Svit<br><em>Editor</em></div></div><svg class="mascot doodle" viewBox="0 0 175 140" fill="none" stroke="#141414" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+  <g transform="rotate(-12 118 95)"><rect x="70" y="77" width="98" height="36" fill="#FBFAF6"/><rect x="76" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="76" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="89" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="102" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="115" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="128" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="141" y="104" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="81" width="6" height="5" fill="#141414" stroke="none"/><rect x="154" y="104" width="6" height="5" fill="#141414" stroke="none"/>
+    <rect x="80" y="89" width="22" height="12" fill="#E2F55C" stroke-width="2.2"/><rect x="108" y="89" width="22" height="12" stroke-width="2.2"/><rect x="136" y="89" width="22" height="12" fill="#CFC6F5" stroke-width="2.2"/></g>
+  <g class="snip"><circle cx="60" cy="106" r="8.5" fill="#FBFAF6"/><circle cx="47" cy="90" r="8.5" fill="#FBFAF6"/>
+    <path d="M66 100 L104 74"/><path d="M54 84 L102 94"/></g>
+  <path d="M27 31 q4 -16 19 -14 q12 2 14 12"/>
+  <circle cx="42" cy="36" r="16" fill="#FBFAF6"/>
+  <path d="M26 31 q8 -12 22 -10 q9 2 10 9" stroke-width="3.5"/>
+  <circle cx="36" cy="37" r="1.9" fill="#141414" stroke="none"/><circle cx="47" cy="36" r="1.9" fill="#141414" stroke="none"/>
+  <path d="M37 44 q5 3.5 10 -.5"/>
+  <path d="M41 52 L40 94"/><path d="M41 64 Q47 74 50 84"/><path d="M41 62 Q26 66 20 53"/>
+  <path d="M40 94 L30 124 L22 124"/><path d="M40 94 L51 121 L59 121"/>
+  <path class="star" style="transform-origin:132px 26px" d="M132 17 C133.08 23.75 134.25 24.92 141 26 C134.25 27.08 133.08 28.25 132 35 C130.92 28.25 129.75 27.08 123 26 C129.75 24.92 130.92 23.75 132 17Z" fill="#141414" stroke="none"/><path class="star b" style="transform-origin:154px 46px" d="M154 40 C154.72 44.5 155.5 45.28 160 46 C155.5 46.72 154.72 47.5 154 52 C153.28 47.5 152.5 46.72 148 46 C152.5 45.28 153.28 44.5 154 40Z" fill="#141414" stroke="none"/><path class="star" style="transform-origin:116px 48px" d="M116 43.5 C116.54 46.875 117.125 47.46 120.5 48 C117.125 48.54 116.54 49.125 116 52.5 C115.46 49.125 114.875 48.54 111.5 48 C114.875 47.46 115.46 46.875 116 43.5Z" fill="#141414" stroke="none"/>
+</svg></div><div class="ruler"></div></header>
+  <div class="body">
+    <svg class="errsvg doodle" viewBox="0 0 96 86" fill="none" stroke="#2F3CFF" stroke-width="7"><path d="M48 6 L91 80 H5 Z"/><rect x="43" y="28" width="10" height="28" fill="#2F3CFF" stroke="none"/><rect x="43" y="62" width="10" height="9" fill="#2F3CFF" stroke="none"/></svg>
+    <h1 style="margin-top:10px">Не вийшло встановити</h1>
+    <p id="em"></p>
+    <pre id="ed"></pre>
+    <div class="row"><button class="btn" onclick="post('log')">Показати журнал</button><button class="go" onclick="post('install')">Спробувати ще раз</button></div>
+  </div>
+</section>
+<script>
+const $=s=>document.querySelector(s);
+function post(a){ try{ window.pywebview.api.action(a) }catch(e){ console.log("post",a) } }
+function show(v){ document.querySelectorAll(".view").forEach(x=>x.classList.toggle("on",x.id==="v-"+v)) }
+let cur=0, target=0;
+function anim(){ cur += (target-cur)*0.12; if(Math.abs(target-cur)<0.05) cur=target;
+  $("#pn").textContent=Math.floor(cur); $("#pb").style.width=cur+"%"; requestAnimationFrame(anim) }
+anim();
+const S={
+  init(st){
+    document.querySelectorAll(".ver").forEach(e=>e.textContent="v"+st.version);
+    if(st.installed){ $("#wt").textContent = st.installed===st.version ? "Svit Editor "+st.version+" вже встановлений" : "Оновити Svit Editor";
+      $("#ws").textContent = st.installed===st.version ? "Можна перевстановити, якщо щось працює не так. Ключ і налаштування залишаться."
+        : "Версія "+st.installed+" → "+st.version+". Займе менше хвилини, ключ і налаштування залишаться.";
+      $("#golbl").textContent = st.installed===st.version ? "Перевстановити" : "Оновити" }
+  },
+  started(kind){ show("progress"); target=0; cur=0;
+    document.querySelectorAll(".st").forEach(e=>e.className="st");
+    if(kind==="python"){ $("#steps").style.display="none" } else $("#steps").style.display="flex" },
+  progress(pct,step,msg){
+    target=Math.max(target,pct); $("#pm").textContent=msg;
+    const order=["check","env","deps","model","files","done"]; const i=order.indexOf(step);
+    document.querySelectorAll(".st").forEach(e=>{ const j=order.indexOf(e.dataset.s); e.className = j<i?"st ok":(j===i?"st act":"st") });
+  },
+  done(ver,mode){
+    target=100;
+    if(mode==="python"){ setTimeout(()=>show("pywait"),500); return }
+    $("#dt").textContent = mode==="update" ? "Оновлено до "+ver : "Svit Editor готовий";
+    $("#ds").textContent = mode==="update" ? "Закрий і знову відкрий Svit Editor у DaVinci:" : "Перезапусти DaVinci і відкрий:";
+    setTimeout(()=>{ show("done"); const c=$(".stamp"); c.replaceWith(c.cloneNode(true)) },600);
+  },
+  needPython(){ show("python") },
+  error(msg,log){ $("#em").textContent=msg; $("#ed").textContent=log||""; show("error") },
+};
+function boot(){ window.pywebview.api.ready().then(st=>S.init(st)) }
+if(window.pywebview && window.pywebview.api) boot(); else window.addEventListener("pywebviewready",boot);
+</script>
+</body></html>
