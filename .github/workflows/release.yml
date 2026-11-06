@@ -1,0 +1,31 @@
+# Створює реліз на GitHub, коли в папку release/ потрапляє новий підписаний інсталятор.
+# Ключ підпису тут НЕ використовується: інсталятор підписує автор перед комітом.
+name: release
+on:
+  push:
+    branches: [main]
+    paths: ["release/**"]
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="$(cat VERSION | tr -d '[:space:]')"
+          ZIP="release/Svit Editor $VER.zip"
+          test -f "$ZIP" || { echo "немає $ZIP"; exit 1; }
+          PRE=""
+          case "$VER" in *alpha*|*beta*|*rc*) PRE="--prerelease";; *) PRE="--latest";; esac
+          cp "$ZIP" "Svit.Editor.$VER.zip"
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            gh release upload "v$VER" "Svit.Editor.$VER.zip" --clobber
+            gh release edit "v$VER" --notes-file release/notes.md
+          else
+            gh release create "v$VER" "Svit.Editor.$VER.zip" --target "$GITHUB_SHA" \
+              --title "Svit Editor $VER" --notes-file release/notes.md $PRE
+          fi
