@@ -368,6 +368,7 @@ class Api:
         files = self.window.create_file_dialog(
             webview.OPEN_DIALOG, allow_multiple=False,
             file_types=("Аудіо (" + ";".join("*" + e for e in sorted(music.AUDIO_EXT)) + ")", "Усі файли (*.*)"))
+        self.silence()
         if not files:
             return None
         self._js("musicLoading", Path(files[0]).name)
@@ -399,6 +400,33 @@ class Api:
         except Exception as e:
             svlog.log("Перегляд тексту: " + traceback.format_exc())
             return {"error": friendly_error(e)}
+
+    def silence(self):
+        """Закриває Quick Look, який macOS міг увімкнути у вікні вибору файлу (пробіл на пісні) —
+        він грає весь трек і лишається жити в процесі Svit після закриття діалогу."""
+        def _close():
+            try:
+                try:
+                    from Quartz import QLPreviewPanel
+                except Exception:
+                    from QuickLookUI import QLPreviewPanel      # noqa
+                if QLPreviewPanel.sharedPreviewPanelExists():
+                    pn = QLPreviewPanel.sharedPreviewPanel()
+                    try:
+                        pn.setDataSource_(None)
+                    except Exception:
+                        pass
+                    pn.orderOut_(None)
+                    pn.close()
+                    svlog.log("Quick Look закрито (грав трек після вибору файлу)")
+            except Exception as e:
+                svlog.log(f"silence: {e!r}")
+        try:
+            from PyObjCTools import AppHelper
+            AppHelper.callAfter(_close)
+        except Exception:
+            _close()
+        return True
 
     def set_music(self, path):
         try:

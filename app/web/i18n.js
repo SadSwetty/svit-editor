@@ -264,6 +264,8 @@
     "Розпізнана мова з відео (інтерв'ю, влоги) — тим самим стилем, що нижче": "Recognised speech from the videos (interviews, vlogs) — in the same style as below",
     "Svit-текст — Svit малює кожен рядок твоїм шрифтом, кольором, світінням і halation та кладе на окрему доріжку з анімацією. Субтитри DaVinci — звичайна доріжка субтитрів, стиль налаштовується в Inspector.": "Svit text — Svit draws each line in your font, colour, glow and halation and puts it on its own track with animation. DaVinci subtitles — a regular subtitle track, styled in the Inspector.",
     "Хочеш, щоб ефекти були одним шаром над усім відео? Перетягни в DaVinci": "Want the effects as one layer over the whole video? In DaVinci drag",
+    "Реперський стиль": "Rapper style", "рівно": "neat", "хаос": "chaos", "Колір ключових слів": "Key word colour",
+    "Текст оживає: слова різного розміру й нахилу, частину слів розбиває на букви різного розміру, ключові слова — більші й кольором акценту. Ключові слова Svit обирає сам, або познач їх у тексті пісні *зірочками*.": "The text comes alive: words of different sizes and angles, some words split into letters of different sizes, key words bigger and in the accent colour. Svit picks key words itself, or mark them in the lyrics with *asterisks*.",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",

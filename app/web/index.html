@@ -255,6 +255,10 @@
           </div>
           <div class="subhead" style="margin-top:14px">Ефекти тексту</div>
           <div class="stgrid"><div class="stl"><label>Світіння <span class="val" id="tsv_glow"></span></label><input type="range" min="0" max="100" step="5" data-ts="glow"><div class="scale"><span>вимк.</span><span>яскраве</span></div></div><div class="stl"><label>Halation <span class="val" id="tsv_halation"></span></label><input type="range" min="0" max="100" step="5" data-ts="halation"><div class="scale"><span>вимк.</span><span>горить</span></div></div><div class="stl"><label>Тінь <span class="val" id="tsv_shadow"></span></label><input type="range" min="0" max="100" step="5" data-ts="shadow"><div class="scale"><span>вимк.</span><span>густа</span></div></div><div class="stl"><label>Обведення <span class="val" id="tsv_outline"></span></label><input type="range" min="0" max="100" step="5" data-ts="outline"><div class="scale"><span>вимк.</span><span>товсте</span></div></div></div>
+          <div class="raprow">
+            <div class="stl"><label>Реперський стиль <span class="val" id="tsv_rap"></span> <i class="i left" data-tip="Текст оживає: слова різного розміру й нахилу, частину слів розбиває на букви різного розміру, ключові слова — більші й кольором акценту. Ключові слова Svit обирає сам, або познач їх у тексті пісні *зірочками*.">i</i></label><input type="range" min="0" max="100" step="5" data-ts="rap"><div class="scale"><span>рівно</span><span>хаос</span></div></div>
+            <div class="fld" id="accrow"><label>Колір ключових слів</label><div class="palette small" id="tacc"><b data-c="#E0352B" style="background:#E0352B"></b><b data-c="#FF8A3D" style="background:#FF8A3D"></b><b data-c="#FFD23F" style="background:#FFD23F"></b><b data-c="#E2F55C" style="background:#E2F55C"></b><b data-c="#FF7AC6" style="background:#FF7AC6"></b><b data-c="#B79CFF" style="background:#B79CFF"></b><b data-c="#2B3BE0" style="background:#2B3BE0"></b><b data-c="#5CE1E6" style="background:#5CE1E6"></b><b data-c="#FFFFFF" style="background:#FFFFFF"></b><b data-c="#141414" style="background:#141414"></b><label class="pcustom" title="Свій колір"><input type="color" id="taccc"><span>+</span></label></div></div>
+          </div>
           <div class="subhead" style="margin-top:14px">Позиція <span class="tfmt" id="tfmtnote"></span></div>
           <div class="tposgrid" id="tpos"><div class="tpos" data-p="top"><i><b></b></i><span>Зверху</span></div><div class="tpos" data-p="center"><i><b></b></i><span>По центру</span></div><div class="tpos" data-p="bottom"><i><b></b></i><span>Знизу</span></div></div>
           <div class="subhead" style="margin-top:14px">Анімація</div>
@@ -477,7 +481,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -508,6 +512,9 @@ const SV = {
     $$("#tmode button").forEach(b=>b.onclick=()=>{ this.st.text_mode=b.dataset.v; this.paint(); this.save() });
     $$("#tanim button").forEach(b=>b.onclick=()=>{ this.ts().anim=b.dataset.v; this.textPaint(); this.save(); this.textAnimPlay() });
     $$("#tpos .tpos").forEach(b=>b.onclick=()=>{ this.ts().pos=b.dataset.p; this.textPaint(); this.save(); this.textPreview() });
+    $$("#tacc b").forEach(b=>b.onclick=()=>{ this.ts().accent=b.dataset.c; this.textPaint(); this.save(); this.textPreview() });
+    $("#taccc").addEventListener("input",e=>{ this.ts().accent=e.target.value.toUpperCase(); this.textPaint(); this.textPreviewSoon() });
+    $("#taccc").addEventListener("change",()=>this.save());
     $$("#tpal b").forEach(b=>b.onclick=()=>{ this.ts().color=b.dataset.c; this.textPaint(); this.save(); this.textPreview() });
     $("#tcolor").addEventListener("input",e=>{ this.ts().color=e.target.value.toUpperCase(); this.textPaint(); this.textPreviewSoon() });
     $("#tcolor").addEventListener("change",()=>this.save());
@@ -631,6 +638,7 @@ const SV = {
     const a = keep ? old.start : Math.min(r.duration*0.25, Math.max(0,r.duration-30));
     const b = keep ? old.end : Math.min(r.duration, a+30);
     if(!keep && this.audio){ this.audio.pause(); this.audio=null; this.prepKey=null; this.prepP=null }
+    this.api("silence");
     this.st.music={path:r.path,name:r.name,duration:r.duration,start:a,end:b}; this.mPeaks=r.peaks;
     this.st.music_on=true; this.paint(); this.save();
     if(!keep) this.toast("Трек додано: вибери шматок пісні");
@@ -680,7 +688,8 @@ const SV = {
       if(!au){ this.toast("Не вдалося відтворити"); return } }
     if(au.paused){ au.play(); this.headLoop() } else au.pause();
     this.musicBtn() },
-  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio.currentTime=0 } this.pendingSeek=null; this.musicBtn(); this.drawHead() },
+  stopMusic(){ document.querySelectorAll("audio,video").forEach(m=>{ try{ m.pause() }catch(e){} }); this.api("silence");
+    if(this.audio){ this.audio.pause(); this.audio.currentTime=0 } this.pendingSeek=null; this.musicBtn(); this.drawHead() },
   musicBtn(){ const b=$("#mplay"); if(!b) return; const on=this.audio && !this.audio.paused;
     b.classList.toggle("on",!!on); b.querySelector("i").className = on ? "ic-pause" : "ic-play" },
   headLoop(){ cancelAnimationFrame(this.headRaf); const f=()=>{ this.drawHead(); if(this.audio&&!this.audio.paused) this.headRaf=requestAnimationFrame(f) }; f() },
@@ -989,10 +998,13 @@ const SV = {
     const m=String((src&&src.resolution)||"").match(/(\d+)\s*[x×]\s*(\d+)/); const w=m?+m[1]:1920, h=m?+m[2]:1080;
     return {fmt:"src", res:w+"x"+h, vertical:h>w, square:w===h} },
   textPaint(){
-    const t=Object.assign({font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50}, this.ts());
+    const t=Object.assign({font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"}, this.ts());
     Object.assign(this.ts(), t);
     $$("[data-ts]").forEach(r=>{ const k=r.dataset.ts; r.value=t[k]; const v=+t[k];
-      $("#tsv_"+k).textContent = (v===0&&["glow","halation","shadow","outline"].includes(k)) ? "вимк." : v+"%" });
+      $("#tsv_"+k).textContent = (v===0&&["glow","halation","shadow","outline","rap"].includes(k)) ? "вимк." : v+"%" });
+    $$("#tacc b").forEach(b=>b.classList.toggle("on", b.dataset.c.toUpperCase()===String(t.accent).toUpperCase()));
+    $("#taccc").value = /^#[0-9a-f]{6}$/i.test(t.accent) ? t.accent : "#e0352b";
+    $("#accrow").classList.toggle("dim", !(+t.rap>0));
     $$("#tpal b").forEach(b=>b.classList.toggle("on", b.dataset.c.toUpperCase()===String(t.color).toUpperCase()));
     $("#tcolor").value = /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#ffffff";
     $$("#tanim button").forEach(b=>b.classList.toggle("on",b.dataset.v===t.anim));
@@ -1014,7 +1026,7 @@ const SV = {
   textPreviewSoon(){ clearTimeout(this.tpT); this.tpT=setTimeout(()=>this.textPreview(),180) },
   async textPreview(){
     if(!$("#tprev")) return; const F=this.textFmt(); const src=(this.cur()||[])[0];
-    const key=JSON.stringify([this.ts().font,this.ts().size,this.ts().color,this.ts().outline,this.ts().shadow,this.ts().glow,this.ts().halation,this.ts().pos,this.ts().upper,this.st.lyrics_upper,F.fmt,F.res,src&&src.path,this.textSample()]);
+    const key=JSON.stringify([this.ts().font,this.ts().size,this.ts().color,this.ts().outline,this.ts().shadow,this.ts().glow,this.ts().halation,this.ts().pos,this.ts().upper,this.ts().rap,this.ts().accent,this.st.lyrics_upper,F.fmt,F.res,src&&src.path,this.textSample()]);
     if(key===this.tpKey) return; this.tpKey=key; $("#tpload").classList.add("on");
     const st=Object.assign({}, this.ts(), {upper: !!this.st.lyrics_upper});
     const r=await this.api("text_preview", st, F.fmt, this.textSample(), src&&src.path||null, F.res);

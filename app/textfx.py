@@ -26,7 +26,7 @@ SIZES = {"9:16": (1080, 1920), "4:5": (1080, 1350), "1:1": (1080, 1080), "4:3": 
 
 DEFAULT_STYLE = {"font": "", "size": 50, "color": "#FFFFFF", "outline": 0, "shadow": 40, "glow": 0,
                  "halation": 0, "pos": "bottom", "anim": "fade", "anim_strength": 50, "anim_smooth": 50,
-                 "upper": False}
+                 "upper": False, "rap": 0, "accent": "#E0352B"}
 
 
 def canvas_size(fmt, resolution=""):
@@ -135,6 +135,121 @@ def position_box(pos, W, H, block_h):
     return int(H * (1 - bot_m) - block_h)
 
 
+def _keywords(words, rnd, rap):
+    """Ключові слова: позначені *зірочками*, інакше — найдовші/найвиразніші (більше при сильнішому стилі)."""
+    marked = {i for i, w in enumerate(words) if "*" in w}
+    if marked:
+        return marked
+    import re
+    clean = [re.sub(r"[^\w']", "", w) for w in words]
+    cand = sorted(range(len(words)), key=lambda i: (-(len(clean[i]) + (3 if words[i].endswith("!") else 0)), i))
+    cand = [i for i in cand if len(clean[i]) >= 4]
+    n = max(1, int(round(len(words) * (0.15 + 0.2 * rap))))
+    return set(cand[:n])
+
+
+def _tokens(text, st, px, rap, seed):
+    """Слова (або букви) з власним розміром, кольором, нахилом і зсувом — «реперський» стиль."""
+    import random
+    rnd = random.Random(seed)
+    words = text.split()
+    keys = _keywords(words, rnd, rap)
+    color, accent = _rgb(st["color"]), _rgb(st.get("accent") or "#E0352B")
+    toks = []
+    for i, w in enumerate(words):
+        w = w.replace("*", "") or w
+        key = i in keys
+        sc = 1.0 + rap * rnd.uniform(-0.28, 0.32)
+        if key:
+            sc = 1.25 + 0.75 * rap + rnd.uniform(0, 0.15)
+        col = accent if key else color
+        rot = rnd.uniform(-1, 1) * 9 * rap * (1.3 if key else 1.0)
+        dy = rnd.uniform(-1, 1) * 0.18 * rap
+        split = rap > 0.45 and (key or rnd.random() < (rap - 0.45)) and len(w) > 2
+        if split:
+            letters = []
+            for ch in w:
+                letters.append({"t": ch, "sc": sc * (1 + rap * rnd.uniform(-0.3, 0.35)), "col": col,
+                                "rot": rot + rnd.uniform(-1, 1) * 10 * rap, "dy": dy + rnd.uniform(-1, 1) * 0.12 * rap})
+            toks.append({"letters": letters, "gap": 0.28})
+        else:
+            toks.append({"letters": [{"t": w, "sc": sc, "col": col, "rot": rot, "dy": dy}], "gap": 0.28})
+    return toks
+
+
+def _tile(t, font_path, px, stroke):
+    """Одна буква/слово: (кольорова плитка, маска з обведенням)."""
+    from PIL import Image, ImageDraw
+    f = _font(font_path, max(8, int(px * t["sc"])))
+    st_w = max(0, int(stroke * t["sc"]))
+    d0 = ImageDraw.Draw(Image.new("L", (4, 4)))
+    l, tp, r, bt = d0.textbbox((0, 0), t["t"], font=f, stroke_width=st_w)
+    w, h = max(2, r - l + 4), max(2, bt - tp + 4)
+    fill = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(fill).text((2 - l, 2 - tp), t["t"], font=f, fill=255)
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).text((2 - l, 2 - tp), t["t"], font=f, fill=255, stroke_width=st_w, stroke_fill=255)
+    col = Image.new("RGBA", (w, h), t["col"] + (0,))
+    col.putalpha(fill)
+    if abs(t["rot"]) > 0.3:
+        col = col.rotate(t["rot"], resample=Image.BICUBIC, expand=True)
+        mask = mask.rotate(t["rot"], resample=Image.BICUBIC, expand=True)
+    asc = f.getmetrics()[0] if hasattr(f, "getmetrics") else int(px * t["sc"])
+    return col, mask, asc
+
+
+def _rap_layout(text, st, W, H, px, stroke, rap):
+    """Розкладка «живого» тексту: слова різного розміру в рядках по центру; якщо не влазить — зменшуємо."""
+    for _ in range(6):
+        res = _rap_try(text, st, W, H, px, stroke, rap)
+        if res:
+            return res
+        px = int(px * 0.85)
+        stroke = int(stroke * 0.85)
+    return _rap_try(text, st, W, H, px, stroke, rap, force=True)
+
+
+def _rap_try(text, st, W, H, px, stroke, rap, force=False):
+    from PIL import Image
+    import zlib
+    toks = _tokens(text, st, px, rap, zlib.crc32(text.encode("utf-8")))
+    built = []
+    for tk in toks:
+        parts = [_tile(lt, st.get("font"), px, stroke) + (lt,) for lt in tk["letters"]]
+        tw = sum(p[0].size[0] for p in parts) - max(0, len(parts) - 1) * int(px * 0.04 * (len(parts) > 1))
+        th = max(p[0].size[1] for p in parts)
+        built.append({"parts": parts, "w": tw, "h": th})
+    max_w, space = W * 0.86, int(px * 0.3)
+    lines, cur, cw = [], [], 0
+    for b in built:
+        if cur and cw + space + b["w"] > max_w:
+            lines.append((cur, cw))
+            cur, cw = [], 0
+        cw += (space if cur else 0) + b["w"]
+        cur.append(b)
+    if cur:
+        lines.append((cur, cw))
+    heights = [max(b["h"] for b in ln) for ln, _ in lines]
+    block_h = int(sum(heights) * 0.98)
+    if not force and (max(lw for _, lw in lines) > W * 0.92 or block_h > H * 0.6):
+        return None
+    y = position_box(st.get("pos", "bottom"), W, H, block_h)
+    fill = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    mask = Image.new("L", (W, H), 0)
+    for (ln, lw), lh in zip(lines, heights):
+        x = int((W - lw) / 2)
+        for b in ln:
+            px_ = x
+            for col, m, asc, lt in b["parts"]:
+                yy = int(y + (lh - col.size[1]) * 0.75 + lt["dy"] * px)
+                fill.alpha_composite(col, (max(0, px_), max(0, yy)))
+                mask.paste(255, (max(0, px_), max(0, yy)), m)
+                px_ += col.size[0] - (int(px * 0.04) if len(b["parts"]) > 1 else 0)
+            x += b["w"] + space
+        y += int(lh * 0.98)
+    return fill, mask
+
+
 def render(text, style, W, H):
     """RGBA-картинка W×H з текстом за стилем."""
     from PIL import Image, ImageDraw, ImageFilter
@@ -143,26 +258,28 @@ def render(text, style, W, H):
         text = text.upper()
     base = min(W, H)
     px = max(10, int(base * (0.035 + 0.075 * float(st["size"]) / 100.0)))
-    font = _font(st.get("font"), px)
     stroke = int(round(px * 0.09 * float(st["outline"]) / 100.0))
-    probe = ImageDraw.Draw(Image.new("L", (8, 8)))
-    lines = _wrap(probe, text, font, W * 0.84, stroke)
-    asc, desc = font.getmetrics() if hasattr(font, "getmetrics") else (px, px // 4)
-    lh = int((asc + desc) * 1.12)
-    block_h = lh * len(lines)
-    y0 = position_box(st.get("pos", "bottom"), W, H, block_h)
     color = _rgb(st["color"])
-
-    mask = Image.new("L", (W, H), 0)
-    md = ImageDraw.Draw(mask)
-    for i, ln in enumerate(lines):
-        tw = md.textlength(ln, font=font)
-        md.text(((W - tw) / 2, y0 + i * lh), ln, font=font, fill=255, stroke_width=stroke, stroke_fill=255)
-    fill_mask = Image.new("L", (W, H), 0)
-    fd = ImageDraw.Draw(fill_mask)
-    for i, ln in enumerate(lines):
-        tw = fd.textlength(ln, font=font)
-        fd.text(((W - tw) / 2, y0 + i * lh), ln, font=font, fill=255)
+    rap = max(0.0, min(1.0, float(st.get("rap", 0)) / 100.0))
+    if rap > 0.02:
+        fill, mask = _rap_layout(text, st, W, H, px, stroke, rap)
+    else:
+        text = text.replace("*", "")
+        font = _font(st.get("font"), px)
+        probe = ImageDraw.Draw(Image.new("L", (8, 8)))
+        lines = _wrap(probe, text, font, W * 0.84, stroke)
+        asc, desc = font.getmetrics() if hasattr(font, "getmetrics") else (px, px // 4)
+        lh = int((asc + desc) * 1.12)
+        y0 = position_box(st.get("pos", "bottom"), W, H, lh * len(lines))
+        mask = Image.new("L", (W, H), 0)
+        fmask = Image.new("L", (W, H), 0)
+        md, fd = ImageDraw.Draw(mask), ImageDraw.Draw(fmask)
+        for i, ln in enumerate(lines):
+            tw = md.textlength(ln, font=font)
+            md.text(((W - tw) / 2, y0 + i * lh), ln, font=font, fill=255, stroke_width=stroke, stroke_fill=255)
+            fd.text(((W - tw) / 2, y0 + i * lh), ln, font=font, fill=255)
+        fill = Image.new("RGBA", (W, H), color + (0,))
+        fill.putalpha(fmask)
 
     out = Image.new("RGBA", (W, H), (0, 0, 0, 0))
 
@@ -172,30 +289,30 @@ def render(text, style, W, H):
         lay.putalpha(a)
         return lay
 
+    def boost(img, mul):
+        r, g, b, a = img.split()
+        return Image.merge("RGBA", (r, g, b, a.point(lambda v: min(255, int(v * mul)))))
+
     sh = float(st["shadow"]) / 100.0
     if sh > 0:
         r = max(1, int(px * (0.04 + 0.12 * sh)))
-        sm = mask.filter(ImageFilter.GaussianBlur(r))
         off = int(px * 0.05)
-        sm = sm.transform((W, H), Image.AFFINE, (1, 0, -off, 0, 1, -off))
+        sm = mask.filter(ImageFilter.GaussianBlur(r)).transform((W, H), Image.AFFINE, (1, 0, -off, 0, 1, -off))
         out = Image.alpha_composite(out, layer((0, 0, 0), sm, 0.55 + 0.6 * sh))
     hal = float(st["halation"]) / 100.0
     if hal > 0:
         # halation: тонке тепле світіння впритул до літер, як на плівці
         r = max(1, int(px * (0.05 + 0.18 * hal)))
-        hm = mask.filter(ImageFilter.GaussianBlur(r))
-        out = Image.alpha_composite(out, layer((255, 92, 40), hm, 0.6 + 1.6 * hal))
+        out = Image.alpha_composite(out, layer((255, 92, 40), mask.filter(ImageFilter.GaussianBlur(r)), 0.6 + 1.6 * hal))
     gl = float(st["glow"]) / 100.0
     if gl > 0:
+        # світіння кольором самих літер (ключові слова світяться своїм кольором)
         r = max(1, int(px * (0.08 + 0.45 * gl)))
-        gm = mask.filter(ImageFilter.GaussianBlur(r))
-        out = Image.alpha_composite(out, layer(color, gm, 0.5 + 1.5 * gl))
-        r2 = max(1, int(px * 0.06))
-        out = Image.alpha_composite(out, layer(tuple(min(255, c + 40) for c in color),
-                                               mask.filter(ImageFilter.GaussianBlur(r2)), 0.5 * gl))
+        out = Image.alpha_composite(out, boost(fill.filter(ImageFilter.GaussianBlur(r)), 0.6 + 1.6 * gl))
+        out = Image.alpha_composite(out, boost(fill.filter(ImageFilter.GaussianBlur(max(1, int(px * 0.06)))), 0.5 * gl))
     if stroke:
         out = Image.alpha_composite(out, layer((0, 0, 0) if sum(color) > 380 else (255, 255, 255), mask, 1.0))
-    out = Image.alpha_composite(out, layer(color, fill_mask, 1.0))
+    out = Image.alpha_composite(out, fill)
     return out
 
 

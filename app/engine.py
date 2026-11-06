@@ -988,6 +988,14 @@ def lyric_chunks(timing, mus_start, offset, length):
     return out
 
 
+def strip_marks(chunks):
+    """Зірочки (*ключове слово*) потрібні лише Svit-тексту — зі звичайних субтитрів прибираємо."""
+    out = []
+    for ch in chunks:
+        out.append([dict(w, word=w["word"].replace("*", "")) for w in ch])
+    return out
+
+
 def fmt_ts(t):
     ms = int(round(max(0.0, t) * 1000))
     return f"{ms // 3600000:02}:{ms // 60000 % 60:02}:{ms // 1000 % 60:02},{ms % 1000:03}"
@@ -1630,7 +1638,7 @@ def finalize_videos(job, data, videos, notes, out, version):
                     svit_text = False
             if not svit_text:
                 p = out / f"subtitles_all{tag}.srt"
-                srt_all = str(p) if write_srt(p, lists, up or not lt) else None
+                srt_all = str(p) if write_srt(p, [strip_marks(c) for c in lists], up or not lt) else None
         else:
             for i, v in enumerate(videos, 1):
                 chunks = per_video(v, 0.0)
@@ -1643,7 +1651,7 @@ def finalize_videos(job, data, videos, notes, out, version):
                         _log(f"Svit-текст не намалювався: {e!r}")
                 if not done:
                     p = out / f"subtitles_{i:02}{tag}.srt"
-                    v["srt"] = str(p) if write_srt(p, [chunks], up or not lt) else None
+                    v["srt"] = str(p) if write_srt(p, [strip_marks(chunks)], up or not lt) else None
     posts = [f"=== {i}. {v['title']} ({v['duration']:.0f} с) ===\n{v.get('why', '')}\n\n"
              f"{v.get('caption', '')}\n{' '.join(v.get('hashtags', []))}\n" for i, v in enumerate(videos, 1)]
     if notes:

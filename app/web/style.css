@@ -562,3 +562,8 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 .tposgrid.horiz .tpos[data-p=top] i b{top:9%}
 .tpos.on i{background:#E2F55C;box-shadow:3px 3px 0 var(--ink)}
 @media(max-width:620px){.tlayout{grid-template-columns:1fr}}
+.raprow{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:10px;align-items:start}
+.palette.small b{width:20px;height:20px}
+.palette.small .pcustom{width:20px;height:20px}
+#accrow.dim{opacity:.4}
+@media(max-width:560px){.raprow{grid-template-columns:1fr}}
