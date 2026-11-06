@@ -277,6 +277,8 @@
     "Звичайна доріжка субтитрів: текст і час правиш прямо на таймлайні, стиль — в Inspector.": "A regular subtitle track: edit text and timing right on the timeline, style in the Inspector.",
     "Реперський стиль малюється картинками: рядки можна посувати й розтягувати на таймлайні, але слова не редагуються. Постав «Реперський стиль» на 0 — і текст буде редагованим.": "Rapper style is drawn as images: lines can be moved and stretched on the timeline, but the words can't be edited. Set Rapper style to 0 to get editable text.",
     "Кожен рядок — окремий кліп на доріжці «Svit Text»: посувай і розтягуй на таймлайні. Слова, шрифт, колір і розмір правиш у Fusion: вузол Text+ (SvText).": "Each line is its own clip on the “Svit Text” track: move and stretch it on the timeline. Edit words, font, colour and size in Fusion: the Text+ node (SvText).",
+    "Редагований Text+": "Editable Text+", "Картинкою": "As images",
+    "Кожен рядок — картинка на доріжці «Svit Text»: виглядає точно як у перегляді, посувається й розтягується, але слова не редагуються.": "Each line is an image on the “Svit Text” track: looks exactly like the preview, can be moved and stretched, but the words can't be edited.",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",

@@ -1644,8 +1644,9 @@ def finalize_videos(job, data, videos, notes, out, version):
     elif s.get("subtitles") and s.get("transcribe") and not job.get("music_info"):
         per_video = lambda v, off: caption_chunks(v["segments"], data, off)
     if per_video:
-        svit_text = s.get("text_mode", "svit") == "svit"
+        svit_text = s.get("text_mode", "svit") in ("svit", "img")
         style = dict(s.get("text_style") or {})
+        style["as_image"] = s.get("text_mode") == "img"
         style["upper"] = up or bool(style.get("upper"))
         res = ""
         try:

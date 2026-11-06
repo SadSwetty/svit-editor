@@ -1340,6 +1340,54 @@ def anim_chain(comp, cur, anim, a, b):
     return fd, ", ".join(how)
 
 
+_FONTS = {"list": None}
+
+
+def fusion_fonts():
+    """Шрифти, які бачить Fusion: {родина: [стилі]}."""
+    if _FONTS["list"] is None:
+        fl = {}
+        try:
+            fu = get_resolve().Fusion()
+            raw = fu.FontManager.GetFontList() or {}
+            for fam, styles in raw.items():
+                fl[str(fam)] = [str(x) for x in (styles.values() if isinstance(styles, dict) else styles or [])]
+        except Exception as e:
+            L("Шрифти Fusion: не вдалося отримати список (%s)" % e)
+        _FONTS["list"] = fl
+        if fl:
+            L("Шрифти Fusion: %d родин" % len(fl))
+    return _FONTS["list"]
+
+
+def pick_font(fam, style):
+    """Шрифт для Text+: такий самий, якщо Fusion його знає, інакше найближчий / Arial Bold."""
+    fl = fusion_fonts()
+    fam = (fam or "").lstrip(".").strip()
+    if not fl:
+        return fam or "Arial", style or "Bold", "без перевірки"
+    low = {k.lower(): k for k in fl}
+
+    def best_style(f, want):
+        sts = fl.get(f) or []
+        for cand in (want, "Bold", "Black", "Heavy", "Semibold", "Regular"):
+            for s_ in sts:
+                if cand and s_.lower() == str(cand).lower():
+                    return s_
+        return sts[0] if sts else (want or "Regular")
+    if fam.lower() in low:
+        f = low[fam.lower()]
+        return f, best_style(f, style), "є"
+    for k in low:                       # «SF Compact» → «SF Compact Display» тощо
+        if fam and (k.startswith(fam.lower()) or fam.lower().startswith(k)):
+            return low[k], best_style(low[k], style), "схожий"
+    for f in ("Arial", "Helvetica Neue", "Helvetica", "Open Sans"):
+        if f.lower() in low:
+            return low[f.lower()], best_style(low[f.lower()], "Bold"), "замінено"
+    f = sorted(fl)[0]
+    return f, best_style(f, "Bold"), "замінено"
+
+
 def _set(t, inp, *vals):
     for v in vals:
         try:
@@ -1378,8 +1426,9 @@ def build_text_comp(ti, anim, n, label, tp=None):
         if tp:
             tx = _nm(_tool(comp, "TextPlus"), "SvText")
             _set(tx, "StyledText", tp["text"])
-            _set(tx, "Font", tp["font"])
-            _set(tx, "Style", tp["style"])
+            fam, sty, how_f = pick_font(tp["font"], tp["style"])
+            _set(tx, "Font", fam)
+            _set(tx, "Style", sty)
             _set(tx, "Size", float(tp["size"]))
             _set(tx, "Center", {1: float(tp["cx"]), 2: float(tp["cy"])}, [float(tp["cx"]), float(tp["cy"])])
             for i, c in enumerate(("Red1", "Green1", "Blue1")):
@@ -1390,7 +1439,13 @@ def build_text_comp(ti, anim, n, label, tp=None):
                 _set(tx, "Thickness2", 0.02 + 0.08 * tp["outline"])
                 for c in ("Red2", "Green2", "Blue2"):
                     _set(tx, c, 0.0 if dark else 1.0)
-            how.append("Text+ «%s» %s %s" % (tp["text"][:24].replace("\n", " "), tp["font"], tp["style"]))
+            got = {}
+            for k in ("StyledText", "Font", "Style", "Size", "Center"):
+                try:
+                    got[k] = tx.GetInput(k)
+                except Exception as e:
+                    got[k] = "? %s" % e
+            how.append("Text+ шрифт %s %s (%s; хотіли %s %s) → у вузлі %s" % (fam, sty, how_f, tp["font"], tp["style"], got))
             txt = tx
             if tp.get("glow", 0) > 0.01:
                 g = _nm(_tool(comp, "SoftGlow"), "SvTextGlow")

@@ -241,7 +241,7 @@
           <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Розпізнана мова з відео (інтерв'ю, влоги) — тим самим стилем, що нижче</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
 
         <div class="subhead" style="margin-top:18px">Вигляд тексту <i class="i left" data-tip="Svit-текст — Svit малює кожен рядок твоїм шрифтом, кольором, світінням і halation та кладе на окрему доріжку з анімацією. Субтитри DaVinci — звичайна доріжка субтитрів, стиль налаштовується в Inspector.">i</i></div>
-        <div class="seg" id="tmode"><button data-v="svit">Svit-текст: шрифт, колір, ефекти</button><button data-v="srt">Субтитри DaVinci</button></div>
+        <div class="seg" id="tmode"><button data-v="svit">Редагований Text+</button><button data-v="img">Картинкою</button><button data-v="srt">Субтитри DaVinci</button></div>
         <div class="tedit" id="tedit"></div>
         <div id="tstyle">
           <div class="tlayout">
@@ -597,9 +597,9 @@ const SV = {
     $$(".pace").forEach(b=>b.classList.toggle("on",b.dataset.v===s.pace));
     $$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
     $$("#tmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.text_mode||"svit")));
-    $("#tstyle").style.display = (s.text_mode||"svit")==="svit" ? "block" : "none";
+    $("#tstyle").style.display = (s.text_mode||"svit")!=="srt" ? "block" : "none";
     this.textPaint();
-    if(s.adv_open && s.adv_tab==="text" && (s.text_mode||"svit")==="svit") this.textPreviewSoon();
+    if(s.adv_open && s.adv_tab==="text" && (s.text_mode||"svit")!=="srt") this.textPreviewSoon();
     $$(".tab").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
     const z=$("#zstr"); z.value=s.zoom_strength; z.style.setProperty("--p",s.zoom_strength+"%");
     $("#zval").textContent = "до ±" + Math.round(motionMax(s.zoom_strength)*100) + "%";
@@ -1021,10 +1021,12 @@ const SV = {
     $$("#tanim button").forEach(b=>b.classList.toggle("on",b.dataset.v===t.anim));
     $$("#tpos .tpos").forEach(b=>b.classList.toggle("on",b.dataset.p===t.pos));
     const F=this.textFmt(); $("#tpos").classList.toggle("horiz", !F.vertical && !F.square); $("#tpos").classList.toggle("square", F.square);
-    $("#tedit").textContent = (this.st.text_mode||"svit")!=="svit" ? "Звичайна доріжка субтитрів: текст і час правиш прямо на таймлайні, стиль — в Inspector."
+    const tm=this.st.text_mode||"svit";
+    $("#tedit").textContent = tm==="srt" ? "Звичайна доріжка субтитрів: текст і час правиш прямо на таймлайні, стиль — в Inspector."
+      : tm==="img" ? "Кожен рядок — картинка на доріжці «Svit Text»: виглядає точно як у перегляді, посувається й розтягується, але слова не редагуються."
       : (+t.rap>0 ? "Реперський стиль малюється картинками: рядки можна посувати й розтягувати на таймлайні, але слова не редагуються. Постав «Реперський стиль» на 0 — і текст буде редагованим."
                   : "Кожен рядок — окремий кліп на доріжці «Svit Text»: посувай і розтягуй на таймлайні. Слова, шрифт, колір і розмір правиш у Fusion: вузол Text+ (SvText).");
-    $("#tedit").classList.toggle("warn2", (this.st.text_mode||"svit")==="svit" && +t.rap>0);
+    $("#tedit").classList.toggle("warn2", tm==="svit" && +t.rap>0);
     $("#tfmtnote").textContent = F.vertical ? "· вертикальне відео" : F.square ? "· квадрат" : "· горизонтальне відео";
     if(this.fontsLoaded && document.activeElement!==$("#tfont")) $("#tfont").value=t.font||"";
     if(!this.fontsLoaded && this.st.adv_tab==="text") this.loadFonts() },

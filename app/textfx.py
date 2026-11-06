@@ -66,7 +66,7 @@ def list_fonts(refresh=False):
             if p.suffix.lower() not in FONT_EXT or p.name.startswith("."):
                 continue
             name = _face_name(p)
-            if not name or name.lower() in seen:
+            if not name or name.startswith(".") or name.lower() in seen:     # «.SF …» — приховані шрифти macOS
                 continue
             seen.add(name.lower())
             out.append({"path": str(p), "name": name, "user": d == USER_FONTS})
@@ -362,7 +362,7 @@ def render_items(chunks, style, W, H, out_dir, upper=False):
     out_dir.mkdir(parents=True, exist_ok=True)
     st = dict(style or {})
     st["upper"] = bool(st.get("upper") or upper)
-    editable = float(st.get("rap", 0) or 0) <= 2
+    editable = float(st.get("rap", 0) or 0) <= 2 and not st.get("as_image")
     blank = None
     if editable:
         from PIL import Image
