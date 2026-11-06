@@ -114,9 +114,11 @@ def thumb_of(path):
 
 
 def vtuple(v):
-    """'2.4-alpha' < '2.4' < '2.4.1': тестові версії йдуть перед релізом з тим самим номером."""
+    """'2.4-alpha1' < '2.4-alpha2' < '2.4' < '2.4.1': тестові версії йдуть перед релізом з тим самим номером,
+    а між собою — за номером alpha/beta/rc."""
+    import re
     v = str(v).lower().lstrip("v")
-    pre = any(t in v for t in ("alpha", "beta", "rc"))
+    m = re.search(r"(alpha|beta|rc)\s*(\d*)", v)
     core = v.split("-")[0].split(" ")[0]
     out = []
     for part in core.split("."):
@@ -124,7 +126,10 @@ def vtuple(v):
         out.append(int(num) if num else 0)
     while len(out) < 3:
         out.append(0)
-    return tuple(out) + ((0,) if pre else (1,))
+    if m:
+        stage = {"alpha": 0, "beta": 1, "rc": 2}[m.group(1)]
+        return tuple(out[:3]) + (0, stage, int(m.group(2) or 0))
+    return tuple(out[:3]) + (1, 0, 0)
 
 
 def friendly_error(e):
