@@ -31,7 +31,7 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
-BRIDGE_REV = 29        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
+BRIDGE_REV = 30        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
 URLS = {"keys": "https://platform.claude.com/settings/keys",
         "billing": "https://platform.claude.com/settings/billing",
         "usage": "https://platform.claude.com/usage"}
@@ -804,7 +804,7 @@ class Api:
             if p.get("manual") and p.get("mode") != "clear":
                 info = self.bridge.send("timeline_info", {}, timeout=15) or {}
                 lb = self._build_for(info.get("timeline", "")) if info.get("timeline") else None
-                if lb and not info.get("adjust"):
+                if lb and (not info.get("adjust") or p.get("mode") == "fit"):
                     svlog.log(f"Мій таймлайн «{info['timeline']}» — це монтаж Svit: перебудовую з його планом")
                     data["only_timeline"] = info["timeline"]
                     data["grain"] = None if p.get("grain_auto", True) and p.get("grain", 0) == 0 else data["grain"]

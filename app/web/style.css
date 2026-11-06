@@ -491,7 +491,8 @@ html,body{overflow-x:hidden}
 .stl label{display:flex;justify-content:space-between;font-size:13px}
 .stl input[type=range]{width:100%}
 .stl .scale{display:flex;justify-content:space-between;font-size:11px;opacity:.55}
-.strow{display:flex;gap:8px;align-items:center;margin-top:12px}
+.strow{display:flex;gap:8px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.strow .stprog{min-width:160px}
 .strow .stprog{flex:1;visibility:hidden;font-size:12px}
 .strow .stprog.on{visibility:visible}
 .strow .stprog b{display:block;height:4px;background:var(--ink);width:0;transition:width .3s;margin-bottom:3px}

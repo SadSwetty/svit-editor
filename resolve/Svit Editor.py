@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 29      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 30      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -956,7 +956,7 @@ def commit_comp(ti, comp, label, verbose=False, comp_name=SVIT_COMP):
 
 def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_strength=0.6,
                  tin=None, tout=None, lut_ok=False, verbose=False, overlay=None, tone=None, speed=0.6,
-                 comp_name=SVIT_COMP):
+                 comp_name=SVIT_COMP, meta=None, tr_cap=None):
     """Плавний наїзд і ефекти через Fusion: MediaIn → [сповільнення] → [рух/тряска] → [розмиття] →
     [Ч/Б] → [світіння] → [зерно] → [спалах] → MediaOut. Повертає (зроблено, помилки)."""
     fx = set(fx or ()) - {"slowmo"}          # швидкість відео не змінюємо
@@ -994,6 +994,11 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
         a, b = float(a), float(b)
         k = max(0.1, min(1.0, float(strength)))
         cur = [mi[0]]
+        if meta is not None:          # що зроблено на шматку — щоб «Підлаштувати переходи» знало це після правок
+            try:
+                mi[0].SetInput("Comments", "svit:" + json.dumps(meta, ensure_ascii=False))
+            except Exception:
+                pass
 
         def chain(tool):
             tool.ConnectInput("Input", cur[0])
@@ -1100,10 +1105,13 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
             step("flash", f)
         # тривалість переходу: швидко = 2 кадри, повільно = 12 (але не більше третини шматка)
         n_tr = max(2.0, min(round(2 + (1 - float(speed)) * 10), (b - a) / 3.0))
+        cap_in, cap_out = tr_cap or (None, None)
+        n_in = max(1.0, min(n_tr, cap_in)) if cap_in else n_tr
+        n_out = max(1.0, min(n_tr, cap_out)) if cap_out else n_tr
         if tin:
-            step("in:" + tin, lambda: add_transition(comp, chain, cur, tin, "in", a, b, n_tr, k))
+            step("in:" + tin, lambda: add_transition(comp, chain, cur, tin, "in", a, b, n_in, k))
         if tout:
-            step("out:" + tout, lambda: add_transition(comp, chain, cur, tout, "out", a, b, n_tr, k))
+            step("out:" + tout, lambda: add_transition(comp, chain, cur, tout, "out", a, b, n_out, k))
         mo[0].ConnectInput("Input", cur[0])
         n_nodes = layout_nodes(comp, mi[0], mo[0])
         if verbose:
@@ -1280,6 +1288,8 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
             done, errs = apply_fusion(ti, ratio, sg.get("fx") or (), fx_strength,
                                       "#%d %s %.1f–%.1f" % (n, src.get("name", ""), sg["start"], sg["end"]),
                                       look, look_strength, tin, tout, lut_ok=lut_ok, overlay=overlay, tone=tn, speed=speed,
+                                      meta={"src": str(sg["source"]), "fx": list(sg.get("fx") or ()), "ratio": ratio,
+                                            "tin": tin, "tout": tout, "look": video.get("look"), "tone": tn},
                                       verbose=(stats is not None and stats.get("total", 0) <= 2))
             if stats is not None:
                 try:
@@ -1952,7 +1962,7 @@ def style_targets(sess, data):
         if not cur_tl:
             raise RuntimeError("У DaVinci не відкритий жоден таймлайн.")
         ents = []
-        adj = adjustment_items(cur_tl)
+        adj = adjustment_items(cur_tl) if data.get("mode") != "fit" else []
         if adj:
             # є Adjustment Clip — ефекти кладемо лише на нього, кліпи під ним не чіпаємо
             for ti in adj:
@@ -2038,6 +2048,10 @@ def style_targets(sess, data):
                               "fx": sg.get("fx") or (), "tin": sg.get("tr") if k > 0 else None,
                               "tout": segs[k + 1].get("tr") if k + 1 < len(segs) else None,
                               "clip_only": bool(adj_items)}))
+        if data.get("mode") == "fit" and len(items) > len(flat):   # розрізані після монтажу шматки
+            for ti in items[len(flat):]:
+                ents.append((ti, {"look": None, "src": None, "label": "#%d" % (len(ents) + 1), "fx": (),
+                                  "clip_only": bool(adj_items)}))
         # монтаж з Adjustment Clip: фактура, halation, дрімі й зерно — на ньому
         for j, ti in enumerate(adj_items):
             v = vids[min(j, len(vids) - 1)] if len(adj_items) == len(vids) else vids[0]
@@ -2093,6 +2107,76 @@ def tune_item(ti, info, P, comp_name):
     return True
 
 
+def _meta(info, tone=None):
+    return {"src": info.get("src"), "fx": list(info.get("fx") or ()), "ratio": info.get("ratio"),
+            "tin": info.get("tin"), "tout": info.get("tout"), "look": info.get("look"), "tone": tone}
+
+
+def read_meta(ti):
+    """Що Svit поставив на шматок під час монтажу (зберігається в коментарі MediaIn)."""
+    comp = comp_of(ti, SVIT_COMP)
+    if not comp:
+        return None
+    try:
+        for t in (comp.GetToolList(False, "MediaIn") or {}).values():
+            c = t.GetInput("Comments")
+            if c and str(c).startswith("svit:"):
+                return json.loads(str(c)[5:])
+    except Exception:
+        return None
+    return None
+
+
+def fit_transitions(ents, speed, manual=False):
+    """Після ручних правок: переходи лише між шматками, що стоять встик; пара out/in — однакова;
+    довжина переходу — не більше третини коротшого з двох шматків. Шматки впорядковані за часом."""
+    ents = [e for e in ents if not e[1].get("adj")]
+    ents.sort(key=lambda e: e[0].GetStart())
+    keep = []
+    for ti, info in ents:
+        m = read_meta(ti)
+        if m:
+            for k in ("src", "fx", "ratio", "tin", "tout"):
+                info[k] = m.get(k)
+            if not info.get("look"):
+                info["look"] = m.get("look")
+            if info.pop("svit_only", None) or manual:
+                info["comp"] = SVIT_COMP          # власний таймлайн без плану: беремо все з самого шматка
+                info["tone_m"] = m.get("tone")
+        elif manual:
+            continue                              # чужі кліпи «Підлаштувати переходи» не чіпає
+        info["cap"] = [None, None]
+        keep.append((ti, info))
+    ents = keep
+    fps_len = lambda ti: max(1, int(ti.GetEnd()) - int(ti.GetStart()))
+    changed = 0
+    for i, (ti, info) in enumerate(ents):
+        nxt = ents[i + 1] if i + 1 < len(ents) else None
+        if i == 0 and info.get("tin"):
+            info["tin"] = None
+            changed += 1
+        if not nxt:
+            if info.get("tout"):
+                info["tout"] = None
+                changed += 1
+            continue
+        t2, i2 = nxt
+        touching = abs(int(t2.GetStart()) - int(ti.GetEnd())) <= 1
+        kind = info.get("tout") or i2.get("tin")
+        short = min(fps_len(ti), fps_len(t2))
+        if not touching or short < 6:
+            kind = None
+        if kind != info.get("tout") or kind != i2.get("tin"):
+            changed += 1
+        info["tout"] = kind
+        i2["tin"] = kind
+        cap = max(1.0, short / 3.0)
+        info["cap"][1] = cap
+        i2["cap"][0] = cap
+    L("  Переходи: шматків %d, змінено стиків %d" % (len(ents), changed))
+    return ents
+
+
 def restyle(sess, data):
     """«Вигляд»: змінює ефекти на готових таймлайнах без нового монтажу.
     mode: tune — лише підкрутити значення у вузлах (миттєво); rebuild — перебудувати композиції
@@ -2108,6 +2192,8 @@ def restyle(sess, data):
     P = {"ov": ov, "lks": lks, "fxs": fxs,
          "tone": (lambda info: manual_tone(ts)) if manual else (lambda info: tone.get(info.get("src")))}
     groups, skipped = style_targets(sess, data)
+    if mode == "fit":
+        groups = [(tl, fit_transitions(ents, spd, manual)) for tl, ents in groups]
     total = sum(len(e) for _, e in groups) or 1
     if manual and not sum(len(e) for _, e in groups):
         raise RuntimeError("На відкритому таймлайні немає відеокліпів, які можна змінити."
@@ -2174,7 +2260,8 @@ def restyle(sess, data):
                         try:
                             _, errs = apply_fusion(ti, info.get("ratio"), info.get("fx") or (), fxs, info["label"],
                                                    None, lks, info.get("tin"), info.get("tout"), overlay=None,
-                                                   tone=P["tone"](info), speed=spd, comp_name=SVIT_COMP)
+                                                   tone=P["tone"](info), speed=spd, comp_name=SVIT_COMP,
+                                                   meta=_meta(info, P["tone"](info)), tr_cap=info.get("cap"))
                         finally:
                             STYLE["grain"], STYLE["live"] = g0, lv0
                     stats["rebuilt"] += 1
@@ -2185,9 +2272,12 @@ def restyle(sess, data):
                             ti.DeleteFusionCompByName(nm)
                     except Exception:
                         pass
+                    tn_i = info["tone_m"] if "tone_m" in info else P["tone"](info)
                     _, errs = apply_fusion(ti, info.get("ratio"), info.get("fx") or (), fxs, info["label"],
                                            info.get("look"), lks, info.get("tin"), info.get("tout"),
-                                           overlay=ov, tone=P["tone"](info), speed=spd, comp_name=comp_name)
+                                           overlay=ov, tone=tn_i, speed=spd, comp_name=info.get("comp", comp_name),
+                                           meta=_meta(info, tn_i) if (not manual or info.get("comp")) else None,
+                                           tr_cap=info.get("cap"))
                     stats["rebuilt"] += 1
                 stats["fail" if errs else "ok"] += 1
                 n += 1
