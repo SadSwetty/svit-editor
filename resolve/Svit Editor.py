@@ -148,7 +148,17 @@ class Session:
                 items = []
         elif mode == "folder":
             folder = mp.GetCurrentFolder()
+            fname = str(folder.GetName() if folder else "")
+            # відкрита службова папка Svit (таймлайн + пісня) — беремо папку, з якої монтували минулого разу
+            if (fname.startswith("Svit Editor") or fname.startswith("Svit Text")) and SRC_FOLDER[0] is not None:
+                folder = SRC_FOLDER[0]
+                try:
+                    mp.SetCurrentFolder(folder)
+                except Exception:
+                    pass
             items = (folder.GetClipList() or []) if folder else []
+            if folder is not None and not (fname.startswith("Svit Editor") or fname.startswith("Svit Text")):
+                SRC_FOLDER[0] = folder
         elif mode == "dropped":
             items = list(self.dropped)
         else:
@@ -2143,6 +2153,7 @@ def timeline_info(sess):
 
 
 TPL = [None]
+SRC_FOLDER = [None]       # папка Media Pool, з якої востаннє брали матеріал
 
 
 def build(sess, data):
@@ -2172,6 +2183,10 @@ def build(sess, data):
     version = int(data.get("version") or 1)
     vtag = "" if version == 1 else " v%d" % version
     sess.status(0.1, "Створюю таймлайн" + (" (правка %d)" % version if version > 1 else ""))
+    try:
+        orig_folder = mp.GetCurrentFolder()
+    except Exception:
+        orig_folder = None
     fname = "Svit Editor %s" % stamp
     folder = None
     for f in (mp.GetRootFolder().GetSubFolderList() or []):
@@ -2257,6 +2272,11 @@ def build(sess, data):
             n = r[0]
         if n not in tl_names:
             tl_names.append(n)
+    if orig_folder is not None:          # повертаємо Media Pool у папку з матеріалом — для наступного монтажу
+        try:
+            mp.SetCurrentFolder(orig_folder)
+        except Exception:
+            pass
     return {"ok": True, "folder": fname, "count": len(ranges), "version": version, "fusion": stats, "timelines": tl_names,
             "text_note": TEXT_STATE["note"],
             "log": str(LOG_PATH)}
