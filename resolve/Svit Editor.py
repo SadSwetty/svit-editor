@@ -579,8 +579,9 @@ def ghost_blend(look, m):
 
 
 def set_dreamy(bl, mg, d):
-    bl.SetInput("XBlurSize", round(8 + 30 * max(d, 0.01), 1))
-    mg.SetInput("Blend", round(0.2 + 0.55 * d, 3) if d > 0 else 0.0)
+    # м'яке сяйво без «туману»: невеликий радіус, слабке накладання
+    bl.SetInput("XBlurSize", round(3 + 9 * max(d, 0.01), 1))
+    mg.SetInput("Blend", round(0.08 + 0.32 * d, 3) if d > 0 else 0.0)
     _pass(bl, d <= 0)
     _pass(mg, d <= 0)
 
@@ -592,15 +593,16 @@ def set_halation(t, h):
     except Exception:
         pass
     if "SoftGlow" in rid:
-        for inp, v in (("Threshold", 0.55 - 0.25 * h), ("Gain", 0.4 + 1.6 * h), ("XGlowSize", 8 + 40 * h),
-                       ("RedScale", 1.0), ("GreenScale", 0.42), ("BlueScale", 0.22)):
+        # halation як на плівці: світяться лише найсвітліші місця, вузько, тепло-помаранчевим, а не весь кадр
+        for inp, v in (("Threshold", 0.86 - 0.12 * h), ("Gain", 0.3 + 0.9 * h), ("XGlowSize", 2.5 + 7 * h),
+                       ("RedScale", 1.0), ("GreenScale", 0.55), ("BlueScale", 0.3)):
             try:
                 t.SetInput(inp, v)
             except Exception:
                 pass
     else:
         try:
-            t.SetInput("Blend", min(1.0, 0.2 + 0.8 * h))
+            t.SetInput("Blend", min(1.0, 0.12 + 0.5 * h))
         except Exception:
             pass
     _pass(t, h <= 0)
@@ -647,7 +649,7 @@ def add_overlay(comp, chain, cur, ov):
     if blur > 0:
         how.append("dreamy %.0f%%" % (blur * 100))
     # halation: стоковий ефект або червоно-помаранчеве світіння SoftGlow навколо світлих місць
-    if ofx_node(comp, chain, cur, "halation", min(1.0, 0.2 + 0.8 * hal)):
+    if ofx_node(comp, chain, cur, "halation", min(1.0, 0.12 + 0.5 * hal)):
         g = _nm(cur[0], "SvHal")
     else:
         g = _nm(chain(_tool(comp, "SoftGlow")), "SvHal")
@@ -1257,13 +1259,22 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
     return start, end_frame
 
 
-def add_subs(mp, srt):
+def add_subs(mp, srt, tl=None):
     if not srt:
         return
     try:
         subs = mp.ImportMedia([srt]) or []
         if subs:
-            mp.AppendToTimeline([{"mediaPoolItem": subs[0]}])
+            # субтитри від самого початку таймлайну (час у файлі — від нуля)
+            done = None
+            if tl is not None:
+                try:
+                    done = mp.AppendToTimeline([{"mediaPoolItem": subs[0], "recordFrame": tl.GetStartFrame()}])
+                except Exception:
+                    done = None
+            if not done:
+                done = mp.AppendToTimeline([{"mediaPoolItem": subs[0]}])
+            L("Субтитри %s: %s" % (os.path.basename(srt), "додано" if done else "не додались"))
     except Exception as e:
         L("Субтитри не додались автоматично: %s" % e)
 
@@ -1603,7 +1614,7 @@ def build(sess, data):
             ranges.append((name, tl, a, b - 1))
         for mus, st in songs:          # треки — після всіх відео, щоб не зсували кінець таймлайну
             place_song(sess, mp, tl, mus, st)
-        add_subs(mp, plan.get("srt_all"))
+        add_subs(mp, plan.get("srt_all"), tl)
     else:
         for i, v in enumerate(videos, 1):
             sess.status(0.1 + 0.8 * (i - 1) / len(videos), "Монтую ролик %d з %d" % (i, len(videos)))
@@ -1619,7 +1630,7 @@ def build(sess, data):
                 tl.AddMarker(0, "Blue", "Чому це спрацює", v.get("why", ""), 1)
             except Exception:
                 pass
-            add_subs(mp, v.get("srt"))
+            add_subs(mp, v.get("srt"), tl)
             ranges.append((name, tl, a, b - 1))
 
     if data.get("auto_render") and ranges:

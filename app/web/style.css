@@ -503,3 +503,12 @@ html,body{overflow-x:hidden}
 .mytlhead{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
 .mytl .stylebox{margin-top:12px;box-shadow:none;max-width:none}
 .foot .mytlbtn{margin-left:auto;margin-right:10px;white-space:nowrap}
+.welcome .wnoshow{display:flex;align-items:center;justify-content:center;gap:8px;margin:14px 0 10px;font:12px var(--mono);cursor:pointer;user-select:none}
+.welcome .wnoshow input{width:16px;height:16px;accent-color:#141414;margin:0}
+.modal .notes{max-height:300px}
+.wave .mhead{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:#2B3BE0;display:none;pointer-events:none;z-index:5;box-shadow:0 0 0 1px rgba(251,250,246,.6)}
+.wave .mhead::after{content:attr(data-t);position:absolute;top:2px;left:4px;font:10px var(--mono);background:#2B3BE0;color:#FBFAF6;padding:0 3px}
+.mhint{font:11px var(--mono);opacity:.55;margin-top:5px}
+textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--mono);padding:10px 12px;border:1.5px solid var(--ink);background:var(--paper3);resize:vertical;box-sizing:border-box}
+.lyrstat{font:11px var(--mono);opacity:.65;margin-top:5px;min-height:14px}
+.lyrstat.warn2{opacity:1;color:#B4321E}

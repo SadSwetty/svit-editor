@@ -117,7 +117,8 @@
         <div id="mfull" style="display:none">
           <div class="mhead"><b id="mname">—</b><span class="mono" id="mdur"></span><span class="sp"></span>
             <button class="btn" id="mplay" onclick="SV.playMusic()">Прослухати</button><button class="btn" onclick="SV.pickMusic()">Інший трек</button></div>
-          <div class="wave" id="wave"><canvas id="wavec"></canvas></div>
+          <div class="wave" id="wave"><canvas id="wavec"></canvas><div class="mhead" id="mhead"></div></div>
+          <div class="mhint">Пробіл — грати / пауза · двічі пробіл — на початок шматка</div>
           <div class="mrange"><span id="mrange">—</span><span class="mono">тягни ручки — вибери шматок пісні</span></div>
         </div>
       </div>
@@ -130,7 +131,7 @@
 
     <div class="card adv" id="adv">
       <div class="tabs" id="tabs">
-        <button data-t="frame">Кадр</button><button data-t="pace">Динаміка</button><button data-t="zoom">Зуми</button><button data-t="fx">Ефекти</button><button data-t="color">Колір</button><button data-t="result">Результат</button><button data-t="analysis">Аналіз</button>
+        <button data-t="frame">Кадр</button><button data-t="pace">Динаміка</button><button data-t="zoom">Зуми</button><button data-t="fx">Ефекти</button><button data-t="color">Колір</button><button data-t="text">Текст</button><button data-t="result">Результат</button><button data-t="analysis">Аналіз</button>
       </div>
 
       <div class="tab" data-t="frame">
@@ -224,6 +225,16 @@
         </div>
       </div>
 
+      <div class="tab" data-t="text">
+        <div class="subhead">Слова пісні <i class="i left" data-tip="Встав текст пісні — по рядку на субтитр. Svit послухає трек з «Монтаж під аудіо», знайде, коли звучить кожен рядок, і покладе субтитри на окрему доріжку саме в такт співу. Порожні рядки й позначки [Приспів] пропускаються. Розпізнавання працює на твоєму Маці, безкоштовно.">i</i></div>
+        <textarea id="lyrics" class="lyrics" placeholder="Встав сюди текст пісні — кожен рядок стане субтитром.&#10;&#10;[Куплет 1]&#10;Перший рядок пісні&#10;Другий рядок пісні"></textarea>
+        <div class="lyrstat" id="lyrstat"></div>
+        <div class="sw" data-k="song_sync" style="margin-top:8px"><div class="lb">У відео грає цей трек<small>Знято під пісню з колонки — Svit підгонить відео під імпортований трек, щоб губи й рухи збігались</small></div><i class="i up" data-tip="Svit порівнює звук кожного відео з треком і знаходить, яке місце пісні в ньому звучить. Тоді шматки відео стають на таймлайн рівно під той момент пісні.">i</i><div class="tog"></div></div>
+        <div class="sw" data-k="lyrics_upper"><div class="lb">ВЕЛИКИМИ ЛІТЕРАМИ<small>Інакше — як написано в тексті</small></div><div class="tog"></div></div>
+        <div class="subhead" style="margin-top:18px">Субтитри з мови</div>
+          <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Розпізнана мова з відео (інтерв'ю, влоги) на окремій доріжці, стиль — в Inspector</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
+      </div>
+
       <div class="tab" data-t="result">
         <div class="grid" style="margin-bottom:16px">
           <div class="fld"><label>Скільки відео зробити <i class="i left" data-tip="Скільки окремих готових роликів зробити з усього матеріалу. «Авто» — Claude візьме кількість з твого запиту.">i</i></label><select id="num"></select></div>
@@ -232,7 +243,6 @@
         <div class="fld"><label>Розміщення <i class="i left" data-tip="«Один таймлайн» — усі ролики підряд, кожен позначений маркером. «Окремі» — кожен ролик на своєму таймлайні.">i</i></label>
           <div class="seg" id="layout"><button data-v="one">Усе на одному таймлайні</button><button data-v="separate">Кожне відео окремо</button></div></div>
         <div style="margin-top:8px">
-          <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Слова на окремій доріжці, стиль — в Inspector</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
           <div class="sw" data-k="auto_render"><div class="lb">Одразу експортувати MP4<small>У папку Фільми → Svit Editor</small></div><i class="i up" data-tip="Після монтажу DaVinci сам експортує кожен ролик окремим MP4.">i</i><div class="tog"></div></div>
         </div>
       </div>
@@ -370,6 +380,7 @@
   <p class="wtext">Це <mark>айтішники Бобогорохії</mark>! Ми раді повідомити, що наше суспільство перейшло в епоху нових технологій!</p>
   <p class="wtext">І ми створили нову <b>розумну машину для нарізання шматків плівки</b>!</p>
   <div class="wsign"><span>Svit Editor <span id="wver"></span></span><span>Бобогорохія · відділ нових технологій</span></div>
+  <label class="wnoshow"><input type="checkbox" id="wnoshow"> Більше не показувати при запуску</label>
   <button class="go" onclick="SV.welcomeClose()">Почати різати</button>
 </div></div></div>
 <div class="modal mytl" id="mytl" onclick="if(event.target===this)SV.myTimeline(false)"><div class="box"><div class="bar-title"><span>Svit Editor · мій таймлайн</span></div><div class="inner">
@@ -398,7 +409,8 @@
       <button class="btn" onclick="SV.api('open_url','usage')">Витрати на сайті</button>
     </div>
     <div class="kv" style="margin-top:14px"><span>Оновлення</span><span id="updstate">—</span></div>
-    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.checkUpdate(true)">Перевірити оновлення</button></div>
+    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.checkUpdate(true)">Оновитись</button></div>
+    <div class="sw" data-k="beta_updates" style="margin-top:6px"><div class="lb">Тестові версії<small>Пропонувати й alpha-версії з новими функціями — можуть бути нестабільні</small></div><div class="tog"></div></div>
     <div class="kv" style="margin-top:14px"><span>Журнали</span><span>~/.svit-editor/logs</span></div>
     <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.api('open_logs_folder')">Папка журналів</button></div>
   </div>
@@ -436,7 +448,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -446,7 +458,9 @@ const SV = {
     $("#ver").textContent = s.version || "—";
     $$("#langsw button").forEach(b=>b.classList.toggle("on",b.dataset.l===(this.st.ui_lang||"uk")));
     if(this.st.ui_lang==="en") setTimeout(()=>I18N.set("en"),0);
-    if(!this.st.welcomed){ $("#wver").textContent = s.version || ""; setTimeout(()=>$("#welcome").classList.add("on"), 250) }
+    this.whatsnew = s.whatsnew || null; this.version = s.version || "";
+    if(!this.st.welcome_hide){ $("#wver").textContent = s.version || ""; $("#wnoshow").checked=false; setTimeout(()=>$("#welcome").classList.add("on"), 250) }
+    else if(this.whatsnew) setTimeout(()=>this.showWhatsNew(), 400);
     $$("#vertag").forEach(e=>e.textContent = "v"+(s.version||"—"));
     this.keyInfo(s.key_tail); RATE = s.rate || 1000;
     $("#costcoin").innerHTML = coin(26);
@@ -454,14 +468,15 @@ const SV = {
     this.bind(); this.paint(); this.renderShots(); this.renderSources();
     $("#nobridge").style.display = this.bridge ? "none" : "block";
     this.show(s.has_key ? "main" : "activate");
-    setTimeout(()=>this.checkUpdate(false),1500);
     if(this.st.music && this.st.music.path){ this.api("set_music", this.st.music.path).then(r=>{ if(r && !r.error){ this.mPeaks=r.peaks; this.renderMusic() } }) }
     window.addEventListener("resize",()=>this.drawWave());
+    window.addEventListener("keydown",e=>this.musicKey(e));
   },
   keyInfo(t){ $("#keyinfo").textContent = t ? "підключено …"+t : "не вставлено" },
 
   bind(){
     $("#prompt").addEventListener("input",e=>{this.st.prompt=e.target.value; this.save()});
+    $("#lyrics").addEventListener("input",e=>{this.st.lyrics=e.target.value; this.lyrStat(); clearTimeout(this.lyrT); this.lyrT=setTimeout(()=>this.save(),400)});
     for(const id of ["num","len","lang","whisper","model"]) $("#"+id).addEventListener("change",()=>this.read());
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
@@ -509,7 +524,7 @@ const SV = {
   },
   paint(){
     const s=this.st;
-    $("#prompt").value=s.prompt; $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
+    $("#prompt").value=s.prompt; if(document.activeElement!==$("#lyrics")) $("#lyrics").value=s.lyrics||""; this.lyrStat(); $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
     $("#whisper").value=s.whisper_model; $("#model").value=s.model;
     $$("#srcmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.source_mode));
     $$("#layout button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.layout));
@@ -591,14 +606,40 @@ const SV = {
     for(let i=0;i<n;i+=2){ const v=Math.max(0.03,p[i])*(h*0.42); g.fillRect(i*bw, h/2-v, Math.max(1,bw*1.4), v*2) }
     g.fillRect(0,h/2-0.5,w,1);
   },
+  // прослуховування вибраного шматка: лінія біжить по хвилі; пробіл — пауза/грати, подвійний пробіл — на початок
   async playMusic(){
-    if(this.audio){ this.stopMusic(); return }
-    const m=this.st.music; $("#mplay").textContent="…";
+    if(this.audio){ if(this.audio.paused) this.audio.play(); else this.audio.pause(); this.musicBtn(); return }
+    const m=this.st.music; if(!m||!m.path) return; $("#mplay").textContent="…";
     const url=await this.api("music_preview", m.path, m.start, m.end);
     if(!url){ $("#mplay").textContent="Прослухати"; this.toast("Не вдалося відтворити"); return }
-    this.audio=new Audio(url); this.audio.onended=()=>this.stopMusic(); this.audio.play(); $("#mplay").textContent="Стоп";
+    const au=new Audio(url); this.audio=au; this.audioFrom=m.start;
+    au.onended=()=>{ au.currentTime=0; this.musicBtn(); this.drawHead() };
+    au.onplay=au.onpause=()=>this.musicBtn();
+    au.play(); this.musicBtn(); this.headLoop();
   },
-  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio=null } const b=$("#mplay"); if(b) b.textContent="Прослухати" },
+  musicBtn(){ const b=$("#mplay"); if(b) b.textContent = this.audio && !this.audio.paused ? "Пауза" : (this.audio && this.audio.currentTime>0.05 ? "Грати далі" : "Прослухати") },
+  headLoop(){ cancelAnimationFrame(this.headRaf); const f=()=>{ this.drawHead(); if(this.audio) this.headRaf=requestAnimationFrame(f) }; f() },
+  drawHead(){
+    const h=$("#mhead"), m=this.st.music; if(!h) return;
+    if(!this.audio||!m){ h.style.display="none"; return }
+    const t=this.audioFrom+this.audio.currentTime; h.style.display="block"; h.style.left=(t/m.duration*100)+"%";
+    $("#mhead").dataset.t=tfmt(t) },
+  musicSeek(t){ if(!this.audio) return; this.audio.currentTime=Math.max(0,t); this.drawHead() },
+  musicKey(e){
+    if(e.code!=="Space"||e.repeat) return;
+    const tg=e.target, tag=(tg.tagName||"").toLowerCase();
+    if(tag==="textarea"||tag==="select"||(tag==="input"&&!["range","checkbox"].includes(tg.type))||tg.isContentEditable) return;
+    const m=this.st.music; if(!this.st.music_on||!m||!m.path||!$("#v-main").classList.contains("on")) return;
+    if(document.querySelector(".modal.on")) return;
+    e.preventDefault();
+    const now=Date.now();
+    if(now-(this.lastSpace||0)<330){            // подвійний пробіл: повертаємо стан і ставимо лінію на початок
+      this.lastSpace=0; clearTimeout(this.spaceT);
+      if(this.audio){ const was=this.spaceWas; this.audio.currentTime=0; if(was) this.audio.play(); else this.audio.pause(); this.musicBtn(); this.drawHead() }
+      return }
+    this.lastSpace=now; this.spaceWas=this.audio?!this.audio.paused:false;
+    this.playMusic() },
+  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio=null } cancelAnimationFrame(this.headRaf); this.drawHead(); const b=$("#mplay"); if(b) b.textContent="Прослухати" },
 
   // ---- редактор після монтажу
   ed:{video:0, mode:"full", a:0, b:0}, edRange:null,
@@ -785,7 +826,7 @@ const SV = {
   upd:null, updating:false,
   async checkUpdate(loud){
     $("#updstate").textContent="Перевіряю…";
-    const r = await this.api("check_update"); this.upd=r;
+    const r = await this.api("check_update", !!this.st.beta_updates); this.upd=r;
     if(!r){ $("#updstate").textContent="—"; return }
     if(r.error){ $("#updstate").textContent="Немає зв'язку"; if(loud) this.toast(r.error); return }
     if(r.available){
@@ -798,8 +839,8 @@ const SV = {
   modal(on){ $("#updmodal").classList.toggle("on",on) },
   updInfo(){
     const r=this.upd; if(!r) return;
-    $("#umt").textContent="Svit Editor "+r.version; $("#ums").textContent="Зараз у тебе "+r.current;
-    $("#umn").style.display = r.notes ? "block":"none"; $("#umn").textContent=r.notes||"";
+    $("#umt").textContent="Svit Editor "+r.version+(r.prerelease?" · тестова":""); $("#ums").textContent="Зараз у тебе "+r.current;
+    $("#umn").style.display = r.notes ? "block":"none"; $("#umn").textContent=(r.notes||"").replace(/^#+\s*/gm,"").replace(/\*\*/g,"");
     $("#umbar").style.display="none";
     $("#umrow").innerHTML='<button class="btn" onclick="SV.modal(false)">Пізніше</button><button class="go" onclick="SV.updStart()">Оновити</button>';
     this.modal(true);
@@ -869,7 +910,17 @@ const SV = {
     else if(!r.timeline) $("#mytls").textContent="У DaVinci не відкритий жоден таймлайн";
     else $("#mytls").innerHTML=esc(r.timeline)+" · "+r.clips+" "+plural(r.clips,"кліп","кліпи","кліпів")+" · рухай повзунки — зміни одразу в DaVinci";
   },
-  welcomeClose(){ $("#welcome").classList.remove("on"); this.st.welcomed=true; this.save() },
+  lyrStat(){ const t=(this.st.lyrics||"").split("\n").map(x=>x.trim()).filter(x=>x&&!/^[\[(].*[\])]$/.test(x)).length;
+    const el=$("#lyrstat"); if(!el) return;
+    el.textContent = !t ? "" : t+" "+plural(t,"рядок","рядки","рядків")+(this.st.music_on&&this.st.music&&this.st.music.path ? " · прив'яжу до треку «"+this.st.music.name+"»" : " · увімкни «Монтаж під аудіо» і вибери трек, щоб прив'язати");
+    el.classList.toggle("warn2", !!t && !(this.st.music_on&&this.st.music&&this.st.music.path)) },
+  welcomeClose(){ $("#welcome").classList.remove("on"); this.st.welcomed=true; this.st.welcome_hide=$("#wnoshow").checked; this.save();
+    if(this.whatsnew) setTimeout(()=>this.showWhatsNew(), 300) },
+  showWhatsNew(){
+    const t=this.whatsnew; this.whatsnew=null; if(!t) return;
+    $("#umt").textContent="Що нового у "+this.version; $("#ums").textContent="Оновлення встановлено";
+    $("#umn").style.display="block"; $("#umn").textContent=t.replace(/^#+\s*/gm,"").replace(/\*\*/g,""); $("#umbar").style.display="none";
+    $("#umrow").innerHTML='<button class="go" onclick="SV.modal(false)">Добре</button>'; this.modal(true) },
   async openLog(){ const r=await this.api("open_log"); this.toast(r?"Журнал відкрито в TextEdit":"Не вдалося відкрити журнал") },
   copyErr(){ navigator.clipboard && navigator.clipboard.writeText($("#errm").textContent+"\n\n"+$("#errd").textContent); this.toast("Скопійовано — встав у чат з Claude") },
 };

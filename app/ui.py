@@ -172,7 +172,22 @@ class Api:
                 "spend": cfg.get("spend", {}).get(time.strftime("%Y-%m"), 0.0), "version": VERSION,
                 "bridge": self.bridge.ok, "sources": self.bridge.sources() if self.bridge.ok else {},
                 "shots": shots, "on_top": cfg.get("on_top", True), "rate": engine.TOKENS_PER_USD,
-                "refs": self.list_refs()}
+                "refs": self.list_refs(), "whatsnew": self._whatsnew(cfg)}
+
+    @staticmethod
+    def _whatsnew(cfg):
+        """Перший запуск нової версії — показуємо, що змінилось (текст лежить поруч із програмою)."""
+        seen = cfg.get("seen_version")
+        if seen == VERSION:
+            return None
+        cfg["seen_version"] = VERSION
+        engine.save_cfg(cfg)
+        if not seen:                  # найперший запуск — для цього є вітальне вікно
+            return None
+        try:
+            return (Path(__file__).parent / "whatsnew.md").read_text(encoding="utf-8").strip()[:4000] or None
+        except Exception:
+            return None
 
     def save_settings(self, st):
         cfg = engine.load_cfg()
@@ -408,29 +423,40 @@ class Api:
             svlog.log(f"open_path: {e!r}")
 
     # ---- оновлення
-    def check_update(self):
+    def check_update(self, beta=False):
+        """Перевірка лише за кнопкою в налаштуваннях. beta — показувати й тестові версії (alpha/beta)."""
         import urllib.request
         repo = engine.load_cfg().get("update_repo") or UPDATE_REPO
         try:
-            req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases/latest",
+            req = urllib.request.Request(f"https://api.github.com/repos/{repo}/releases?per_page=15",
                                          headers={"User-Agent": "SvitEditor", "Accept": "application/vnd.github+json"})
             with urllib.request.urlopen(req, timeout=10) as r:
-                rel = json.loads(r.read().decode("utf-8"))
+                rels = json.loads(r.read().decode("utf-8"))
         except Exception as e:
             if getattr(e, "code", None) == 404:
                 return {"available": False, "current": VERSION}
             return {"available": False, "error": "Не вдалося перевірити оновлення. Перевір інтернет."}
-        latest = str(rel.get("tag_name", "")).lstrip("vV")
-        asset = next((a for a in rel.get("assets", []) if a.get("name", "").endswith(".zip")), None)
-        if not latest or not asset:
+        best = None
+        for rel in rels if isinstance(rels, list) else []:
+            if rel.get("draft") or (rel.get("prerelease") and not beta):
+                continue
+            ver = str(rel.get("tag_name", "")).lstrip("vV")
+            asset = next((a for a in rel.get("assets", []) if a.get("name", "").endswith(".zip")), None)
+            if not ver or not asset:
+                continue
+            url = asset.get("browser_download_url", "")
+            if not url.startswith(f"https://github.com/{repo}/releases/download/"):
+                svlog.log(f"Оновлення: підозріле посилання на файл, ігнорую: {url}")
+                continue
+            if best is None or vtuple(ver) > vtuple(best[0]):
+                best = (ver, rel, asset)
+        if not best:
             return {"available": False, "current": VERSION}
-        url = asset.get("browser_download_url", "")
-        if not url.startswith(f"https://github.com/{repo}/releases/download/"):
-            svlog.log(f"Оновлення: підозріле посилання на файл, ігнорую: {url}")
-            return {"available": False, "current": VERSION}
-        self._upd_offer = {"url": url, "version": latest}
+        latest, rel, asset = best
+        self._upd_offer = {"url": asset["browser_download_url"], "version": latest}
         return {"available": vtuple(latest) > vtuple(VERSION), "version": latest, "current": VERSION,
-                "notes": (rel.get("body") or "").strip()[:1500], "url": asset["browser_download_url"],
+                "prerelease": bool(rel.get("prerelease")),
+                "notes": (rel.get("body") or "").strip()[:2500], "url": asset["browser_download_url"],
                 "size": asset.get("size", 0)}
 
     def install_update(self, url=None, version=None):
@@ -810,6 +836,9 @@ class Api:
                     "cinematic": bool(st.get("cinematic", False)),
                     "cinematic_level": int(st.get("cinematic_level", 60)),
                     "take_sync": bool(st.get("take_sync", True)),
+                    "lyrics": str(st.get("lyrics") or "")[:20000] if st.get("music_on") else "",
+                    "lyrics_upper": bool(st.get("lyrics_upper", False)),
+                    "song_sync": bool(st.get("song_sync", True)),
                     "ui_lang": "en" if st.get("ui_lang") == "en" else "uk",
                     "auto_tone": bool(st.get("auto_tone", True)),
                     "look": st.get("look") if (st.get("look") in engine.LOOKS or st.get("look") == "auto") else "none",

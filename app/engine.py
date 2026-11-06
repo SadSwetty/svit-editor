@@ -599,6 +599,14 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
     if job.get("music_info"):
         import music as _m
         content.append({"type": "text", "text": _m.music_text(job["music_info"])})
+        if job.get("lyrics_timing"):
+            ms0 = float(job["music_info"].get("start", 0))
+            ll = [f"{max(0, ln['start'] - ms0):.1f}–{ln['end'] - ms0:.1f} с: {ln['text']}"
+                  for ln in job["lyrics_timing"] if ln["end"] > ms0][:80]
+            if ll:
+                content.append({"type": "text", "text": "РЯДКИ ПІСНІ (час від початку ролика; субтитри з ними додасть "
+                                "програма — сам їх не пиши). Став склейки на початках рядків і фраз, крупні плани "
+                                "на ключових словах:\n" + "\n".join(ll)})
         if job.get("sync"):
             ms = job["music_info"]["start"]
             lines = []
@@ -852,6 +860,134 @@ def s_smooth(job):
     return bool(job.get("settings", {}).get("zoom_dynamic", True))
 
 
+# ======================================================================= слова пісні → субтитри
+
+def _norm_word(w):
+    import re
+    w = w.lower().replace("’", "'").replace("ʼ", "'").replace("`", "'")
+    return re.sub(r"[^\w]+", "", w)
+
+
+def lyric_lines(text):
+    """Рядки тексту пісні: порожні рядки й позначки на кшталт [Приспів] пропускаємо, довгі рядки ділимо."""
+    import re
+    out = []
+    for ln in (text or "").splitlines():
+        ln = ln.strip()
+        if not ln or re.fullmatch(r"[\[(].*[\])]", ln):
+            continue
+        words = ln.split()
+        while len(" ".join(words)) > 42 and len(words) > 3:
+            cut = len(words) // 2
+            commas = [k + 1 for k, w in enumerate(words[:-1]) if w.endswith((",", ";", "—", "-", ":"))]
+            if commas:
+                cut = min(commas, key=lambda k: abs(k - len(words) / 2.0))
+            out.append(" ".join(words[:cut]))
+            words = words[cut:]
+        out.append(" ".join(words))
+    return out
+
+
+def align_lyrics(lines, heard, span_start, span_end):
+    """Прив'язує рядки тексту до слів, які розпізнав Whisper у треку (час — у секундах треку).
+    Збіги слів дають «якорі», решту слів розставляємо між якорями пропорційно довжині.
+    Повертає ([{start,end,text}], частка впізнаних слів)."""
+    import difflib
+    lw = []                                  # (індекс рядка, слово)
+    for i, ln in enumerate(lines):
+        for w in ln.split():
+            lw.append((i, w))
+    if not lw:
+        return [], 0.0
+    a = [_norm_word(w) for _, w in lw]
+    b = [_norm_word(h["word"]) for h in heard]
+    times = [None] * len(lw)
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    for blk in sm.get_matching_blocks():
+        for k in range(blk.size):
+            if a[blk.a + k]:
+                h = heard[blk.b + k]
+                times[blk.a + k] = (h["start"], h["end"])
+    # нечіткі збіги для одиночних слів між якорями (Whisper часто чує слово трохи інакше)
+    j = 0
+    for i in range(len(a)):
+        if times[i] is None and a[i]:
+            lo = max((times[k][1] for k in range(i) if times[k]), default=span_start)
+            for jj in range(len(b)):
+                if heard[jj]["start"] >= lo - 0.01 and difflib.SequenceMatcher(None, a[i], b[jj]).ratio() >= 0.75:
+                    nxt = next((times[k][0] for k in range(i + 1, len(a)) if times[k]), span_end)
+                    if heard[jj]["end"] <= nxt + 0.01:
+                        times[i] = (heard[jj]["start"], heard[jj]["end"])
+                    break
+    known = sum(1 for t in times if t)
+    ratio = known / float(len(lw))
+    if known == 0:
+        return [], 0.0
+    # інтерполяція між якорями за довжиною слів
+    idx = [i for i, t in enumerate(times) if t]
+    first, last = idx[0], idx[-1]
+    rate = max(0.18, (times[last][1] - times[first][0]) / max(1, sum(len(a[i]) + 2 for i in range(first, last + 1))))
+    for i in range(first - 1, -1, -1):
+        d = (len(a[i]) + 2) * rate
+        times[i] = (max(span_start, times[i + 1][0] - d), times[i + 1][0])
+    for i in range(last + 1, len(times)):
+        d = (len(a[i]) + 2) * rate
+        times[i] = (times[i - 1][1], min(span_end + 30, times[i - 1][1] + d))
+    for p, q in zip(idx, idx[1:]):
+        if q - p > 1:
+            t0, t1 = times[p][1], times[q][0]
+            w = [len(a[i]) + 2 for i in range(p + 1, q)]
+            tot, acc = float(sum(w)) or 1.0, 0.0
+            for k, i in enumerate(range(p + 1, q)):
+                s0 = t0 + (t1 - t0) * acc / tot
+                acc += w[k]
+                times[i] = (s0, t0 + (t1 - t0) * acc / tot)
+    res = []
+    for li, ln in enumerate(lines):
+        ts = [times[k] for k, (i, _) in enumerate(lw) if i == li]
+        if ts:
+            res.append({"start": ts[0][0], "end": ts[-1][1], "text": ln})
+    for k in range(len(res) - 1):            # рядок висить до наступного (але не довше +1.2 с після слів)
+        res[k]["end"] = min(max(res[k]["end"], res[k]["start"] + 0.6), res[k + 1]["start"], res[k]["end"] + 1.2) \
+            if res[k + 1]["start"] > res[k]["start"] else res[k]["end"]
+    if res:
+        res[-1]["end"] = max(res[-1]["end"], res[-1]["start"] + 0.8)
+    return res, ratio
+
+
+def transcribe_song(path, start, end, model_name, language, prompt="", check=lambda: None):
+    """Розпізнає спів у вибраному шматку треку (час слів — у секундах треку)."""
+    audio = decode_audio_16k(path, check)
+    if audio is None:
+        return []
+    a0 = max(0.0, float(start) - 3.0)
+    seg = audio[int(a0 * 16000): int((float(end) + 3.0) * 16000)]
+    if len(seg) < 1600:
+        return []
+    from faster_whisper import WhisperModel
+    model = WhisperModel(model_name, device="cpu", compute_type="int8")
+    segments, _ = model.transcribe(seg, language=language or None, word_timestamps=True, vad_filter=False,
+                                   initial_prompt=(prompt or "")[:220] or None, condition_on_previous_text=False)
+    words = []
+    for sg in segments:
+        check()
+        for w in sg.words or []:
+            if w.word.strip():
+                words.append({"start": a0 + float(w.start), "end": a0 + float(w.end), "word": w.word.strip()})
+    return words
+
+
+def lyric_chunks(timing, mus_start, offset, length):
+    """Рядки пісні для одного ролика: час треку → час ролика (+offset на спільному таймлайні)."""
+    out = []
+    for ln in timing or []:
+        st, en = ln["start"] - mus_start, ln["end"] - mus_start
+        if en <= 0.05 or st >= length - 0.05:
+            continue
+        out.append([{"start": offset + max(0.0, st), "end": offset + min(length, en), "word": ln["text"]}])
+    return out
+
+
 def fmt_ts(t):
     ms = int(round(max(0.0, t) * 1000))
     return f"{ms // 3600000:02}:{ms // 60000 % 60:02}:{ms // 1000 % 60:02},{ms % 1000:03}"
@@ -877,7 +1013,7 @@ def caption_chunks(segs, data, offset, n=3):
     return chunks
 
 
-def write_srt(path, chunk_lists):
+def write_srt(path, chunk_lists, upper=True):
     chunks = [c for cl in chunk_lists for c in cl]
     lines = []
     for i, ch in enumerate(chunks):
@@ -886,7 +1022,7 @@ def write_srt(path, chunk_lists):
         if i + 1 < len(chunks):
             en = min(en, chunks[i + 1][0]["start"])
         lines.append(f"{i + 1}\n{fmt_ts(st)} --> {fmt_ts(en)}\n"
-                     + " ".join(w["word"] for w in ch).upper() + "\n")
+                     + (lambda t: t.upper() if upper else t)(" ".join(w["word"] for w in ch)) + "\n")
     Path(path).write_text("\n".join(lines), encoding="utf-8")
     return bool(chunks)
 
@@ -1045,8 +1181,22 @@ class Job:
             self.report("sound", 0.95, "Слухаю музику: темп і удари")
             mu = job["music"]
             job["music_info"] = _m.analyze(mu["path"], mu.get("start", 0), mu.get("end", 30))
-            if s.get("cinematic") and s.get("take_sync", True):
+            lyr = (s.get("lyrics") or "").strip()
+            if (s.get("cinematic") and s.get("take_sync", True)) or (lyr and s.get("song_sync", True)):
                 job["sync"] = self._sync_takes(_m, mu["path"])
+            if lyr:
+                self.report("sound", 0.96, "Слухаю спів і прив'язую слова пісні")
+                try:
+                    lines = lyric_lines(lyr)
+                    heard = transcribe_song(mu["path"], mu.get("start", 0), mu.get("end", 30),
+                                            s.get("whisper_model", "medium"), s.get("language"), " ".join(lines),
+                                            self.check)
+                    timing, ratio = align_lyrics(lines, heard, float(mu.get("start", 0)), float(mu.get("end", 30)))
+                    job["lyrics_timing"] = timing
+                    job["lyrics_ratio"] = round(ratio, 2)
+                    _log(f"Слова пісні: рядків {len(lines)}, почуто слів {len(heard)}, впізнано {ratio:.0%}")
+                except Exception as e:
+                    _log(f"Слова пісні: не вдалося прив'язати: {e!r}")
             (self.out / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
 
         ref_videos = []
@@ -1440,7 +1590,22 @@ def finalize_videos(job, data, videos, notes, out, version):
     out = Path(out)
     tag = "" if version == 1 else f"_v{version}"
     srt_all = None
-    if s.get("subtitles") and s.get("transcribe") and not job.get("music_info"):
+    lt = job.get("lyrics_timing")
+    if lt and job.get("music_info"):
+        ms = float(job["music_info"].get("start", 0))
+        up = bool(s.get("lyrics_upper", False))
+        if s["layout"] == "one":
+            offset, lists = 0.0, []
+            for v in videos:
+                lists.append(lyric_chunks(lt, ms, offset, v["duration"]))
+                offset += v["duration"] + VIDEO_GAP
+            p = out / f"lyrics_all{tag}.srt"
+            srt_all = str(p) if write_srt(p, lists, up) else None
+        else:
+            for i, v in enumerate(videos, 1):
+                p = out / f"lyrics_{i:02}{tag}.srt"
+                v["srt"] = str(p) if write_srt(p, [lyric_chunks(lt, ms, 0.0, v["duration"])], up) else None
+    elif s.get("subtitles") and s.get("transcribe") and not job.get("music_info"):
         if s["layout"] == "one":
             offset, lists = 0.0, []
             for v in videos:
