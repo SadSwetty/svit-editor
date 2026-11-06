@@ -21,7 +21,8 @@ except Exception:   # pragma: no cover
 HOME = Path.home() / ".svit-editor"
 CONFIG = HOME / "config.json"
 
-MAX_FRAMES = 240
+MAX_FRAMES = 400             # кадрів на весь матеріал (йдуть листами по 4)
+FRAME_STEP_SEC = 2.0        # мінімальний крок між кадрами
 FRAME_SIZE = 384
 MAX_REF_SIZE = 1568
 CONTEXT_LIMIT = 180_000   # з запасом від вікна моделі
@@ -361,6 +362,79 @@ def grab_frames(path, times, on_pct, check):
     return out
 
 
+def _dhash(jpg):
+    from PIL import Image
+    im = Image.open(io.BytesIO(jpg)).convert("L").resize((9, 8))
+    px = list(im.getdata())
+    bits = 0
+    for r in range(8):
+        for c in range(8):
+            bits = (bits << 1) | (1 if px[r * 9 + c] > px[r * 9 + c + 1] else 0)
+    return bits
+
+
+def visual_groups(sources, frames, thr=11):
+    """Групи джерел, що знімають те саме (схожі кадри за перцептивним хешем). {id: № групи}."""
+    hs = {}
+    for src in sources:
+        fr = frames.get(src["id"]) or []
+        if fr:
+            hs[src["id"]] = [_dhash(j) for _, j in fr]
+    ids = list(hs)
+    parent = {i: i for i in ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            ha, hb = hs[a], hs[b]
+            close = sum(1 for x in ha if min(bin(x ^ y).count("1") for y in hb) <= thr)
+            if close >= max(1, 0.5 * min(len(ha), len(hb))):
+                parent[find(a)] = find(b)
+    groups = {}
+    for i in ids:
+        groups.setdefault(find(i), []).append(i)
+    out, g = {}, 0
+    for members in groups.values():
+        if len(members) > 1:
+            g += 1
+            for m in members:
+                out[str(m)] = g
+    return out
+
+
+def visual_groups_text(job):
+    vg = job.get("vgroups") or {}
+    by = {}
+    for sid, g in vg.items():
+        by.setdefault(g, []).append(int(sid))
+    return "; ".join("група %d: №%s" % (g, ", №".join(str(x) for x in sorted(m))) for g, m in sorted(by.items()))
+
+
+def contact_sheet(items):
+    """До 4 кадрів в одному зображенні 2×2 з підписом часу — більше кадрів для Claude без перевищення лімітів."""
+    from PIL import Image, ImageDraw
+    ims = [Image.open(io.BytesIO(j)).convert("RGB") for _, j in items]
+    w = max(i.size[0] for i in ims)
+    h = max(i.size[1] for i in ims)
+    cols = 2 if len(ims) > 1 else 1
+    rows = (len(ims) + 1) // 2 if len(ims) > 1 else 1
+    sheet = Image.new("RGB", (cols * w + (cols - 1) * 6, rows * h + (rows - 1) * 6), (20, 20, 20))
+    d = ImageDraw.Draw(sheet)
+    for k, (im, (t, _)) in enumerate(zip(ims, items)):
+        x, y = (k % cols) * (w + 6), (k // cols) * (h + 6)
+        sheet.paste(im, (x, y))
+        lab = "%d) %.1fs" % (k + 1, t)
+        d.rectangle([x, y, x + 8 + 9 * len(lab), y + 22], fill=(0, 0, 0))
+        d.text((x + 5, y + 5), lab, fill=(255, 255, 80))
+    buf = io.BytesIO()
+    sheet.save(buf, "JPEG", quality=72)
+    return buf.getvalue()
+
+
 def tone_of(jpegs):
     """Автоконтраст: яскравість кадрів джерела → поправки контрасту, чорного і гами.
     Пласке (лог) відео отримує більше контрасту, темне — трохи світліше, підняті чорні опускаються."""
@@ -412,8 +486,8 @@ def estimate(sources_total_sec, n_sources, settings, n_shots, n_refs=0):
     tin += minutes * 35
     frames = 0
     if settings.get("frames", True):
-        frames = min(MAX_FRAMES, int(sources_total_sec / 4)) if sources_total_sec else 0
-        tin += frames * 125
+        frames = min(MAX_FRAMES, int(sources_total_sec / FRAME_STEP_SEC) + n_sources * 2) if sources_total_sec else 0
+        tin += frames * 200
     tin += n_shots * 1600 + n_refs * 1700
     tin = min(tin, CONTEXT_LIMIT)
     nv = settings.get("num_videos_n") or 5
@@ -496,6 +570,10 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 - КОЖНА склейка має міняти картинку: інше джерело або момент того самого джерела мінімум на 3 с далі.
   Ніколи не став підряд два шматки, де другий продовжує перший (той самий план) — це виглядає як збій.
 - Жоден момент не повторюється: шматки не перекриваються в часі ні в одному відео, ні між відео.
+- РІЗНОМАНІТТЯ: використай якомога більше різних джерел і різних моментів усередині довгих джерел (початок,
+  середина, кінець), а не перші секунди. Ніколи не став підряд два шматки з одного джерела або з однієї
+  «групи схожих» (той самий об'єкт/локація — список нижче). Якщо об'єкт мусить повторитись — візьми інший момент
+  і явно іншу крупність: zoom 1.25–1.5 з pan_x/pan_y, щоб це читалось як новий план, а не повтор.
 - Якщо є кілька камер одного концерту, різні камери в той самий момент — це різні кадри, їх можна чергувати.
 - Межі шматків не мають різати слово чи фразу посередині, якщо автор не просить інакше.
 - Перший шматок кожного відео має чіпляти з першої секунди.
@@ -584,9 +662,16 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
             parts.append("Енергія звуку (цифра = 1 секунда):")
             parts.append(energy_text(d["energy"]))
         content.append({"type": "text", "text": "\n".join(parts)})
-        for t, jpg in frames.get(src["id"], [])[::frame_step]:
-            content.append({"type": "text", "text": f"Кадр: джерело {src['id']}, {t:.1f} с"})
-            content.append(b64img(jpg))
+        fr = frames.get(src["id"], [])[::frame_step]
+        for i0 in range(0, len(fr), 4):
+            chunk = fr[i0:i0 + 4]
+            content.append({"type": "text", "text": f"Кадри джерела {src['id']} (зліва направо, згори вниз): "
+                            + ", ".join(f"{k + 1}) {t:.1f} с" for k, (t, _) in enumerate(chunk))})
+            try:
+                content.append(b64img(contact_sheet(chunk) if len(chunk) > 1 else chunk[0][1]))
+            except Exception:
+                for _, jpg in chunk:
+                    content.append(b64img(jpg))
     for i, jpg in enumerate(refs, 1):
         content.append({"type": "text", "text": f"Скрін-приклад від автора №{i}:"})
         content.append(b64img(jpg))
@@ -596,6 +681,10 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
         for t, jpg in rv["frames"][::frame_step]:
             content.append({"type": "text", "text": f"Кадр референсу №{i}, {t:.1f} с"})
             content.append(b64img(jpg))
+    if job.get("vgroups"):
+        content.append({"type": "text", "text": "ГРУПИ СХОЖИХ ДЖЕРЕЛ (знімають той самий об'єкт чи локацію — "
+                        "не став їх поруч, з кожної групи бери кілька найкращих моментів, а не все підряд): "
+                        + visual_groups_text(job)})
     if job.get("music_info"):
         import music as _m
         content.append({"type": "text", "text": _m.music_text(job["music_info"])})
@@ -709,6 +798,53 @@ def grammar_check(segs, title=""):
     return jumps
 
 
+def _vkey(job, sid):
+    """Ключ «схожості»: група схожих джерел або саме джерело."""
+    g = (job.get("vgroups") or {}).get(str(sid))
+    return ("g", g) if g else ("s", sid)
+
+
+def spread_raw(raw, job):
+    """Не ставимо підряд шматки з одного джерела чи групи схожих — переставляємо порядок.
+    Синхронізовані з піснею (ліпсінк) можуть іти підряд — це безперервний спів."""
+    sync = job.get("sync") or {}
+    sid_of = lambda sg: int(_f(sg.get("source", 1), 1))
+    pool, out = list(raw), []
+    moved = 0
+    while pool:
+        if out:
+            pk = _vkey(job, sid_of(out[-1]))
+            c = pool[0]
+            both_sync = str(sid_of(c)) in sync and str(sid_of(out[-1])) in sync
+            if _vkey(job, sid_of(c)) == pk and not both_sync:
+                j = next((k for k in range(1, len(pool)) if _vkey(job, sid_of(pool[k])) != pk), None)
+                if j is not None:
+                    out.append(pool.pop(j))
+                    moved += 1
+                    continue
+        out.append(pool.pop(0))
+    if moved:
+        _log(f"Різноманіття: переставлено шматків {moved}, щоб схожі кадри не йшли підряд")
+    return out
+
+
+def free_start(spans, dur, want, sdur):
+    """Найближчий до want вільний відрізок довжини dur у джерелі (поза вже взятими моментами)."""
+    best, pos = None, 0.0
+    gaps = []
+    for a, b in sorted(spans):
+        if a - GAP - pos >= dur:
+            gaps.append((pos, a - GAP - dur))
+        pos = max(pos, b + GAP)
+    if sdur - pos >= dur:
+        gaps.append((pos, sdur - dur))
+    for lo, hi in gaps:
+        st = min(max(want, lo), hi)
+        if best is None or abs(st - want) < abs(best - want):
+            best = st
+    return best
+
+
 def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
     """Чистить шматки одного відео: межі, повтори, склейки «план сам із собою», біти музики, тиша.
     used — {джерело: [(start, end)]} уже зайняті моменти (по всьому плану)."""
@@ -722,11 +858,28 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
     cursor = beat_from
     segs = []
     _auto_zoom = {}
+    raw = [seg_from_list(x, grid is not None) if isinstance(x, (list, tuple)) else x for x in raw]
+    raw = spread_raw([x for x in raw if isinstance(x, dict)], job)
+    seen_key = {}            # що вже було в цьому ролику: ключ схожості → кадрування
+    reframed = [0]
+
+    def reframe(item, reuse=False):
+        """Повтор того самого об'єкта — інше кадрування, щоб читалось як новий план."""
+        k = _vkey(job, item["source"])
+        prev = seen_key.get(k)
+        if crop and (prev is not None or reuse):
+            pz = prev["zoom"] if prev else item["zoom"]
+            if pz < 1.15:
+                nz = 1.3
+                side = -1 if (prev or {}).get("pan_x", 0) > 0 else 1
+                item["zoom"], item["pan_x"], item["pan_y"] = nz, round(0.35 * side, 2), round(-0.15 * side, 2)
+            else:
+                item["zoom"], item["pan_x"], item["pan_y"] = 1.0, 0.0, 0.0
+            if "zoom_end" in item:
+                item["zoom_end"] = round(item["zoom"] + (0.06 if item["zoom"] < 1.2 else -0.06), 3)
+            reframed[0] += 1
+        seen_key[k] = {"zoom": item["zoom"], "pan_x": item.get("pan_x", 0)}
     for sg in raw:
-        if isinstance(sg, (list, tuple)):
-            sg = seg_from_list(sg, grid is not None)
-        if not isinstance(sg, dict):
-            continue
         sid = int(_f(sg.get("source", 1), 1))
         if sid not in durations:
             continue
@@ -775,15 +928,19 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
                 if cand >= 0 and cand + dur <= sdur:
                     st, synced = cand, True
             cursor = nxt
+            reuse = False
             if not synced:
                 if st + dur > sdur:
                     st = max(0.0, sdur - dur)
-                for a, b in sorted(used.get(sid, [])):
-                    if st < b + GAP and st + dur > a - GAP:
-                        cand = b + GAP
-                        st = cand if cand + dur <= sdur else st
+                if any(st < b + GAP and st + dur > a - GAP for a, b in used.get(sid, [])):
+                    fs = free_start(used.get(sid, []), dur, st, sdur)
+                    if fs is not None:
+                        st = fs             # той самий момент уже був — беремо вільний відрізок цього джерела
+                    else:
+                        reuse = True        # вільного місця немає — хоча б інше кадрування
             else:
                 item["sync"] = True
+            reframe(item, reuse)
             item.update(start=round(st, 3), end=round(st + dur, 3), beat=cursor)
             used.setdefault(sid, []).append((st, st + dur))
             segs.append(item)
@@ -804,9 +961,12 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
         if not cut:
             continue
         st, en = cut
+        reframe(item)
         item.update(start=round(st, 3), end=round(en, 3), tighten=bool(sg.get("tighten")))
         used.setdefault(sid, []).append((st, en))
         segs.append(item)
+    if reframed[0]:
+        _log(f"Різноманіття: інше кадрування для повторних об'єктів — {reframed[0]} шматків")
     if grid is not None and segs and cursor < beat_to:
         # добиваємо до кінця фрагмента пісні останнім шматком
         last = segs[-1]
@@ -1063,7 +1223,7 @@ class Job:
         self.total = total
         w_listen = total * WHISPER_SPEED.get(self.s.get("whisper_model", "medium"), 0.22) \
             if self.s.get("transcribe") else 0
-        n_frames = min(MAX_FRAMES, int(total / 4)) if self.s.get("frames") else 0
+        n_frames = min(MAX_FRAMES, int(total / FRAME_STEP_SEC)) if self.s.get("frames") else 0
         n_refs = len(job.get("refs") or [])
         self.weights = {"prepare": 3, "listen": w_listen, "sound": total * 0.02 + 2,
                         "look": n_frames * 0.15, "refs": n_refs * 12, "plan": 25 + 15, "build": 8}
@@ -1173,14 +1333,17 @@ class Job:
 
         frames = {}
         if s.get("frames"):
-            interval = max(4.0, self.total / MAX_FRAMES)
+            interval = max(FRAME_STEP_SEC, self.total / MAX_FRAMES)
             done_n = 0
             all_times = {}
             for src in job["sources"]:
+                d = src["duration"]
                 times, t = [], interval / 2
-                while t < src["duration"]:
+                while t < d:
                     times.append(t)
                     t += interval
+                if d >= 2.5 and len(times) < 3:      # навіть короткий кліп — початок, середина, кінець
+                    times = [round(d * f, 2) for f in (0.12, 0.5, 0.88)]
                 all_times[src["id"]] = times
             total_n = sum(len(v) for v in all_times.values()) or 1
             for k, src in enumerate(job["sources"], 1):
@@ -1212,6 +1375,13 @@ class Job:
                 if t:
                     tone[str(src["id"])] = t
             job["tone"] = tone
+        if frames:
+            try:
+                job["vgroups"] = visual_groups(job["sources"], frames)
+                if job["vgroups"]:
+                    _log("Схожі джерела (той самий об'єкт/локація): %s" % visual_groups_text(job))
+            except Exception as e:
+                _log(f"Схожість кадрів: {e!r}")
             _log(f"Автоконтраст: {tone}")
             try:
                 (Path(self.out) / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -282,6 +282,8 @@
     "Кожен рядок — справжній титр Text+ на доріжці «Svit Text»: посувай на таймлайні, слова, шрифт і колір правиш в Inspector. Один раз перетягни Effects → Titles → Text+ у Media Pool — Svit бере його як основу.": "Each line is a real Text+ title on the “Svit Text” track: move it on the timeline, edit words, font and colour in the Inspector. Drag Effects → Titles → Text+ into the Media Pool once — Svit uses it as the base.",
     "Перевірити": "Check", "Text+ у Media Pool: ще не перевіряв": "Text+ in Media Pool: not checked yet", "Перевіряю Media Pool…": "Checking the Media Pool…",
     "Text+ у Media Pool не знайдено. Edit → Effects → Toolbox → Titles → перетягни Text+ у Media Pool цього проєкту, потім натисни «Перевірити»": "Text+ not found in the Media Pool. Edit → Effects → Toolbox → Titles → drag Text+ into this project's Media Pool, then press Check",
+    "Скопіювати журнал": "Copy log", "Скопіювати": "Copy", "Журнал скопійовано — встав у чат з Claude (⌘V)": "Log copied — paste it into the chat with Claude (⌘V)",
+    "Не вдалося скопіювати — натисни «Відкрити журнал»": "Couldn't copy — press “Open log”",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",

@@ -9,6 +9,7 @@ import base64
 import io
 import json
 import os
+import subprocess
 import sys
 import threading
 import time
@@ -841,6 +842,24 @@ class Api:
                 self._style_need.pop(bool(p.get("manual")), None)
             self._js("restyleFail", friendly_error(e))
             return None
+
+    def copy_text(self, text):
+        """Копіювання в буфер обміну через macOS (вбудоване вікно не має доступу до буфера)."""
+        try:
+            subprocess.run(["pbcopy"], input=str(text or "").encode("utf-8"), check=True, timeout=5)
+            return True
+        except Exception as e:
+            svlog.log(f"pbcopy: {e!r}")
+            return False
+
+    def copy_log(self):
+        """Повний журнал (вікно + DaVinci) у буфер обміну."""
+        try:
+            rp = svlog.report("Журнал на прохання користувача", open_it=False)
+            text = Path(rp).read_text(encoding="utf-8") if rp else ""
+        except Exception as e:
+            text = f"Журнал не зібрався: {e!r}"
+        return self.copy_text(text)
 
     def textplus_status(self):
         try:

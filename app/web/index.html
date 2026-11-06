@@ -351,7 +351,7 @@
     <div class="sub2" id="dones"></div>
     <div class="vids" id="vids"></div>
     <div class="note noi" id="note" style="display:none"></div>
-    <div class="logrow"><button class="linkbtn" onclick="SV.openLog()">Журнал роботи</button><span>— якщо щось вийшло не так, відкрий і надішли Claude</span></div>
+    <div class="logrow"><button class="linkbtn" onclick="SV.openLog()">Журнал роботи</button><button class="linkbtn" onclick="SV.copyLog()">Скопіювати</button><span>— якщо щось вийшло не так, відкрий і надішли Claude</span></div>
     <div id="donestyle" style="width:100%;max-width:580px"></div>
     <div class="stylebox" id="stylebox">
       <div class="lbl">Вигляд <span class="free">наживо · 0 токенів</span><i class="i" data-tip="Рухай повзунки — Svit одразу оновлює ефекти прямо на таймлайні в DaVinci, спершу шматок під курсором. Halation, дрімі, зерно, фантоми й контраст підкручуються миттєво; фактура, сила вінтажу, ефектів і переходів — перебудовуються. Монтаж не змінюється, Claude не викликається.">i</i></div>
@@ -391,7 +391,7 @@
     <div class="errhint">Звіт про збій уже відкрито в TextEdit — скопіюй його і надішли Claude.</div>
     <details style="margin-top:16px;max-width:560px;width:100%;text-align:left"><summary style="font-size:13px;color:var(--muted);font-weight:400">Технічні деталі</summary>
       <pre id="errd" style="white-space:pre-wrap;font-size:11.5px;color:#bbb;background:var(--field);padding:10px;border-radius:10px;margin-top:8px;max-height:200px;overflow:auto;user-select:text"></pre></details>
-    <div class="row"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.copyErr()">Скопіювати деталі</button><button class="go" onclick="SV.show('main')">Назад</button></div>
+    <div class="row"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.copyErr()">Скопіювати журнал</button><button class="go" onclick="SV.show('main')">Назад</button></div>
   </div>
 </section>
 
@@ -456,7 +456,7 @@
     <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.checkUpdate(true)">Оновитись</button></div>
     <div class="sw" data-k="beta_updates" style="margin-top:6px"><div class="lb">Тестові версії<small>Пропонувати й alpha-версії з новими функціями — можуть бути нестабільні</small></div><div class="tog"></div></div>
     <div class="kv" style="margin-top:14px"><span>Журнали</span><span>~/.svit-editor/logs</span></div>
-    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.api('open_logs_folder')">Папка журналів</button></div>
+    <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.openLog()">Відкрити журнал</button><button class="btn" onclick="SV.copyLog()">Скопіювати журнал</button><button class="btn" onclick="SV.api('open_logs_folder')">Папка журналів</button></div>
   </div>
 </div>
 
@@ -1099,7 +1099,8 @@ const SV = {
     $("#umn").style.display="block"; $("#umn").textContent=t.replace(/^#+\s*/gm,"").replace(/\*\*/g,""); $("#umbar").style.display="none";
     $("#umrow").innerHTML='<button class="go" onclick="SV.modal(false)">Добре</button>'; this.modal(true) },
   async openLog(){ const r=await this.api("open_log"); this.toast(r?"Журнал відкрито в TextEdit":"Не вдалося відкрити журнал") },
-  copyErr(){ navigator.clipboard && navigator.clipboard.writeText($("#errm").textContent+"\n\n"+$("#errd").textContent); this.toast("Скопійовано — встав у чат з Claude") },
+  async copyErr(){ const ok=await this.api("copy_log"); this.toast(ok?"Журнал скопійовано — встав у чат з Claude (⌘V)":"Не вдалося скопіювати — натисни «Відкрити журнал»") },
+  async copyLog(){ return this.copyErr() },
 };
 
 function motionMax(p){ return 0.02 + (p/100)*0.13 }
