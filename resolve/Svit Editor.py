@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 28      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 29      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -1053,7 +1053,8 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
                 cur[0] = g
             set_grain(g, gr)
             return "%.0f%%" % (gr * 100) if gr > 0.02 else "вимк."
-        step("зерно", f)
+        if gr > 0.0 or STYLE["live"] or look:
+            step("зерно", f)
         if "blur_in" in fx:
             def f():
                 bl = chain(_tool(comp, "Blur"))
@@ -1228,21 +1229,41 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
       (video.get("title", ""), len(infos), len(items), len(vi), start, end_frame, gaps))
     if len(vi) < len(infos):
         L("  УВАГА: DaVinci додав менше шматків, ніж у плані")
+    rotated = []
     for ti, (src, sg) in zip(vi, metas):
+        rot = sg.get("rot")
+        if rot:
+            # відео знято догори дриґом / на боці — повертаємо кліп (кут у DaVinci — проти годинникової)
+            ok_r = ti.SetProperty("RotationAngle", float(-rot if rot in (90, -90) else rot))
+            rotated.append("%s %s°%s" % (src.get("name", "?"), rot, "" if ok_r else " (не вдалось)"))
         if not size:
             if sg["zoom"] != 1.0:
                 ti.SetProperty("ZoomX", sg["zoom"])
                 ti.SetProperty("ZoomY", sg["zoom"])
             continue
-        z, px, py = frame_math(src["resolution"], size[0], size[1], sg["zoom"],
-                               sg["pan_x"], sg["pan_y"])
+        res = src["resolution"]
+        if rot in (90, -90):               # на боці: ширина і висота міняються місцями
+            try:
+                w_, h_ = [int(x) for x in str(res).lower().split("x")[:2]]
+                res = "%dx%d" % (h_, w_)
+            except Exception:
+                pass
+        z, px, py = frame_math(res, size[0], size[1], sg["zoom"], sg["pan_x"], sg["pan_y"])
         ti.SetProperty("ZoomX", z)
         ti.SetProperty("ZoomY", z)
         if px:
             ti.SetProperty("Pan", px)
         if py:
             ti.SetProperty("Tilt", py)
+    if rotated:
+        L("  Повернуто: %s" % ", ".join(rotated))
     look = video.get("look")
+    adj_on = ADJ["tpl"] is not None
+    ov_all = overlay
+    if adj_on:                        # творчі ефекти підуть на Adjustment Clip — на кліпах лише зуми, переходи, тон
+        look, overlay = None, None
+        grain_saved = STYLE["grain"]
+        STYLE["grain"] = 0.0
     lut_ok = False
     if look:
         lut_ok = apply_look_lut(sess, vi, look, look_strength, stats)
@@ -1275,6 +1296,9 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
             defer_song.append((mus, start))
         else:
             place_song(sess, mp, tl, mus, start)
+    if adj_on:
+        STYLE["grain"] = grain_saved
+        place_adjust(sess, mp, tl, start, end_frame, video.get("look"), look_strength, ov_all, fx_strength, speed, stats)
     return start, end_frame
 
 
@@ -1706,9 +1730,10 @@ def place_text(sess, mp, tl, items, anim, tpl=None):
             L("Текст: беру титр «%s» з Media Pool" % tpl.GetName())
             if place_titles(sess, mp, tl, items, anim, tpl):
                 return
-        TEXT_STATE["note"] = ("Текст поставив звичайною доріжкою субтитрів. Щоб він був титрами Text+ з твоїм шрифтом, "
-                              "кольором і світінням — один раз перетягни Effects → Titles → Text+ у Media Pool і "
-                              "перемонтуй (або натисни «Правка» з тим самим запитом).")
+        if "Text+" not in TEXT_STATE["note"]:
+            TEXT_STATE["note"] += ("Текст поставив звичайною доріжкою субтитрів. Щоб він був титрами Text+ з твоїм шрифтом, "
+                                  "кольором і світінням — один раз перетягни Effects → Titles → Text+ у Media Pool і "
+                                  "перемонтуй (або натисни «Правка» з тим самим запитом).")
         L("Текст: Text+ у Media Pool не знайдено — ставлю доріжку субтитрів")
         add_subs(mp, items[0].get("srt"), tl)
         return
@@ -1894,15 +1919,19 @@ ADJ_NAMES = ("adjustment", "коригувальн", "корректирующ",
 
 def is_adjustment(ti):
     try:
-        if ti.GetMediaPoolItem():
-            return False
-    except Exception:
-        pass
-    try:
         n = (ti.GetName() or "").lower()
     except Exception:
         return False
-    return any(k in n for k in ADJ_NAMES)
+    if not any(k in n for k in ADJ_NAMES):
+        return False
+    try:
+        mpi = ti.GetMediaPoolItem()
+        if mpi:                           # Adjustment Clip, покладений з Media Pool, — не відео і не аудіо
+            typ = str(mpi.GetClipProperty("Type") or "").lower()
+            return not ("video" in typ or "audio" in typ)
+    except Exception:
+        pass
+    return True
 
 
 def adjustment_items(tl):
@@ -1989,6 +2018,13 @@ def style_targets(sess, data):
     out = []
     for tl, vids in groups:
         items = sorted(tl.GetItemListInTrack("video", 1) or [], key=lambda t: t.GetStart())
+        adj_items = []
+        for idx in range(2, (tl.GetTrackCount("video") or 1) + 1):
+            try:
+                if tl.GetTrackName("video", idx) == "Svit Look":
+                    adj_items += sorted(tl.GetItemListInTrack("video", idx) or [], key=lambda t: t.GetStart())
+            except Exception:
+                pass
         flat = [(v, k, sg) for v in vids for k, sg in enumerate(v["segments"])]
         if len(items) != len(flat):
             L("  «%s»: на таймлайні %d шматків, у плані %d — оновлюю по порядку" % (tl.GetName(), len(items), len(flat)))
@@ -2000,7 +2036,14 @@ def style_targets(sess, data):
                               "ratio": ze / max(sg.get("zoom", 1.0), 0.01)
                               if ze and abs(ze - sg.get("zoom", 1.0)) > 0.005 else None,
                               "fx": sg.get("fx") or (), "tin": sg.get("tr") if k > 0 else None,
-                              "tout": segs[k + 1].get("tr") if k + 1 < len(segs) else None}))
+                              "tout": segs[k + 1].get("tr") if k + 1 < len(segs) else None,
+                              "clip_only": bool(adj_items)}))
+        # монтаж з Adjustment Clip: фактура, halation, дрімі й зерно — на ньому
+        for j, ti in enumerate(adj_items):
+            v = vids[min(j, len(vids) - 1)] if len(adj_items) == len(vids) else vids[0]
+            ents.append((ti, {"look": v.get("look"), "src": None, "label": "adj#%d" % (j + 1), "adj": True}))
+        if adj_items:
+            L("  «%s»: Adjustment Clip на «Svit Look»: %d — творчі ефекти на них" % (tl.GetName(), len(adj_items)))
         out.append((tl, ents))
     # спершу таймлайн, відкритий зараз
     if cur_tl is not None:
@@ -2105,8 +2148,36 @@ def restyle(sess, data):
                             stats["old"] = stats.get("old", 0) + 1
                     else:
                         stats["old"] = stats.get("old", 0) + 1
-                elif mode == "tune" and tune_item(ti, info, P, comp_name):
+                elif info.get("clip_only") and mode == "tune":
+                    # під Adjustment Clip на кліпі лише тон (вирівнювання) — підкручуємо його, якщо він є
+                    c = comp_of(ti, SVIT_COMP)
+                    tn = c.FindTool("SvTone") if c else None
+                    if tn:
+                        set_tone(tn, P["tone"](info))
                     stats["tuned"] += 1
+                elif info.get("adj") and mode == "tune" and tune_item(ti, info, P, LOOK_COMP):
+                    stats["tuned"] += 1
+                elif mode == "tune" and not info.get("adj") and tune_item(ti, info, P, comp_name):
+                    stats["tuned"] += 1
+                elif info.get("clip_only") or info.get("adj"):
+                    try:
+                        for nm in (ti.GetFusionCompNameList() or []):
+                            ti.DeleteFusionCompByName(nm)
+                    except Exception:
+                        pass
+                    if info.get("adj"):
+                        _, errs = apply_fusion(ti, None, (), fxs, info["label"], info.get("look"), lks, None, None,
+                                               overlay=ov, tone=None, speed=spd, comp_name=LOOK_COMP)
+                    else:
+                        g0, lv0 = STYLE["grain"], STYLE["live"]
+                        STYLE["grain"], STYLE["live"] = 0.0, False
+                        try:
+                            _, errs = apply_fusion(ti, info.get("ratio"), info.get("fx") or (), fxs, info["label"],
+                                                   None, lks, info.get("tin"), info.get("tout"), overlay=None,
+                                                   tone=P["tone"](info), speed=spd, comp_name=SVIT_COMP)
+                        finally:
+                            STYLE["grain"], STYLE["live"] = g0, lv0
+                    stats["rebuilt"] += 1
                 else:
                     try:
                         # чужі композиції вже відсіяні — стару нашу (і порожні) прибираємо
@@ -2153,6 +2224,93 @@ def timeline_info(sess):
 
 
 TPL = [None]
+ADJ = {"tpl": None, "tracks": {}}     # Adjustment Clip з Media Pool: творчі ефекти — на ньому, а не на кожному кліпі
+
+
+def find_adjust_template(mp):
+    """Adjustment Clip, який автор один раз переніс у Media Pool (з таймлайну)."""
+    found, seen = [], []
+
+    def walk(folder, depth=0):
+        if found or depth > 8:
+            return
+        for c in folder.GetClipList() or []:
+            try:
+                name = str(c.GetName() or "")
+                typ = str(c.GetClipProperty("Type") or "")
+            except Exception:
+                continue
+            if any(k in name.lower() for k in ADJ_NAMES) or "adjustment" in typ.lower():
+                found.append(c)
+                return
+            if "video" not in typ.lower() and "audio" not in typ.lower():
+                seen.append("%s [%s]" % (name, typ))
+        for sub in folder.GetSubFolderList() or []:
+            walk(sub, depth + 1)
+    try:
+        walk(mp.GetRootFolder())
+    except Exception as e:
+        L("Пошук Adjustment Clip: %s" % e)
+    if not found:
+        L("Adjustment Clip у Media Pool не знайдено; не-медіа елементи: %s" % ("; ".join(seen[:10]) or "—"))
+    return found[0] if found else None
+
+
+def place_adjust(sess, mp, tl, a, b, look, look_strength, overlay, fx_strength, speed, stats=None):
+    """Adjustment Clip над роликом (кадри a…b) з фактурою, halation, дрімі й зерном."""
+    tpl = ADJ["tpl"]
+    key = tl.GetName()
+    track = ADJ["tracks"].get(key)
+    if not track:
+        tl.AddTrack("video")
+        track = tl.GetTrackCount("video")
+        try:
+            tl.SetTrackName("video", track, "Svit Look")
+        except Exception:
+            pass
+        ADJ["tracks"][key] = track
+    # Adjustment Clip у Media Pool має свою довжину (зазвичай 5 с) — якщо ролик довший, кладемо кілька встик
+    placed, pos, guard = [], int(a), 0
+    while pos < int(b) - 1 and guard < 40:
+        guard += 1
+        n = int(b) - pos
+        res = mp.AppendToTimeline([{"mediaPoolItem": tpl, "startFrame": 0, "endFrame": n - 1,
+                                    "trackIndex": track, "recordFrame": pos}]) or []
+        if not res:
+            break
+        ti = res[0]
+        try:
+            d = int(ti.GetDuration() or 0)
+        except Exception:
+            d = n
+        placed.append(ti)
+        if d <= 0:
+            break
+        pos += d
+    if not placed:
+        L("  Adjustment Clip не став на таймлайн")
+        return False
+    for ti in placed:
+        _adjust_fx(sess, ti, track, look, look_strength, overlay, fx_strength, speed, stats)
+    return True
+
+
+def _adjust_fx(sess, ti, track, look, look_strength, overlay, fx_strength, speed, stats):
+    lut_ok = False
+    if look:
+        try:
+            lut_ok = apply_look_lut(sess, [ti], look, look_strength, stats)
+        except Exception:
+            lut_ok = False
+    STYLE["live"] = True             # усі регульовані вузли — одразу, щоб «Вигляд» міг їх підкручувати
+    try:
+        done, errs = apply_fusion(ti, None, (), fx_strength, "adjustment", look, look_strength, None, None,
+                                  lut_ok=lut_ok, overlay=overlay, tone=None, speed=speed, comp_name=LOOK_COMP)
+    finally:
+        STYLE["live"] = False
+    L("  Adjustment Clip V%d від %s: %s%s" % (track, ti.GetStart(), ", ".join(done), (" · помилки: %s" % errs) if errs else ""))
+
+
 SRC_FOLDER = [None]       # папка Media Pool, з якої востаннє брали матеріал
 
 
@@ -2161,6 +2319,13 @@ def build(sess, data):
     project = sess.project
     mp = project.GetMediaPool()
     TPL[0] = None
+    ADJ["tpl"], ADJ["tracks"] = None, {}
+    if data.get("adjust_fx"):
+        ADJ["tpl"] = find_adjust_template(mp)
+        if ADJ["tpl"] is None:
+            TEXT_STATE["note"] = ("Ефекти на Adjustment Clip: у Media Pool його немає, тож ефекти лягли на кожен кліп. "
+                                  "Перетягни Effects → Toolbox → Effects → Adjustment Clip на таймлайн, а з таймлайну — "
+                                  "у Media Pool, і перемонтуй. ")
     if any((it or {}).get("tp") for it in (data["plan"].get("text_all") or [])[:1]) or \
             any(((v.get("text") or [{}])[0] or {}).get("tp") for v in data["plan"].get("videos") or []):
         TPL[0] = find_title_template(mp)       # шукаємо до створення нових папок
@@ -2278,7 +2443,7 @@ def build(sess, data):
         except Exception:
             pass
     return {"ok": True, "folder": fname, "count": len(ranges), "version": version, "fusion": stats, "timelines": tl_names,
-            "text_note": TEXT_STATE["note"],
+            "text_note": TEXT_STATE["note"], "adjust_used": ADJ["tpl"] is not None,
             "log": str(LOG_PATH)}
 
 

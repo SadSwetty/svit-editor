@@ -177,6 +177,7 @@
       </div>
 
       <div class="tab" data-t="fx">
+        <div class="sw" data-k="match_exposure"><div class="lb">Вирівняти експозицію і контраст<small>Спершу всі відео стають ± однакові за яскравістю й контрастом, а вже поверх — творчі ефекти</small></div><i class="i" data-tip="Svit міряє яскравість, чорне й біле кожного джерела і підтягує їх до спільної середини: темне світлішає, пересвічене темнішає, пласке отримує контраст, надто контрастне — м'якшає. Це перший вузол SvTone у Fusion кожного кліпу, а фактура, halation і зерно ідуть уже після нього.">i</i><div class="tog"></div></div>
         <div class="sw" data-k="fx_on"><div class="lb">Ефекти <span class="beta">бета</span><small>Claude ставить їх сам — під біт, референси й настрій</small></div><i class="i" data-tip="Ефекти робляться через Fusion у DaVinci, тож експорт трохи довший. Познач, які дозволено — Claude використає їх лише там, де вони підсилюють момент.">i</i><div class="tog"></div></div>
         <div id="fxopts">
           <div class="fxgrid" id="fxgrid"><div class="fxcard" data-fx="shake"><b>Тряска</b><small>на ударах і дропах</small></div><div class="fxcard" data-fx="flash"><b>Спалах</b><small>різке світло на сильній долі</small></div><div class="fxcard" data-fx="fade_in"><b>З темряви</b><small>проявлення: початок, нова частина</small></div><div class="fxcard" data-fx="blur_in"><b>З розмиття</b><small>мрійливий вхід у кадр</small></div><div class="fxcard" data-fx="rgb"><b>RGB-глітч</b><small>розшарування кольорів на склейці</small></div><div class="fxcard" data-fx="glow"><b>Світіння</b><small>сцена, світло, прожектори</small></div><div class="fxcard" data-fx="bw"><b>Чорно-біле</b><small>драма, ностальгія</small></div><div class="fxcard" data-fx="grain"><b>Зерно</b><small>плівкова фактура</small></div></div>
@@ -279,6 +280,7 @@
         <div class="fld"><label>Розміщення <i class="i left" data-tip="«Один таймлайн» — усі ролики підряд, кожен позначений маркером. «Окремі» — кожен ролик на своєму таймлайні.">i</i></label>
           <div class="seg" id="layout"><button data-v="one">Усе на одному таймлайні</button><button data-v="separate">Кожне відео окремо</button></div></div>
         <div style="margin-top:8px">
+          <div class="sw" data-k="adjust_fx"><div class="lb">Ефекти окремо на Adjustment Clip<small>Фактура, halation, дрімі й зерно — одним шаром «Svit Look» над відео, щоб правити їх в одному місці</small></div><i class="i up" data-tip="На кліпах лишаються зуми, переходи й вирівнювання експозиції, а творчий вигляд — на Adjustment Clip зверху. Один раз у DaVinci перетягни Effects → Toolbox → Effects → Adjustment Clip на таймлайн, а з таймлайну — у Media Pool: Svit бере його звідти як основу.">i</i><div class="tog"></div></div>
           <div class="sw" data-k="auto_render"><div class="lb">Одразу експортувати MP4<small>У папку Фільми → Svit Editor</small></div><i class="i up" data-tip="Після монтажу DaVinci сам експортує кожен ролик окремим MP4.">i</i><div class="tog"></div></div>
         </div>
       </div>
@@ -492,7 +494,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];

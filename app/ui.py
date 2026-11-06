@@ -31,7 +31,7 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
-BRIDGE_REV = 28        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
+BRIDGE_REV = 29        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
 URLS = {"keys": "https://platform.claude.com/settings/keys",
         "billing": "https://platform.claude.com/settings/billing",
         "usage": "https://platform.claude.com/usage"}
@@ -663,8 +663,8 @@ class Api:
                                           "fx_strength": float(st.get("fx_strength", 50)) / 100.0,
                                           "look_strength": float(st.get("look_strength", 60)) / 100.0,
                                           "tr_speed": float(st.get("tr_speed", 60)) / 100.0,
-                                          "tone_strength": (float(st.get("auto_tone_strength", 70)) / 100.0)
-                                          if st.get("auto_tone", True) else 0,
+                                          "tone_strength": self._tone_strength(st),
+                                          "adjust_fx": bool(st.get("adjust_fx")),
                                           "overlay": {
                                               "blur": (float(st.get("ov_blur_strength", 30)) / 100.0) if st.get("ov_blur") else 0,
                                               "halation": (float(st.get("ov_hal_strength", 40)) / 100.0) if st.get("ov_hal") else 0},
@@ -698,6 +698,13 @@ class Api:
             result["notes"] = (note + " " + (result.get("notes") or "")).strip()
             result["has_issue"] = True
 
+    @staticmethod
+    def _tone_strength(st):
+        """Сила тону: повзунок автоконтрасту; вирівнювання експозиції без автоконтрасту — повністю."""
+        if st.get("auto_tone", True):
+            return float(st.get("auto_tone_strength", 70)) / 100.0
+        return 1.0 if st.get("match_exposure") else 0
+
     # ---- «Вигляд» після монтажу: повзунки ефектів без нового монтажу
     @staticmethod
     def _style_from_settings(st, result):
@@ -710,7 +717,8 @@ class Api:
             grain = round(100 * min(1.0, 0.35 + 0.5 * m)) if any(l in grain_looks for l in looks) else 0
         return {"look": look, "fx": int(st.get("fx_strength", 50)),
                 "speed": int(st.get("tr_speed", 60)),
-                "tone": int(st.get("auto_tone_strength", 70)) if st.get("auto_tone", True) else 0,
+                "tone": int(round(100 * (float(st.get("auto_tone_strength", 70)) / 100.0 if st.get("auto_tone", True)
+                                         else (1.0 if st.get("match_exposure") else 0)))),
                 "halation": int(st.get("ov_hal_strength", 40)) if st.get("ov_hal") else 0,
                 "dreamy": int(st.get("ov_blur_strength", 30)) if st.get("ov_blur") else 0,
                 "ghost": int(st.get("style_ghost", 100)), "grain": int(grain),
@@ -978,6 +986,7 @@ class Api:
                     "format": fmt,
                     "ui_lang": "en" if st.get("ui_lang") == "en" else "uk",
                     "auto_tone": bool(st.get("auto_tone", True)),
+                    "match_exposure": bool(st.get("match_exposure")),
                     "look": st.get("look") if (st.get("look") in engine.LOOKS or st.get("look") == "auto") else "none",
                 },
             }

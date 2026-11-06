@@ -461,6 +461,30 @@ def tone_of(jpegs):
             "contrast": round(contrast, 3), "lift": round(lift, 3), "gamma": round(gamma, 3)}
 
 
+def match_tones(tone):
+    """Вирівнювання між відео: кожне джерело підтягуємо до спільної середини (медіана всіх) —
+    яскравість через гаму, розмах через контраст, підняте чорне опускаємо. Темне світлішає,
+    пересвічене темнішає, пласке отримує контраст, надто контрастне — м'якшає."""
+    vals = [t for t in tone.values() if t and "mean" in t]
+    if not vals:
+        return tone
+    med = lambda xs: sorted(xs)[len(xs) // 2]
+    t_mean = max(0.38, min(0.5, med([t["mean"] for t in vals])))
+    t_spread = max(0.7, min(0.92, med([t["hi"] - t["lo"] for t in vals])))
+    out = {}
+    for sid, t in tone.items():
+        if not t or "mean" not in t:
+            out[sid] = t
+            continue
+        spread = max(0.05, t["hi"] - t["lo"])
+        contrast = max(-0.2, min(0.45, (t_spread - spread) * 0.9))
+        gamma = math.log(max(t["mean"], 0.02)) / math.log(t_mean)
+        gamma = max(0.8, min(1.3, gamma))
+        lift = max(-0.15, min(0.0, -(t["lo"] - 0.02) * 0.7)) if t["lo"] > 0.02 else 0.0
+        out[sid] = dict(t, contrast=round(contrast, 3), gamma=round(gamma, 3), lift=round(lift, 3), matched=True)
+    return out
+
+
 def image_bytes(data, max_side=MAX_REF_SIZE):
     from PIL import Image
     img = Image.open(io.BytesIO(data))
@@ -589,6 +613,7 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 
 Відповідай ТІЛЬКИ валідним JSON без пояснень навколо:
 {"notes": "коротко: що ти зробив, яка ідея монтажу і що не вдалося",
+ "rotate": {"4": 180},
  "videos": [
   {"title": "коротка назва", "caption": "підпис для посту", "hashtags": ["#..."],
    "why": "чому це спрацює (1 речення)", "look": "none",
@@ -602,6 +627,9 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 - якщо є МУЗИКА — третє поле не end, а beats (ціле число ударів): [1, 125.4, 2, "wide", ...];
 - zoom_end = zoom, якщо руху немає; fx = [] і tr = "", якщо їх немає;
 - для мовлення, де треба вирізати паузи, додай 11-м полем true (tighten).
+- rotate: подивись на кадри кожного джерела — якщо відео знято догори дриґом (небо внизу, люди догори ногами,
+  текст перевернутий) — {"№": 180}; якщо лежить на боці — 90 (повернути за годинниковою) або -90 (проти).
+  Програма сама поверне ці кліпи. Якщо все рівно — "rotate": {}.
 Пиши JSON компактно, без зайвих пробілів і переносів; notes, why і caption — коротко."""
 
 
@@ -983,6 +1011,10 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
             out += pieces
         else:
             out.append(it)
+    rot = job.get("rotate") or {}
+    for it in out:
+        if str(it["source"]) in rot:
+            it["rot"] = rot[str(it["source"])]
     return out
 
 
@@ -998,11 +1030,39 @@ def pick_look(want, s, prev=None):
     return prev
 
 
+def plan_rotation(plan, job):
+    """Перевернуті джерела від Claude → {id: кут}; зберігається в job для наступних правок."""
+    rot = dict(job.get("rotate") or {})
+    raw = plan.get("rotate")
+    if isinstance(raw, dict):
+        ids = {str(x["id"]) for x in job.get("sources", [])}
+        for k, v in raw.items():
+            try:
+                a = int(round(float(v)))
+            except Exception:
+                continue
+            a = {270: -90, -270: 90, -180: 180}.get(a, a)
+            if str(k) in ids:
+                if a in (90, -90, 180):
+                    rot[str(k)] = a
+                elif a == 0:
+                    rot.pop(str(k), None)
+    if rot != (job.get("rotate") or {}):
+        names = {str(x["id"]): x.get("name") for x in job.get("sources", [])}
+        _log("Поворот джерел: " + ", ".join(f"«{names.get(k, k)}» {v}°" for k, v in rot.items()))
+    job["rotate"] = rot
+    return rot
+
+
 def clean_plan(plan, job, data, prev_videos=None):
     videos, used = [], {}
     s = job.get("settings", {})
+    rot = plan_rotation(plan, job)
     for n, v in enumerate(plan.get("videos", [])):
         segs = clean_segments(v.get("segments", []), job, data, used)
+        for x in segs:
+            if str(x["source"]) in rot:
+                x["rot"] = rot[str(x["source"])]
         if segs:
             prev = (prev_videos[n].get("look") if prev_videos and n < len(prev_videos) else None)
             title = v.get("title", f"Відео {len(videos) + 1}")
@@ -1356,8 +1416,8 @@ class Job:
                 done_n += len(times)
 
         # автоконтраст: тон кожного джерела (з уже знятих кадрів або з кількох швидких)
-        if s.get("auto_tone", True):
-            tone = {}
+        tone = {}
+        if s.get("auto_tone", True) or s.get("match_exposure"):
             for src in job["sources"]:
                 self.check()
                 try:
@@ -1374,6 +1434,9 @@ class Job:
                     t = None
                 if t:
                     tone[str(src["id"])] = t
+            if s.get("match_exposure") and len(tone) > 1:
+                tone = match_tones(tone)
+                _log("Вирівнювання експозиції: ціль — спільна середина всіх відео")
             job["tone"] = tone
         if frames:
             try:
@@ -1795,6 +1858,10 @@ def finalize(job, data, text, out, version, plan=None):
     videos = clean_plan(plan, job, data)
     if not videos:
         raise RuntimeError("Claude не зміг скласти план: " + str(plan.get("notes", "")))
+    try:                     # поворот джерел пам'ятаємо для наступних правок
+        (Path(out) / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:
+        pass
     return finalize_videos(job, data, videos, plan.get("notes", ""), out, version)
 
 
@@ -1972,6 +2039,10 @@ def revise(job_dir, edit_text, progress, cancel_event, rng=None):
     else:
         videos = clean_plan(data_obj, job, data, prev_videos=videos)
         notes = data_obj.get("notes", "")
+        try:
+            (job_dir / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
         if not videos:
             raise RuntimeError("Claude не зміг внести правки: " + str(notes))
     if mus:
