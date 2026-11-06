@@ -169,9 +169,16 @@ def overview(path, bins=700):
     return {"duration": round(dur, 2), "peaks": [round(p / top, 3) for p in peaks]}
 
 
+_PREV_CACHE = {}
+
+
 def preview_wav(path, start, end, sr=22050):
     """Шматок пісні як data:audio/wav для прослуховування у вікні."""
-    y = decode_mono(path, sr=sr)
+    key = (str(path), sr)
+    if _PREV_CACHE.get("key") != key:          # трек декодуємо один раз — далі шматки вирізаються миттєво
+        _PREV_CACHE.clear()
+        _PREV_CACHE.update(key=key, y=decode_mono(path, sr=sr))
+    y = _PREV_CACHE["y"]
     seg = y[int(max(0, start) * sr):int(max(start + 0.5, end) * sr)]
     seg = np.clip(seg, -1, 1)
     buf = io.BytesIO()

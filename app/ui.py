@@ -22,6 +22,7 @@ import svlog  # noqa: E402
 svlog.setup((HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev")
 svlog.ssl_fix()
 import engine  # noqa: E402
+import textfx  # noqa: E402
 import music  # noqa: E402
 
 HOME = engine.HOME
@@ -173,6 +174,14 @@ class Api:
                 "bridge": self.bridge.ok, "sources": self.bridge.sources() if self.bridge.ok else {},
                 "shots": shots, "on_top": cfg.get("on_top", True), "rate": engine.TOKENS_PER_USD,
                 "refs": self.list_refs(), "whatsnew": self._whatsnew(cfg)}
+
+    @staticmethod
+    def _dur_text(st):
+        m = str(st.get("dur_mode") or "auto")
+        n = int(st.get("dur_custom") or 20) if m == "custom" else (int(m) if m in ("15", "30", "60") else 0)
+        if n:
+            return f"рівно {n} секунд кожне (допуск ±1 с) — це жорстка вимога автора"
+        return LENGTHS[int(st.get("len") or 0)]
 
     @staticmethod
     def _whatsnew(cfg):
@@ -363,6 +372,33 @@ class Api:
             return None
         self._js("musicLoading", Path(files[0]).name)
         return self.set_music(files[0])
+
+    # ---- текст: шрифти й попередній перегляд (локально, без Claude)
+    def list_fonts(self):
+        try:
+            return textfx.list_fonts()
+        except Exception as e:
+            svlog.log(f"Шрифти: {e!r}")
+            return []
+
+    def import_font(self):
+        import webview
+        files = self.window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=False,
+                                               file_types=("Шрифти (*.ttf;*.otf;*.ttc)", "Усі файли (*.*)"))
+        if not files:
+            return None
+        try:
+            path = textfx.import_font(files[0])
+            return {"path": path, "fonts": textfx.list_fonts()}
+        except Exception as e:
+            return {"error": friendly_error(e)}
+
+    def text_preview(self, style, fmt, sample="", bg_path=None, resolution=""):
+        try:
+            return textfx.preview(style or {}, sample, fmt or "9:16", resolution or "", bg_path)
+        except Exception as e:
+            svlog.log("Перегляд тексту: " + traceback.format_exc())
+            return {"error": friendly_error(e)}
 
     def set_music(self, path):
         try:
@@ -611,6 +647,7 @@ class Api:
         result["timelines"] = resp.get("timelines") or []
         self._last_build = {"plan": result, "layout": st.get("layout", "one"), "timelines": result["timelines"],
                             "orig_looks": [v.get("look") for v in result.get("videos", [])]}
+        self._save_build(self._last_build)
         result["style"] = self._style_from_settings(st, result)
         fu = resp.get("fusion") or {}
         n_fx = sum(1 for v in result.get("videos", []) for sg in v.get("segments", [])
@@ -643,6 +680,29 @@ class Api:
                 "dreamy": int(st.get("ov_blur_strength", 30)) if st.get("ov_blur") else 0,
                 "ghost": int(st.get("style_ghost", 100)), "grain": int(grain),
                 "grain_auto": st.get("style_grain") is None, "looks": looks, "look_type": ""}
+
+    # Зроблені монтажі пам'ятаємо на диску: «Мій таймлайн» на таймлайні Svit перебудовує його з зумами й переходами
+    BUILDS = HOME / "builds.json"
+
+    def _builds(self):
+        try:
+            return json.loads(self.BUILDS.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+    def _save_build(self, b):
+        try:
+            keep = [x for x in self._builds() if not set(x.get("timelines", [])) & set(b.get("timelines", []))]
+            keep.append({k: b[k] for k in ("plan", "layout", "timelines", "orig_looks")})
+            self.BUILDS.write_text(json.dumps(keep[-12:], ensure_ascii=False), encoding="utf-8")
+        except Exception as e:
+            svlog.log(f"builds.json: {e!r}")
+
+    def _build_for(self, tl_name):
+        for b in reversed(self._builds()):
+            if tl_name in (b.get("timelines") or []):
+                return b
+        return None
 
     # Живе налаштування: кожна зміна повзунка ставиться в чергу; якщо DaVinci ще оновлює попередню —
     # її перериваємо (style_gen) і одразу беремо найсвіжішу. «Перебудова» не губиться, поки не завершиться.
@@ -697,11 +757,21 @@ class Api:
                     "ghost": g("ghost", 100), "grain": None if p.get("grain_auto") else g("grain", 0),
                     "mode": p.get("mode", "rebuild"), "gen": p.get("gen", "")}
             lt = p.get("look_type", "")
-            if p.get("manual"):
+            lb = None
+            if p.get("manual") and p.get("mode") != "clear":
+                info = self.bridge.send("timeline_info", {}, timeout=15) or {}
+                lb = self._build_for(info.get("timeline", "")) if info.get("timeline") else None
+                if lb and not info.get("adjust"):
+                    svlog.log(f"Мій таймлайн «{info['timeline']}» — це монтаж Svit: перебудовую з його планом")
+                    data["only_timeline"] = info["timeline"]
+                    data["grain"] = None if p.get("grain_auto", True) and p.get("grain", 0) == 0 else data["grain"]
+                else:
+                    lb = None
+            if p.get("manual") and not lb:
                 data["manual"] = True
                 data["look_override"] = lt if lt in engine.LOOKS and float(p.get("look", 60)) > 0 else ""
             else:
-                lb = self._last_build
+                lb = lb or self._last_build
                 data.update({"plan": lb["plan"], "layout": lb["layout"], "timelines": lb["timelines"]})
                 if lt == "none" or float(p.get("look", 60)) <= 0:
                     data["look_override"] = ""
@@ -740,7 +810,9 @@ class Api:
 
     def timeline_info(self):
         try:
-            return self.bridge.send("timeline_info", {}, timeout=15)
+            r = self.bridge.send("timeline_info", {}, timeout=15) or {}
+            r["svit"] = bool(r.get("timeline") and self._build_for(r["timeline"]))
+            return r
         except Exception as e:
             return {"ok": False, "error": friendly_error(e)}
 
@@ -817,7 +889,7 @@ class Api:
                 "sources": sources,
                 "settings": {
                     "num_videos": st.get("num") or "скільки вважаєш за потрібне за запитом",
-                    "video_length": LENGTHS[int(st.get("len") or 0)],
+                    "video_length": self._dur_text(st),
                     "format_label": FORMAT_LABELS.get(fmt, fmt),
                     "layout": layout, "layout_label": LAYOUT_LABELS[layout],
                     "subtitles": bool(st.get("subtitles")), "transcribe": bool(st.get("transcribe")),
@@ -839,6 +911,10 @@ class Api:
                     "lyrics": str(st.get("lyrics") or "")[:20000] if st.get("music_on") else "",
                     "lyrics_upper": bool(st.get("lyrics_upper", False)),
                     "song_sync": bool(st.get("song_sync", True)),
+                    "text_mode": "srt" if st.get("text_mode") == "srt" else "svit",
+                    "text_style": {k: st.get("text_style", {}).get(k, d) for k, d in textfx.DEFAULT_STYLE.items()}
+                    if isinstance(st.get("text_style"), dict) else dict(textfx.DEFAULT_STYLE),
+                    "format": fmt,
                     "ui_lang": "en" if st.get("ui_lang") == "en" else "uk",
                     "auto_tone": bool(st.get("auto_tone", True)),
                     "look": st.get("look") if (st.get("look") in engine.LOOKS or st.get("look") == "auto") else "none",

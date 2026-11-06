@@ -1590,33 +1590,60 @@ def finalize_videos(job, data, videos, notes, out, version):
     out = Path(out)
     tag = "" if version == 1 else f"_v{version}"
     srt_all = None
+    text_all = None
     lt = job.get("lyrics_timing")
+    up = bool(s.get("lyrics_upper", False))
+    # шматки тексту для кожного ролика: слова пісні (з музикою) або розпізнана мова (без музики)
+    per_video = None
     if lt and job.get("music_info"):
         ms = float(job["music_info"].get("start", 0))
-        up = bool(s.get("lyrics_upper", False))
-        if s["layout"] == "one":
-            offset, lists = 0.0, []
-            for v in videos:
-                lists.append(lyric_chunks(lt, ms, offset, v["duration"]))
-                offset += v["duration"] + VIDEO_GAP
-            p = out / f"lyrics_all{tag}.srt"
-            srt_all = str(p) if write_srt(p, lists, up) else None
-        else:
-            for i, v in enumerate(videos, 1):
-                p = out / f"lyrics_{i:02}{tag}.srt"
-                v["srt"] = str(p) if write_srt(p, [lyric_chunks(lt, ms, 0.0, v["duration"])], up) else None
+        per_video = lambda v, off: lyric_chunks(lt, ms, off, v["duration"])
     elif s.get("subtitles") and s.get("transcribe") and not job.get("music_info"):
+        per_video = lambda v, off: caption_chunks(v["segments"], data, off)
+    if per_video:
+        svit_text = s.get("text_mode", "svit") == "svit"
+        style = dict(s.get("text_style") or {})
+        style["upper"] = up or bool(style.get("upper"))
+        res = ""
+        try:
+            res = next((src.get("resolution", "") for src in job.get("sources", []) if src.get("resolution")), "")
+        except Exception:
+            pass
+        W, H = (0, 0)
+        if svit_text:
+            import textfx
+            W, H = textfx.canvas_size(s.get("format", "9:16"), res)
+
+        def as_lines(chunks):
+            return [{"start": c[0]["start"], "end": c[-1]["end"], "text": " ".join(w["word"] for w in c)} for c in chunks]
         if s["layout"] == "one":
             offset, lists = 0.0, []
             for v in videos:
-                lists.append(caption_chunks(v["segments"], data, offset))
+                lists.append(per_video(v, offset))
                 offset += v["duration"] + VIDEO_GAP
-            p = out / f"subtitles_all{tag}.srt"
-            srt_all = str(p) if write_srt(p, lists) else None
+            if svit_text:
+                try:
+                    text_all = textfx.render_items([x for cl in lists for x in as_lines(cl)], style, W, H,
+                                                   out / f"text{tag}")
+                except Exception as e:
+                    _log(f"Svit-текст не намалювався: {e!r} — ставлю звичайні субтитри")
+                    svit_text = False
+            if not svit_text:
+                p = out / f"subtitles_all{tag}.srt"
+                srt_all = str(p) if write_srt(p, lists, up or not lt) else None
         else:
             for i, v in enumerate(videos, 1):
-                p = out / f"subtitles_{i:02}{tag}.srt"
-                v["srt"] = str(p) if write_srt(p, [caption_chunks(v["segments"], data, 0.0)]) else None
+                chunks = per_video(v, 0.0)
+                done = False
+                if svit_text:
+                    try:
+                        v["text"] = textfx.render_items(as_lines(chunks), style, W, H, out / f"text{tag}_{i:02}")
+                        done = True
+                    except Exception as e:
+                        _log(f"Svit-текст не намалювався: {e!r}")
+                if not done:
+                    p = out / f"subtitles_{i:02}{tag}.srt"
+                    v["srt"] = str(p) if write_srt(p, [chunks], up or not lt) else None
     posts = [f"=== {i}. {v['title']} ({v['duration']:.0f} с) ===\n{v.get('why', '')}\n\n"
              f"{v.get('caption', '')}\n{' '.join(v.get('hashtags', []))}\n" for i, v in enumerate(videos, 1)]
     if notes:
@@ -1625,7 +1652,10 @@ def finalize_videos(job, data, videos, notes, out, version):
     cap.write_text("\n".join(posts), encoding="utf-8")
     (out / "current_plan.json").write_text(json.dumps({"notes": notes, "videos": videos, "version": version},
                                                       ensure_ascii=False), encoding="utf-8")
-    return {"notes": notes, "videos": videos, "srt_all": srt_all, "captions": str(cap), "version": version,
+    return {"notes": notes, "videos": videos, "srt_all": srt_all, "text_all": text_all,
+            "text_anim": {k: (s.get("text_style") or {}).get(k, d) for k, d in
+                          (("anim", "fade"), ("anim_strength", 50), ("anim_smooth", 50))},
+            "captions": str(cap), "version": version,
             "tone": job.get("tone") or {}}
 
 

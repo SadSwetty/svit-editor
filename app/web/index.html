@@ -80,6 +80,10 @@
         <i class="i" data-tip="Головне поле. Опиши своїми словами, що хочеш отримати: скільки відео, про що, які моменти брати, де робити зум, як кадрувати. Чим конкретніше — тим краще.">i</i></div>
       <textarea id="prompt" placeholder="Наприклад: з усіх записів концертів зроби 5 вертикальних відео по 20–30 секунд. Бери дропи й моменти, де зал співає. На ударних — різкий зум, тримай мене в центрі кадру."></textarea>
       <div class="chips" id="examples"></div>
+      <div class="durrow"><span class="durlbl">Тривалість кожного відео</span>
+        <span class="seg dur" id="dur"><button data-v="auto">Авто</button><button data-v="15">15 с</button><button data-v="30">30 с</button><button data-v="60">60 с</button><button data-v="custom">Вручну</button></span>
+        <span class="durcust" id="durcust"><input id="dursec" type="number" min="3" max="1800" step="1"> с</span>
+        <span class="durnote" id="durnote"></span></div>
       <div class="refs">
         <div class="refhead"><span>Референси — чим надихатись</span><span class="sp"></span>
           <i class="i" data-tip="Відео й кадри, які тобі подобаються. Svit Editor порахує їхній темп склейок і покаже Claude кадри з різних планів — монтаж вийде в схожому дусі. Посилання завантажуються в мінімальній якості лише для аналізу і видаляються.">i</i></div>
@@ -116,9 +120,9 @@
         <div class="mempty" id="mempty"><span>Перетягни аудіофайл у вікно або</span><button class="btn" onclick="SV.pickMusic()">Вибрати трек</button></div>
         <div id="mfull" style="display:none">
           <div class="mhead"><b id="mname">—</b><span class="mono" id="mdur"></span><span class="sp"></span>
-            <button class="btn" id="mplay" onclick="SV.playMusic()">Прослухати</button><button class="btn" onclick="SV.pickMusic()">Інший трек</button></div>
-          <div class="wave" id="wave"><canvas id="wavec"></canvas><div class="mhead" id="mhead"></div></div>
-          <div class="mhint">Пробіл — грати / пауза · двічі пробіл — на початок шматка</div>
+            <span class="transport"><button class="tbtn" id="mstop" onclick="SV.stopMusic()" title="Стоп"><i class="ic-stop"></i></button><button class="tbtn" id="mplay" onclick="SV.playMusic()" title="Грати / пауза (пробіл)"><i class="ic-play"></i></button></span><button class="btn" onclick="SV.pickMusic()">Інший трек</button></div>
+          <div class="wave" id="wave"><canvas id="wavec"></canvas><div class="mhead" id="mhead" onpointerdown="SV.headDrag(event)"></div></div>
+          <div class="mhint">Пробіл — грати / пауза · синю лінію можна тягати</div>
           <div class="mrange"><span id="mrange">—</span><span class="mono">тягни ручки — вибери шматок пісні</span></div>
         </div>
       </div>
@@ -232,13 +236,37 @@
         <div class="sw" data-k="song_sync" style="margin-top:8px"><div class="lb">У відео грає цей трек<small>Знято під пісню з колонки — Svit підгонить відео під імпортований трек, щоб губи й рухи збігались</small></div><i class="i up" data-tip="Svit порівнює звук кожного відео з треком і знаходить, яке місце пісні в ньому звучить. Тоді шматки відео стають на таймлайн рівно під той момент пісні.">i</i><div class="tog"></div></div>
         <div class="sw" data-k="lyrics_upper"><div class="lb">ВЕЛИКИМИ ЛІТЕРАМИ<small>Інакше — як написано в тексті</small></div><div class="tog"></div></div>
         <div class="subhead" style="margin-top:18px">Субтитри з мови</div>
-          <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Розпізнана мова з відео (інтерв'ю, влоги) на окремій доріжці, стиль — в Inspector</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
+          <div class="sw" data-k="subtitles"><div class="lb">Субтитри<small>Розпізнана мова з відео (інтерв'ю, влоги) — тим самим стилем, що нижче</small></div><i class="i" data-tip="Потрібне «Слухати слова» на вкладці «Аналіз».">i</i><div class="tog"></div></div>
+
+        <div class="subhead" style="margin-top:18px">Вигляд тексту <i class="i left" data-tip="Svit-текст — Svit малює кожен рядок твоїм шрифтом, кольором, світінням і halation та кладе на окрему доріжку з анімацією. Субтитри DaVinci — звичайна доріжка субтитрів, стиль налаштовується в Inspector.">i</i></div>
+        <div class="seg" id="tmode"><button data-v="svit">Svit-текст: шрифт, колір, ефекти</button><button data-v="srt">Субтитри DaVinci</button></div>
+        <div id="tstyle">
+          <div class="tlayout">
+            <div class="tprev" id="tprev"><img id="tpbg" alt=""><img id="tptx" alt=""><div class="tpload" id="tpload">…</div>
+              <button class="tbtn tpplay" onclick="SV.textAnimPlay()" title="Програти анімацію"><i class="ic-play"></i></button></div>
+            <div class="tctl">
+              <div class="tpnote" id="tpnote">Перегляд на кадрі з твого відео — без токенів</div>
+              <div class="fld"><label>Шрифт</label>
+                <div class="fontrow"><select id="tfont"><option value="">Стандартний (Arial Bold)</option></select><button class="btn" onclick="SV.importFont()">Імпортувати</button></div></div>
+              <div class="stl"><label>Розмір <span class="val" id="tsv_size"></span></label><input type="range" min="0" max="100" step="5" data-ts="size"><div class="scale"><span>дрібний</span><span>величезний</span></div></div>
+              <div class="fld"><label>Колір</label>
+                <div class="palette" id="tpal"><b data-c="#FFFFFF" style="background:#FFFFFF"></b><b data-c="#F4EBD0" style="background:#F4EBD0"></b><b data-c="#E2F55C" style="background:#E2F55C"></b><b data-c="#FFD23F" style="background:#FFD23F"></b><b data-c="#FF8A3D" style="background:#FF8A3D"></b><b data-c="#E0352B" style="background:#E0352B"></b><b data-c="#FF7AC6" style="background:#FF7AC6"></b><b data-c="#B79CFF" style="background:#B79CFF"></b><b data-c="#2B3BE0" style="background:#2B3BE0"></b><b data-c="#5CE1E6" style="background:#5CE1E6"></b><b data-c="#7CE38B" style="background:#7CE38B"></b><b data-c="#141414" style="background:#141414"></b><label class="pcustom" title="Свій колір"><input type="color" id="tcolor"><span>+</span></label></div></div>
+            </div>
+          </div>
+          <div class="subhead" style="margin-top:14px">Ефекти тексту</div>
+          <div class="stgrid"><div class="stl"><label>Світіння <span class="val" id="tsv_glow"></span></label><input type="range" min="0" max="100" step="5" data-ts="glow"><div class="scale"><span>вимк.</span><span>яскраве</span></div></div><div class="stl"><label>Halation <span class="val" id="tsv_halation"></span></label><input type="range" min="0" max="100" step="5" data-ts="halation"><div class="scale"><span>вимк.</span><span>горить</span></div></div><div class="stl"><label>Тінь <span class="val" id="tsv_shadow"></span></label><input type="range" min="0" max="100" step="5" data-ts="shadow"><div class="scale"><span>вимк.</span><span>густа</span></div></div><div class="stl"><label>Обведення <span class="val" id="tsv_outline"></span></label><input type="range" min="0" max="100" step="5" data-ts="outline"><div class="scale"><span>вимк.</span><span>товсте</span></div></div></div>
+          <div class="subhead" style="margin-top:14px">Позиція <span class="tfmt" id="tfmtnote"></span></div>
+          <div class="tposgrid" id="tpos"><div class="tpos" data-p="top"><i><b></b></i><span>Зверху</span></div><div class="tpos" data-p="center"><i><b></b></i><span>По центру</span></div><div class="tpos" data-p="bottom"><i><b></b></i><span>Знизу</span></div></div>
+          <div class="subhead" style="margin-top:14px">Анімація</div>
+          <div class="seg" id="tanim"><button data-v="none">Без</button><button data-v="fade">Поява</button><button data-v="rise">Підйом</button><button data-v="pop">Поп</button><button data-v="blur">З розмиття</button></div>
+          <div class="stgrid" style="margin-top:8px"><div class="stl"><label>Сила <span class="val" id="tsv_anim_strength"></span></label><input type="range" min="0" max="100" step="5" data-ts="anim_strength"><div class="scale"><span>ледь</span><span>помітно</span></div></div><div class="stl"><label>Плавність <span class="val" id="tsv_anim_smooth"></span></label><input type="range" min="0" max="100" step="5" data-ts="anim_smooth"><div class="scale"><span>різко</span><span>плавно</span></div></div></div>
+        </div>
       </div>
 
       <div class="tab" data-t="result">
         <div class="grid" style="margin-bottom:16px">
           <div class="fld"><label>Скільки відео зробити <i class="i left" data-tip="Скільки окремих готових роликів зробити з усього матеріалу. «Авто» — Claude візьме кількість з твого запиту.">i</i></label><select id="num"></select></div>
-          <div class="fld"><label>Довжина кожного відео <i class="i" data-tip="Скільки триватиме КОЖЕН готовий ролик (а не відео-джерело). «Авто» — за запитом.">i</i></label><select id="len"></select></div>
+          <div class="fld" style="display:none"><label>Довжина кожного відео <i class="i" data-tip="Скільки триватиме КОЖЕН готовий ролик (а не відео-джерело). «Авто» — за запитом.">i</i></label><select id="len"></select></div>
         </div>
         <div class="fld"><label>Розміщення <i class="i left" data-tip="«Один таймлайн» — усі ролики підряд, кожен позначений маркером. «Окремі» — кожен ролик на своєму таймлайні.">i</i></label>
           <div class="seg" id="layout"><button data-v="one">Усе на одному таймлайні</button><button data-v="separate">Кожне відео окремо</button></div></div>
@@ -386,6 +414,7 @@
 <div class="modal mytl" id="mytl" onclick="if(event.target===this)SV.myTimeline(false)"><div class="box"><div class="bar-title"><span>Svit Editor · мій таймлайн</span></div><div class="inner">
   <div class="mytlhead"><div><div class="h1" style="font-size:20px;margin:0">Ефекти на мій таймлайн</div>
     <div class="sub2" id="mytls">Шукаю відкритий таймлайн…</div></div><button class="btn" onclick="SV.myTimeline(false)">Закрити</button></div>
+  <div class="adjtip">Хочеш, щоб ефекти були одним шаром над усім відео? Перетягни в DaVinci <b>Effects → Toolbox → Effects → Adjustment Clip</b> на верхню доріжку над усім таймлайном — Svit накладе ефекти саме на нього, а кліпи під ним не зачепить.</div>
   <div id="mytlhold"></div>
 </div></div></div>
 <div class="modal" id="updmodal"><div class="box"><div class="bar-title"><span>Svit Editor · оновлення</span></div><div class="inner">
@@ -448,7 +477,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -476,6 +505,18 @@ const SV = {
 
   bind(){
     $("#prompt").addEventListener("input",e=>{this.st.prompt=e.target.value; this.save()});
+    $$("#tmode button").forEach(b=>b.onclick=()=>{ this.st.text_mode=b.dataset.v; this.paint(); this.save() });
+    $$("#tanim button").forEach(b=>b.onclick=()=>{ this.ts().anim=b.dataset.v; this.textPaint(); this.save(); this.textAnimPlay() });
+    $$("#tpos .tpos").forEach(b=>b.onclick=()=>{ this.ts().pos=b.dataset.p; this.textPaint(); this.save(); this.textPreview() });
+    $$("#tpal b").forEach(b=>b.onclick=()=>{ this.ts().color=b.dataset.c; this.textPaint(); this.save(); this.textPreview() });
+    $("#tcolor").addEventListener("input",e=>{ this.ts().color=e.target.value.toUpperCase(); this.textPaint(); this.textPreviewSoon() });
+    $("#tcolor").addEventListener("change",()=>this.save());
+    $("#tfont").addEventListener("change",e=>{ this.ts().font=e.target.value; this.save(); this.textPreview() });
+    $$("[data-ts]").forEach(r=>{ r.addEventListener("input",e=>{ this.ts()[r.dataset.ts]=+e.target.value; this.textPaint(); if(!r.dataset.ts.startsWith("anim")) this.textPreviewSoon() });
+      r.addEventListener("change",()=>{ this.save(); if(r.dataset.ts.startsWith("anim")) this.textAnimPlay() }) });
+    $$("#dur button").forEach(b=>b.onclick=()=>{ this.st.dur_mode=b.dataset.v; if(b.dataset.v==="custom"&&!this.st.dur_custom) this.st.dur_custom=20;
+      this.durToMusic(); this.paint(); this.save(); if(b.dataset.v==="custom") setTimeout(()=>$("#dursec").focus(),30) });
+    $("#dursec").addEventListener("change",e=>{ this.st.dur_custom=Math.max(3,Math.min(1800,Math.round(+e.target.value||20))); this.durToMusic(); this.paint(); this.save() });
     $("#lyrics").addEventListener("input",e=>{this.st.lyrics=e.target.value; this.lyrStat(); clearTimeout(this.lyrT); this.lyrT=setTimeout(()=>this.save(),400)});
     for(const id of ["num","len","lang","whisper","model"]) $("#"+id).addEventListener("change",()=>this.read());
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
@@ -524,6 +565,9 @@ const SV = {
   },
   paint(){
     const s=this.st;
+    $$("#dur button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.dur_mode||"auto")));
+    $("#durcust").style.display = s.dur_mode==="custom" ? "inline-flex" : "none"; if(document.activeElement!==$("#dursec")) $("#dursec").value=s.dur_custom||20;
+    $("#durnote").textContent = s.music_on&&s.music&&s.music.path ? "з музикою — довжина = вибраний шматок треку" : "";
     $("#prompt").value=s.prompt; if(document.activeElement!==$("#lyrics")) $("#lyrics").value=s.lyrics||""; this.lyrStat(); $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
     $("#whisper").value=s.whisper_model; $("#model").value=s.model;
     $$("#srcmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.source_mode));
@@ -534,6 +578,10 @@ const SV = {
     $$("#zstyle button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.zoom_style));
     $$(".pace").forEach(b=>b.classList.toggle("on",b.dataset.v===s.pace));
     $$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
+    $$("#tmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.text_mode||"svit")));
+    $("#tstyle").style.display = (s.text_mode||"svit")==="svit" ? "block" : "none";
+    this.textPaint();
+    if(s.adv_open && s.adv_tab==="text" && (s.text_mode||"svit")==="svit") this.textPreviewSoon();
     $$(".tab").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
     const z=$("#zstr"); z.value=s.zoom_strength; z.style.setProperty("--p",s.zoom_strength+"%");
     $("#zval").textContent = "до ±" + Math.round(motionMax(s.zoom_strength)*100) + "%";
@@ -582,6 +630,7 @@ const SV = {
     const keep = old.path===r.path;
     const a = keep ? old.start : Math.min(r.duration*0.25, Math.max(0,r.duration-30));
     const b = keep ? old.end : Math.min(r.duration, a+30);
+    if(!keep && this.audio){ this.audio.pause(); this.audio=null; this.prepKey=null; this.prepP=null }
     this.st.music={path:r.path,name:r.name,duration:r.duration,start:a,end:b}; this.mPeaks=r.peaks;
     this.st.music_on=true; this.paint(); this.save();
     if(!keep) this.toast("Трек додано: вибери шматок пісні");
@@ -593,9 +642,9 @@ const SV = {
     $("#mempty").style.display="none"; $("#mfull").style.display="block";
     $("#mname").textContent=m.name; $("#mdur").textContent=tfmt(m.duration);
     if(!this.range){ this.range=RangeUI($("#wave"),{max:m.duration,a:m.start,b:m.end,minSpan:3,
-      onChange:(a,b,fin)=>{ this.st.music.start=+a.toFixed(2); this.st.music.end=+b.toFixed(2); this.musicLabel(); if(fin){ this.save(); this.stopMusic() } }}) }
+      onChange:(a,b,fin)=>{ this.st.music.start=+a.toFixed(2); this.st.music.end=+b.toFixed(2); this.musicLabel(); if(fin){ this.save(); this.musicReset() } }}) }
     else this.range.set(m.start,m.end,m.duration);
-    this.musicLabel(); requestAnimationFrame(()=>this.drawWave());
+    this.musicLabel(); requestAnimationFrame(()=>{ this.drawWave(); this.drawHead() }); this.musicPrep();
   },
   musicLabel(){ const m=this.st.music; $("#mrange").textContent=tfmt(m.start)+" – "+tfmt(m.end)+" · "+Math.round(m.end-m.start)+" с" },
   drawWave(){
@@ -606,40 +655,57 @@ const SV = {
     for(let i=0;i<n;i+=2){ const v=Math.max(0.03,p[i])*(h*0.42); g.fillRect(i*bw, h/2-v, Math.max(1,bw*1.4), v*2) }
     g.fillRect(0,h/2-0.5,w,1);
   },
-  // прослуховування вибраного шматка: лінія біжить по хвилі; пробіл — пауза/грати, подвійний пробіл — на початок
+  // прослуховування вибраного шматка: шматок готується заздалегідь, тому пробіл грає миттєво;
+  // синю лінію можна тягати по шматку, щоб шукати моменти
+  musicPrep(){
+    const m=this.st.music; if(!m||!m.path) return Promise.resolve(null);
+    const key=m.path+"|"+m.start+"|"+m.end;
+    if(this.prepKey===key && this.prepP) return this.prepP;
+    this.prepKey=key;
+    this.prepP=this.api("music_preview", m.path, m.start, m.end).then(url=>{
+      if(this.prepKey!==key) return null;
+      if(!url){ this.prepP=null; return null }
+      const au=new Audio(url); au.preload="auto"; try{ au.load() }catch(e){}
+      au.onended=()=>{ au.currentTime=0; this.musicBtn(); this.drawHead() };
+      au.onplay=au.onpause=()=>this.musicBtn();
+      if(this.audio){ this.audio.pause() } this.audio=au; this.audioFrom=m.start;
+      if(this.pendingSeek!=null){ au.currentTime=this.pendingSeek; this.pendingSeek=null }
+      this.drawHead(); return au });
+    return this.prepP },
+  musicReset(){ if(this.audio) this.audio.pause(); this.audio=null; this.prepKey=null; this.prepP=null; this.pendingSeek=null;
+    this.musicBtn(); this.drawHead(); clearTimeout(this.prepT); this.prepT=setTimeout(()=>this.musicPrep(),150) },
   async playMusic(){
-    if(this.audio){ if(this.audio.paused) this.audio.play(); else this.audio.pause(); this.musicBtn(); return }
-    const m=this.st.music; if(!m||!m.path) return; $("#mplay").textContent="…";
-    const url=await this.api("music_preview", m.path, m.start, m.end);
-    if(!url){ $("#mplay").textContent="Прослухати"; this.toast("Не вдалося відтворити"); return }
-    const au=new Audio(url); this.audio=au; this.audioFrom=m.start;
-    au.onended=()=>{ au.currentTime=0; this.musicBtn(); this.drawHead() };
-    au.onplay=au.onpause=()=>this.musicBtn();
-    au.play(); this.musicBtn(); this.headLoop();
-  },
-  musicBtn(){ const b=$("#mplay"); if(b) b.textContent = this.audio && !this.audio.paused ? "Пауза" : (this.audio && this.audio.currentTime>0.05 ? "Грати далі" : "Прослухати") },
-  headLoop(){ cancelAnimationFrame(this.headRaf); const f=()=>{ this.drawHead(); if(this.audio) this.headRaf=requestAnimationFrame(f) }; f() },
+    let au=this.audio;
+    if(!au){ $("#mplay").classList.add("wait"); au=await this.musicPrep(); $("#mplay").classList.remove("wait");
+      if(!au){ this.toast("Не вдалося відтворити"); return } }
+    if(au.paused){ au.play(); this.headLoop() } else au.pause();
+    this.musicBtn() },
+  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio.currentTime=0 } this.pendingSeek=null; this.musicBtn(); this.drawHead() },
+  musicBtn(){ const b=$("#mplay"); if(!b) return; const on=this.audio && !this.audio.paused;
+    b.classList.toggle("on",!!on); b.querySelector("i").className = on ? "ic-pause" : "ic-play" },
+  headLoop(){ cancelAnimationFrame(this.headRaf); const f=()=>{ this.drawHead(); if(this.audio&&!this.audio.paused) this.headRaf=requestAnimationFrame(f) }; f() },
+  headTime(){ const m=this.st.music; if(!m) return 0;
+    const off = this.audio ? this.audio.currentTime : (this.pendingSeek||0);
+    return Math.min(m.end, m.start+off) },
   drawHead(){
     const h=$("#mhead"), m=this.st.music; if(!h) return;
-    if(!this.audio||!m){ h.style.display="none"; return }
-    const t=this.audioFrom+this.audio.currentTime; h.style.display="block"; h.style.left=(t/m.duration*100)+"%";
-    $("#mhead").dataset.t=tfmt(t) },
-  musicSeek(t){ if(!this.audio) return; this.audio.currentTime=Math.max(0,t); this.drawHead() },
+    if(!m||!m.path){ h.style.display="none"; return }
+    const t=this.headTime(); h.style.display="block"; h.style.left=(t/m.duration*100)+"%"; h.dataset.t=tfmt(t) },
+  headDrag(e){
+    e.preventDefault(); e.stopPropagation(); const m=this.st.music; if(!m) return;
+    const r=$("#wave").getBoundingClientRect(); this.scrubbing=true;
+    const mv=ev=>{ const t=Math.min(m.end-0.05, Math.max(m.start, (ev.clientX-r.left)/r.width*m.duration));
+      if(this.audio) this.audio.currentTime=t-m.start; else this.pendingSeek=t-m.start; this.drawHead() };
+    const up=()=>{ this.scrubbing=false; window.removeEventListener("pointermove",mv); window.removeEventListener("pointerup",up) };
+    window.addEventListener("pointermove",mv); window.addEventListener("pointerup",up); mv(e) },
   musicKey(e){
     if(e.code!=="Space"||e.repeat) return;
     const tg=e.target, tag=(tg.tagName||"").toLowerCase();
     if(tag==="textarea"||tag==="select"||(tag==="input"&&!["range","checkbox"].includes(tg.type))||tg.isContentEditable) return;
     const m=this.st.music; if(!this.st.music_on||!m||!m.path||!$("#v-main").classList.contains("on")) return;
     if(document.querySelector(".modal.on")) return;
-    e.preventDefault();
-    const now=Date.now();
-    if(now-(this.lastSpace||0)<330){            // подвійний пробіл: повертаємо стан і ставимо лінію на початок
-      this.lastSpace=0; clearTimeout(this.spaceT);
-      if(this.audio){ const was=this.spaceWas; this.audio.currentTime=0; if(was) this.audio.play(); else this.audio.pause(); this.musicBtn(); this.drawHead() }
-      return }
-    this.lastSpace=now; this.spaceWas=this.audio?!this.audio.paused:false;
+    e.preventDefault(); if(tag==="button") tg.blur();
     this.playMusic() },
-  stopMusic(){ if(this.audio){ this.audio.pause(); this.audio=null } cancelAnimationFrame(this.headRaf); this.drawHead(); const b=$("#mplay"); if(b) b.textContent="Прослухати" },
 
   // ---- редактор після монтажу
   ed:{video:0, mode:"full", a:0, b:0}, edRange:null,
@@ -897,6 +963,7 @@ const SV = {
   restyleDone(r){
     this.restyleProgress(1,"Оновлено · шматків: "+(r.count||0)+(r.fail?" · з помилками: "+r.fail:"")+(r.skipped?" · пропущено: "+r.skipped:""));
     if(r.skipped && r.manual) this.toast("Шматки з власними Fusion-композиціями не чіпав: "+r.skipped);
+    if(r.old && r.manual) this.toast("Шматків з монтажу Svit без збереженого плану: "+r.old+" — значення підкрутив, а фактуру на них міняй через «Вигляд» на фініші монтажу");
     clearTimeout(this.stHide); this.stHide=setTimeout(()=>$("#stprog").classList.remove("on"),2500) },
   restyleFail(m){ $("#stprog").classList.remove("on"); this.styleSent=null; this.toast(m) },
   async myTimeline(on=true){
@@ -908,8 +975,68 @@ const SV = {
     const r=await this.api("timeline_info");
     if(!r||!r.ok) $("#mytls").textContent=(r&&r.error)||"DaVinci не відповідає";
     else if(!r.timeline) $("#mytls").textContent="У DaVinci не відкритий жоден таймлайн";
-    else $("#mytls").innerHTML=esc(r.timeline)+" · "+r.clips+" "+plural(r.clips,"кліп","кліпи","кліпів")+" · рухай повзунки — зміни одразу в DaVinci";
+    else {
+      let how = r.adjust ? "ефекти ляжуть на Adjustment Clip ("+r.adjust+")" : r.svit ? "це монтаж Svit — зуми й переходи збережу" : "рухай повзунки — зміни одразу в DaVinci";
+      $("#mytls").innerHTML=esc(r.timeline)+" · "+r.clips+" "+plural(r.clips,"кліп","кліпи","кліпів")+" · "+how;
+      if(r.svit && !r.adjust && !this.manualStyle){ this.style.look_type=""; this.style0.look_type=""; this.styleSent.look_type=""; this.stylePaint() }
+    }
   },
+  // ---- Svit-текст
+  ts(){ if(!this.st.text_style) this.st.text_style={}; return this.st.text_style },
+  textFmt(){ // формат кадру: з налаштувань, а «як у джерела» — з роздільності першого відео
+    const f=this.st.format||"9:16"; const src=(this.cur()||[])[0];
+    if(f!=="src") return {fmt:f, res:"", vertical:["9:16","4:5"].includes(f), square:f==="1:1"};
+    const m=String((src&&src.resolution)||"").match(/(\d+)\s*[x×]\s*(\d+)/); const w=m?+m[1]:1920, h=m?+m[2]:1080;
+    return {fmt:"src", res:w+"x"+h, vertical:h>w, square:w===h} },
+  textPaint(){
+    const t=Object.assign({font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50}, this.ts());
+    Object.assign(this.ts(), t);
+    $$("[data-ts]").forEach(r=>{ const k=r.dataset.ts; r.value=t[k]; const v=+t[k];
+      $("#tsv_"+k).textContent = (v===0&&["glow","halation","shadow","outline"].includes(k)) ? "вимк." : v+"%" });
+    $$("#tpal b").forEach(b=>b.classList.toggle("on", b.dataset.c.toUpperCase()===String(t.color).toUpperCase()));
+    $("#tcolor").value = /^#[0-9a-f]{6}$/i.test(t.color) ? t.color : "#ffffff";
+    $$("#tanim button").forEach(b=>b.classList.toggle("on",b.dataset.v===t.anim));
+    $$("#tpos .tpos").forEach(b=>b.classList.toggle("on",b.dataset.p===t.pos));
+    const F=this.textFmt(); $("#tpos").classList.toggle("horiz", !F.vertical && !F.square); $("#tpos").classList.toggle("square", F.square);
+    $("#tfmtnote").textContent = F.vertical ? "· вертикальне відео" : F.square ? "· квадрат" : "· горизонтальне відео";
+    if(this.fontsLoaded && document.activeElement!==$("#tfont")) $("#tfont").value=t.font||"";
+    if(!this.fontsLoaded && this.st.adv_tab==="text") this.loadFonts() },
+  async loadFonts(sel){
+    if(this.fontsLoading) return; this.fontsLoading=true;
+    const list = sel ? sel : await this.api("list_fonts"); this.fontsLoading=false; if(!list) return;
+    this.fontsLoaded=true; const mine=list.filter(f=>f.user), sys=list.filter(f=>!f.user);
+    const opt=f=>`<option value="${esc(f.path)}">${esc(f.name)}</option>`;
+    $("#tfont").innerHTML='<option value="">Стандартний (Arial Bold)</option>'+(mine.length?'<optgroup label="Твої шрифти">'+mine.map(opt).join("")+'</optgroup>':"")+'<optgroup label="Шрифти Mac">'+sys.map(opt).join("")+'</optgroup>';
+    $("#tfont").value=this.ts().font||"" },
+  async importFont(){ const r=await this.api("import_font"); if(!r) return; if(r.error){ this.toast(r.error); return }
+    await this.loadFonts(r.fonts); this.ts().font=r.path; $("#tfont").value=r.path; this.save(); this.textPreview(); this.toast("Шрифт додано") },
+  textSample(){ const l=(this.st.lyrics||"").split("\n").map(x=>x.trim()).find(x=>x&&!/^[\[(].*[\])]$/.test(x)); return l || "Приклад тексту на відео" },
+  textPreviewSoon(){ clearTimeout(this.tpT); this.tpT=setTimeout(()=>this.textPreview(),180) },
+  async textPreview(){
+    if(!$("#tprev")) return; const F=this.textFmt(); const src=(this.cur()||[])[0];
+    const key=JSON.stringify([this.ts().font,this.ts().size,this.ts().color,this.ts().outline,this.ts().shadow,this.ts().glow,this.ts().halation,this.ts().pos,this.ts().upper,this.st.lyrics_upper,F.fmt,F.res,src&&src.path,this.textSample()]);
+    if(key===this.tpKey) return; this.tpKey=key; $("#tpload").classList.add("on");
+    const st=Object.assign({}, this.ts(), {upper: !!this.st.lyrics_upper});
+    const r=await this.api("text_preview", st, F.fmt, this.textSample(), src&&src.path||null, F.res);
+    if(key!==this.tpKey) return; $("#tpload").classList.remove("on");
+    if(!r||r.error){ $("#tpnote").textContent=(r&&r.error)||"Перегляд недоступний поза DaVinci"; return }
+    const box=$("#tprev"); box.style.aspectRatio=r.w+" / "+r.h; box.classList.toggle("vert", r.h>r.w);
+    $("#tpbg").src=r.bg; $("#tptx").src=r.text;
+    $("#tpnote").textContent = src&&src.path ? "Перегляд на кадрі з «"+src.name+"» — без токенів" : "Вибери матеріал — перегляд буде на кадрі з твого відео";
+  },
+  textAnimPlay(){
+    const t=this.ts(), el=$("#tptx"); if(!el) return; const k=(t.anim_strength||0)/100, sm=(t.anim_smooth||0)/100;
+    const dur=(3+20*sm)/30, ease = sm>0.5 ? "cubic-bezier(.2,.7,.2,1)" : "cubic-bezier(.4,0,.2,1)";
+    const from={none:{opacity:1},fade:{opacity:0},rise:{opacity:0,transform:`translateY(${(1+7*k)}%)`},
+      pop:{opacity:0,transform:`scale(${1-(0.08+0.32*k)})`},blur:{opacity:0,filter:`blur(${2+8*k}px)`}}[t.anim||"fade"];
+    el.getAnimations().forEach(a=>a.cancel());
+    if(t.anim==="none") return;
+    el.animate([from,{opacity:1,transform:"none",filter:"none"}],{duration:dur*1000,easing:ease,fill:"both"}) },
+  durSec(){ const m=this.st.dur_mode; return m==="custom" ? (this.st.dur_custom||20) : (["15","30","60"].includes(m) ? +m : 0) },
+  durToMusic(){   // з музикою тривалість задає шматок треку — підганяємо його під вибрану тривалість
+    const d=this.durSec(), m=this.st.music; if(!d||!m||!m.path||!this.st.music_on) return;
+    let a=m.start, b=Math.min(m.duration, a+d); if(b-a<d) a=Math.max(0,b-d);
+    m.start=+a.toFixed(2); m.end=+b.toFixed(2); if(this.range) this.range.set(m.start,m.end,m.duration); this.musicLabel(); this.musicReset() },
   lyrStat(){ const t=(this.st.lyrics||"").split("\n").map(x=>x.trim()).filter(x=>x&&!/^[\[(].*[\])]$/.test(x)).length;
     const el=$("#lyrstat"); if(!el) return;
     el.textContent = !t ? "" : t+" "+plural(t,"рядок","рядки","рядків")+(this.st.music_on&&this.st.music&&this.st.music.path ? " · прив'яжу до треку «"+this.st.music.name+"»" : " · увімкни «Монтаж під аудіо» і вибери трек, щоб прив'язати");

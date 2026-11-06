@@ -1279,6 +1279,157 @@ def add_subs(mp, srt, tl=None):
         L("Субтитри не додались автоматично: %s" % e)
 
 
+TEXT_COMP = "Svit Text"
+
+
+def text_anim(ti, anim, n, label):
+    """Анімація рядка тексту: поява/зникнення прозорістю + підйом, поп або розмиття. n — довжина в кадрах."""
+    kind = (anim or {}).get("anim", "fade")
+    if kind == "none":
+        return "без анімації"
+    k = max(0.0, min(1.0, float((anim or {}).get("anim_strength", 50)) / 100.0))
+    sm = max(0.0, min(1.0, float((anim or {}).get("anim_smooth", 50)) / 100.0))
+    _POS[0] = 0
+    comp = ti.AddFusionComp()
+    if not comp:
+        return "AddFusionComp → None"
+    how = []
+    try:
+        names = ti.GetFusionCompNameList() or []
+        if names:
+            ti.LoadFusionCompByName(names[-1])
+        mi = list((comp.GetToolList(False, "MediaIn") or {}).values())
+        mo = list((comp.GetToolList(False, "MediaOut") or {}).values())
+        if not mi or not mo:
+            return "немає MediaIn/MediaOut"
+        comp.Lock()
+        attrs = comp.GetAttrs() or {}
+        a = float(attrs.get("COMPN_RenderStart") or 0)
+        b = float(attrs.get("COMPN_RenderEnd") or (n - 1))
+        if b <= a:
+            a, b = 0.0, float(max(1, n - 1))
+        din = max(2.0, min(round(3 + 20 * sm), (b - a) / 2.5))        # тривалість появи
+        dout = max(2.0, min(round(din * 0.6), (b - a) / 3.0))
+        cur = mi[0]
+        if kind in ("rise", "pop"):
+            tr = _tool(comp, "Transform")
+            tr.ConnectInput("Input", cur)
+            cur = tr
+            if kind == "pop":
+                s0 = 1.0 - (0.08 + 0.32 * k)
+                how.append("pop:" + keyframe(comp, tr, "Size", [(a, s0), (a + din, 1.0)], a, b))
+            else:
+                dy = 0.01 + 0.07 * k
+                ok = None
+                try:
+                    tr.AddModifier("Center", "XYPath")
+                    tr.SetInput("Center", [0.5, 0.5 - dy], a)
+                    tr.SetInput("Center", [0.5, 0.5], a + din)
+                    ok = "path"
+                except Exception:
+                    ok = None
+                if not ok:
+                    try:
+                        tr.Center.SetExpression("Point(0.5, 0.5 - %.4f*max(0, 1 - (time - %.1f)/%.1f))" % (dy, a, din))
+                        ok = "expr"
+                    except Exception as e:
+                        ok = "не вдалось (%s)" % e
+                how.append("rise:" + ok)
+        if kind == "blur":
+            bl = _tool(comp, "Blur")
+            bl.ConnectInput("Input", cur)
+            cur = bl
+            how.append("blur:" + keyframe(comp, bl, "XBlurSize", [(a, 4 + 26 * k), (a + din, 0.0)], a, b))
+        fd = _tool(comp, "BrightnessContrast")
+        fd.ConnectInput("Input", cur)
+        try:
+            fd.SetInput("Alpha", 1)                 # прозорість теж, а не лише колір
+        except Exception:
+            pass
+        how.append("fade:" + keyframe(comp, fd, "Gain", [(a, 0.0), (a + din, 1.0), (b - dout, 1.0), (b, 0.0)], a, b))
+        mo[0].ConnectInput("Input", fd)
+        layout_nodes(comp, mi[0], mo[0])
+    except Exception as e:
+        how.append("помилка: %s" % e)
+    finally:
+        try:
+            comp.Unlock()
+        except Exception:
+            pass
+    commit_comp(ti, comp, label, False, TEXT_COMP)
+    return ", ".join(how)
+
+
+def place_text(sess, mp, tl, items, anim):
+    """Svit-текст: PNG-рядки на нову верхню відеодоріжку, кожен у свій час, з анімацією."""
+    if not items:
+        return
+    paths = [it["png"] for it in items if Path(it["png"]).exists()]
+    if not paths:
+        L("Текст: картинок не знайдено")
+        return
+    root = mp.GetRootFolder()
+    folder = None
+    try:
+        folder = mp.AddSubFolder(root, "Svit Text %s" % time.strftime("%H%M%S"))
+        if folder:
+            mp.SetCurrentFolder(folder)
+    except Exception:
+        folder = None
+    imported = mp.ImportMedia(paths) or []
+    by_path = {}
+    for c in imported:
+        try:
+            by_path[os.path.realpath(c.GetClipProperty("File Path"))] = c
+        except Exception:
+            pass
+    if folder:
+        try:
+            mp.SetCurrentFolder(root)
+        except Exception:
+            pass
+    tl.AddTrack("video")
+    track = tl.GetTrackCount("video")
+    try:
+        tl.SetTrackName("video", track, "Svit Text")
+    except Exception:
+        pass
+    fps = timeline_fps(tl)
+    t0 = tl.GetStartFrame()
+    ok, prev_end = 0, -1
+    for i, it in enumerate(items):
+        mpi = by_path.get(os.path.realpath(it["png"]))
+        if not mpi:
+            continue
+        rec = t0 + int(round(it["start"] * fps))
+        rec = max(rec, prev_end)
+        n = int(round(it["end"] * fps)) + t0 - rec
+        if i + 1 < len(items):
+            n = min(n, t0 + int(round(items[i + 1]["start"] * fps)) - rec)
+        if n < 2:
+            continue
+        res = mp.AppendToTimeline([{"mediaPoolItem": mpi, "startFrame": 0, "endFrame": n - 1,
+                                    "trackIndex": track, "recordFrame": rec}]) or []
+        if not res:
+            L("  текст #%d не став на таймлайн" % (i + 1))
+            continue
+        prev_end = rec + n
+        ok += 1
+        try:
+            got = int(res[0].GetDuration() or n)
+            if got < n - 1:
+                L("  текст #%d коротший, ніж треба: %d з %d кадрів (стандартна тривалість кадру в DaVinci?)" % (i + 1, got, n))
+        except Exception:
+            pass
+        try:
+            how = text_anim(res[0], anim, n, "txt#%d" % (i + 1))
+            if i < 2:
+                L("  текст #%d: %s" % (i + 1, how))
+        except Exception as e:
+            L("  текст #%d анімація: %s" % (i + 1, e))
+    L("Svit-текст: рядків %d з %d на доріжці V%d" % (ok, len(items), track))
+
+
 def style_params(data, plan):
     """Параметри вигляду з налаштувань (спільні для монтажу, «Вигляду» після монтажу і «Мого таймлайну»)."""
     fxs = float(data.get("fx_strength", 0.5))
@@ -1358,6 +1509,31 @@ def foreign_comp(ti, mine):
     return False
 
 
+ADJ_NAMES = ("adjustment", "коригувальн", "корректирующ", "einstellungsclip", "clip de ajuste", "clip d'ajustement")
+
+
+def is_adjustment(ti):
+    try:
+        if ti.GetMediaPoolItem():
+            return False
+    except Exception:
+        pass
+    try:
+        n = (ti.GetName() or "").lower()
+    except Exception:
+        return False
+    return any(k in n for k in ADJ_NAMES)
+
+
+def adjustment_items(tl):
+    out = []
+    for idx in range(1, (tl.GetTrackCount("video") or 1) + 1):
+        for ti in tl.GetItemListInTrack("video", idx) or []:
+            if is_adjustment(ti):
+                out.append(ti)
+    return out
+
+
 def style_targets(sess, data):
     """[(таймлайн, [(шматок, info), …]), …] і кількість пропущених шматків."""
     project = sess.project
@@ -1367,7 +1543,23 @@ def style_targets(sess, data):
         if not cur_tl:
             raise RuntimeError("У DaVinci не відкритий жоден таймлайн.")
         ents = []
+        adj = adjustment_items(cur_tl)
+        if adj:
+            # є Adjustment Clip — ефекти кладемо лише на нього, кліпи під ним не чіпаємо
+            for ti in adj:
+                if foreign_comp(ti, LOOK_COMP):
+                    skipped += 1
+                    continue
+                ents.append((ti, {"look": data.get("look_override") or None, "src": None,
+                                  "label": "adj#%d" % (len(ents) + 1)}))
+            L("  Adjustment Clip на таймлайні: %d — ефекти на них" % len(adj))
+            return [(cur_tl, ents)], skipped
         for idx in range(1, (cur_tl.GetTrackCount("video") or 1) + 1):
+            try:
+                if cur_tl.GetTrackName("video", idx) == "Svit Text":
+                    continue                      # доріжку з текстом ефектами не чіпаємо
+            except Exception:
+                pass
             for ti in cur_tl.GetItemListInTrack("video", idx) or []:
                 try:
                     mpi = ti.GetMediaPoolItem()
@@ -1375,6 +1567,18 @@ def style_targets(sess, data):
                     mpi = None
                 if not mpi:
                     continue                      # титри, генератори, adjustment clips
+                names = []
+                try:
+                    names = list(ti.GetFusionCompNameList() or [])
+                except Exception:
+                    pass
+                if TEXT_COMP in names:
+                    continue
+                if SVIT_COMP in names:
+                    # шматок з монтажу Svit (план не знайдено) — можна лише підкрутити значення, не перебудувати
+                    ents.append((ti, {"look": data.get("look_override") or None, "src": None, "svit_only": True,
+                                      "label": "#%d" % (len(ents) + 1)}))
+                    continue
                 if foreign_comp(ti, LOOK_COMP):
                     skipped += 1
                     continue
@@ -1397,6 +1601,8 @@ def style_targets(sess, data):
     else:
         groups = [(by_name.get(n), [v]) for n, v in zip(names, videos)]
     groups = [g for g in groups if g[0] is not None]
+    if data.get("only_timeline"):
+        groups = [g for g in groups if g[0].GetName() == data["only_timeline"]]
     if not groups:
         raise RuntimeError("Не знайшов таймлайни цього монтажу в проекті DaVinci (можливо, їх перейменували або видалили).")
     out = []
@@ -1511,6 +1717,13 @@ def restyle(sess, data):
                                 ti.DeleteFusionCompByName(nm)
                     except Exception as e:
                         errs.append(str(e))
+                elif info.get("svit_only"):
+                    if mode != "clear" and tune_item(ti, info, P, SVIT_COMP):
+                        stats["tuned"] += 1
+                        if mode == "rebuild":          # фактуру без плану монтажу не перебудувати
+                            stats["old"] = stats.get("old", 0) + 1
+                    else:
+                        stats["old"] = stats.get("old", 0) + 1
                 elif mode == "tune" and tune_item(ti, info, P, comp_name):
                     stats["tuned"] += 1
                 else:
@@ -1539,13 +1752,14 @@ def restyle(sess, data):
          stats["fail"], skipped))
     tl_name = groups[0][0].GetName() if groups else ""
     return {"ok": True, "count": n, "fail": stats["fail"], "aborted": aborted, "skipped": skipped,
+            "old": stats.get("old", 0),
             "tuned": stats["tuned"], "rebuilt": stats["rebuilt"], "timeline": tl_name}
 
 
 def timeline_info(sess):
     tl = sess.project.GetCurrentTimeline()
     if not tl:
-        return {"ok": True, "timeline": "", "clips": 0}
+        return {"ok": True, "timeline": "", "clips": 0, "adjust": 0}
     n = 0
     for idx in range(1, (tl.GetTrackCount("video") or 1) + 1):
         for ti in tl.GetItemListInTrack("video", idx) or []:
@@ -1554,7 +1768,7 @@ def timeline_info(sess):
                     n += 1
             except Exception:
                 pass
-    return {"ok": True, "timeline": tl.GetName(), "clips": n}
+    return {"ok": True, "timeline": tl.GetName(), "clips": n, "adjust": len(adjustment_items(tl))}
 
 
 def build(sess, data):
@@ -1615,6 +1829,7 @@ def build(sess, data):
         for mus, st in songs:          # треки — після всіх відео, щоб не зсували кінець таймлайну
             place_song(sess, mp, tl, mus, st)
         add_subs(mp, plan.get("srt_all"), tl)
+        place_text(sess, mp, tl, plan.get("text_all"), plan.get("text_anim"))
     else:
         for i, v in enumerate(videos, 1):
             sess.status(0.1 + 0.8 * (i - 1) / len(videos), "Монтую ролик %d з %d" % (i, len(videos)))
@@ -1631,6 +1846,7 @@ def build(sess, data):
             except Exception:
                 pass
             add_subs(mp, v.get("srt"), tl)
+            place_text(sess, mp, tl, v.get("text"), plan.get("text_anim"))
             ranges.append((name, tl, a, b - 1))
 
     if data.get("auto_render") and ranges:

@@ -34,7 +34,7 @@ python3 -c "from PIL import Image; im=Image.open('installer/res/icon.png'); im.t
 chmod +x "$R/worker.sh" "$R/uninstall.command"
 
 mkdir -p "$R/payload/app/web" "$R/payload/resolve"
-cp app/engine.py app/ui.py app/music.py app/refs.py app/svlog.py app/sigcheck.py app/whatsnew.md "$R/payload/app/"
+cp app/engine.py app/ui.py app/music.py app/refs.py app/svlog.py app/sigcheck.py app/textfx.py app/whatsnew.md "$R/payload/app/"
 [ -f requirements.lock ] && cp requirements.lock "$R/payload/requirements.lock"
 cp app/web/index.html app/web/i18n.js app/web/header.png app/web/style.css "$R/payload/app/web/"
 cp -R app/web/fonts "$R/payload/app/web/fonts"
