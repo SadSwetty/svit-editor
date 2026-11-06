@@ -944,6 +944,7 @@ class Api:
                     "lyrics_upper": bool(st.get("lyrics_upper", False)),
                     "song_sync": bool(st.get("song_sync", True)),
                     "lipsync": [str(x) for x in (st.get("lipsync") or [])][:50] if st.get("music_on") else [],
+                    "lip_auto": bool(st.get("lip_auto")) and bool(st.get("music_on")),
                     "text_mode": "srt" if st.get("text_mode") == "srt" else "svit",
                     "text_style": {k: st.get("text_style", {}).get(k, d) for k, d in textfx.DEFAULT_STYLE.items()}
                     if isinstance(st.get("text_style"), dict) else dict(textfx.DEFAULT_STYLE),

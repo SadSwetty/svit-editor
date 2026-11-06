@@ -1096,6 +1096,7 @@ class Job:
             _log(f"Синхрон дублів: трек не прочитався: {e!r}")
             return out
         marked = set(self.s.get("lipsync") or [])
+        auto_lip = bool(self.s.get("lip_auto")) and not marked     # «у відео є ліпсінк» — шукаємо самі
         srcs = self.job["sources"]
         lips = [x for x in srcs if x.get("name") in marked]
         todo = lips or srcs
@@ -1113,7 +1114,8 @@ class Job:
             except Exception as e:
                 _log(f"Синхрон «{src['name']}»: {e!r}")
                 continue
-            ok = off is not None and conf >= (0.7 if lip else 1.2)
+            ok = off is not None and conf >= (0.7 if lip else 1.0 if auto_lip else 1.2)
+            lip = lip or (auto_lip and ok)
             covers = off is not None and (off < win[1] and off + src["duration"] > win[0])
             _log(f"Синхрон «{src['name']}»{' [ліпсінк]' if lip else ''}: зсув {off} с, впевненість {conf} → "
                  f"{'так' if ok else 'ні'}{'' if covers or not ok else ' (але поза вибраним шматком пісні)'}")
@@ -1127,7 +1129,12 @@ class Job:
             if str(src["id"]) not in out:
                 self.warnings.append(f"Ліпсінк «{src['name']}»: не вдалося почути в ньому трек — він піде як "
                                      f"звичайні кадри. Перевір, що в цьому відео чути пісню.")
-        if not lips:
+        if auto_lip and not out:
+            self.warnings.append("Ліпсінк: у жодному відео не вдалося почути трек. Познач ліпсінк-відео вручну "
+                                 "(«Текст» → «Ліпсінк-відео») — для позначених Svit слухає уважніше.")
+        elif auto_lip:
+            _log(f"Ліпсінк знайдено автоматично: {len(out)} відео")
+        if not lips and not auto_lip:
             if out and len(out) < len(srcs):
                 self.warnings.append(f"Синхрон: з піснею вирівняно {len(out)} з {len(srcs)} відео "
                                      f"(в інших не чути треку — вони підуть як звичайні кадри).")
@@ -1218,7 +1225,7 @@ class Job:
             job["music_info"] = _m.analyze(mu["path"], mu.get("start", 0), mu.get("end", 30))
             lyr = (s.get("lyrics") or "").strip()
             if (s.get("cinematic") and s.get("take_sync", True)) or (lyr and s.get("song_sync", True)) \
-                    or s.get("lipsync"):
+                    or s.get("lipsync") or s.get("lip_auto"):
                 job["sync"] = self._sync_takes(_m, mu["path"])
             if lyr:
                 self.report("sound", 0.96, "Слухаю спів і прив'язую слова пісні")

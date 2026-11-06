@@ -1385,7 +1385,12 @@ def place_text(sess, mp, tl, items, anim):
             mp.SetCurrentFolder(folder)
     except Exception:
         folder = None
-    imported = mp.ImportMedia(paths) or []
+    imported = []
+    for pth in paths:            # по одному файлу — щоб DaVinci не склеїв картинки в секвенцію
+        try:
+            imported += mp.ImportMedia([pth]) or []
+        except Exception as e:
+            L("  імпорт %s: %s" % (os.path.basename(pth), e))
     by_path, by_name = {}, {}
     for c in imported:
         try:

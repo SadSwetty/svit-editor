@@ -316,6 +316,13 @@ def render(text, style, W, H):
     return out
 
 
+def _letters(i):
+    """1 → 'aa', 2 → 'ab' … — порядковий номер літерами."""
+    a = "abcdefghijklmnopqrstuvwxyz"
+    i -= 1
+    return a[(i // 676) % 26] + a[(i // 26) % 26] + a[i % 26]
+
+
 def render_items(chunks, style, W, H, out_dir, upper=False):
     """[{start,end,text}] → PNG-файли; повертає [{png,start,end}]. Сусідні рядки не перекриваються."""
     out_dir = Path(out_dir)
@@ -332,7 +339,7 @@ def render_items(chunks, style, W, H, out_dir, upper=False):
             end = min(end, items[i]["start"])
         if end - c["start"] < 0.15:
             continue
-        p = out_dir / ("line%03d_svit.png" % i)     # без номера в кінці — інакше DaVinci склеїть їх у секвенцію
+        p = out_dir / ("svit_line_%s.png" % _letters(i))   # без цифр — інакше DaVinci склеїть їх у секвенцію
         render(c["text"], st, W, H).save(p, optimize=True)
         res.append({"png": str(p), "start": round(c["start"], 3), "end": round(end, 3), "text": c["text"]})
     return res
