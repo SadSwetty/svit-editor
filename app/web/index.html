@@ -545,7 +545,15 @@ const SV = {
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
     $$("#zstyle button").forEach(b=>b.onclick=()=>{this.st.zoom_style=b.dataset.v; this.paint(); this.save()});
     $$(".pace").forEach(b=>b.onclick=()=>{this.st.pace=b.dataset.v; this.paint(); this.save()});
-    $$("#tabs button").forEach(b=>b.onclick=()=>{this.st.adv_tab=b.dataset.t; this.paint(); this.save()});
+    $$("#tabs button").forEach(b=>b.onclick=()=>{
+      // вкладки різної висоти: не даємо сторінці «стрибнути» вгору, коли нова вкладка коротша
+      const box=$(".tab.on")&&$(".tab.on").parentElement, sc=$("#tabs").closest(".scroll")||document.scrollingElement;
+      const keep0=sc?sc.scrollTop:0;
+      if(box) box.style.minHeight=box.offsetHeight+"px";
+      this.st.adv_tab=b.dataset.t; this.paint(); this.save();
+      if(sc&&sc.scrollTop!==keep0) sc.scrollTop=keep0;
+      // нижче лишається запас висоти, поки не закриєш «Розширені налаштування» — так сторінка не смикається
+    });
     $("#zstr").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
     $("#fxstr").addEventListener("input",e=>{this.st.fx_strength=+e.target.value; this.paint(); this.save()});
     $("#zstr2").addEventListener("input",e=>{this.st.zoom_strength=+e.target.value; this.paint(); this.save()});
@@ -751,7 +759,7 @@ const SV = {
   async edCost(tot){ const e=this.ed; const r=await this.api("estimate_edit", e.mode==="range"? e.b-e.a : tot, e.mode!=="range");
     $("#ecost").innerHTML = r&&r.cost ? "≈ "+coin(13)+" "+money(r.cost) : "" },
 
-  toggleAdv(){ this.st.adv_open=!this.st.adv_open; this.paint(); this.save();
+  toggleAdv(){ this.st.adv_open=!this.st.adv_open; $("#adv").style.minHeight=""; this.paint(); this.save();
     if(this.st.adv_open) setTimeout(()=>$("#adv").scrollIntoView({behavior:"smooth",block:"nearest"}),80) },
   example(i){ const p=$("#prompt"); p.value=I18N.t(EXAMPLES[i][1]); this.st.prompt=p.value; p.focus(); p.classList.remove("shake"); this.save() },
 

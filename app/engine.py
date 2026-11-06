@@ -345,12 +345,29 @@ def grab_frames(path, times, on_pct, check):
         c.close()
         return out
     c.streams.video[0].thread_type = "AUTO"
+    tag_rot = 0
+    try:
+        tag_rot = int(float((c.streams.video[0].metadata or {}).get("rotate", 0)))
+    except Exception:
+        pass
     for i, t in enumerate(times):
         check()
         try:
             c.seek(int(t * 1_000_000))
             fr = next(c.decode(video=0))
             img = fr.to_image()
+            # телефонне відео зберігається «лежачи» з позначкою повороту — повертаємо, як показує DaVinci,
+            # інакше Claude бачить вертикальні кліпи на боці
+            ang = 0
+            try:
+                ang = int(round(float(getattr(fr, "rotation", 0) or 0)))
+            except Exception:
+                ang = 0
+            if not ang and tag_rot:
+                ang = -tag_rot
+            ang = ((ang + 180) % 360) - 180
+            if ang in (90, -90, 180, -180):
+                img = img.rotate(ang, expand=True)
             img.thumbnail((FRAME_SIZE, FRAME_SIZE))
             buf = io.BytesIO()
             img.convert("RGB").save(buf, "JPEG", quality=70)
@@ -613,7 +630,7 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 
 Відповідай ТІЛЬКИ валідним JSON без пояснень навколо:
 {"notes": "коротко: що ти зробив, яка ідея монтажу і що не вдалося",
- "rotate": {"4": 180},
+ "rotate": {},
  "videos": [
   {"title": "коротка назва", "caption": "підпис для посту", "hashtags": ["#..."],
    "why": "чому це спрацює (1 речення)", "look": "none",
@@ -628,7 +645,7 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 - zoom_end = zoom, якщо руху немає; fx = [] і tr = "", якщо їх немає;
 - для мовлення, де треба вирізати паузи, додай 11-м полем true (tighten).
 - rotate: подивись на кадри кожного джерела — якщо відео знято догори дриґом (небо внизу, люди догори ногами,
-  текст перевернутий) — {"№": 180}; якщо лежить на боці — 90 (повернути за годинниковою) або -90 (проти).
+  текст перевернутий) — {"№": 180}. Вертикальне чи горизонтальне відео — це НЕ поворот, його не чіпай.
   Програма сама поверне ці кліпи. Якщо все рівно — "rotate": {}.
 Пиши JSON компактно, без зайвих пробілів і переносів; notes, why і caption — коротко."""
 
@@ -1032,7 +1049,7 @@ def pick_look(want, s, prev=None):
 
 def plan_rotation(plan, job):
     """Перевернуті джерела від Claude → {id: кут}; зберігається в job для наступних правок."""
-    rot = dict(job.get("rotate") or {})
+    rot = {k: v for k, v in (job.get("rotate") or {}).items() if v == 180}
     raw = plan.get("rotate")
     if isinstance(raw, dict):
         ids = {str(x["id"]) for x in job.get("sources", [])}
@@ -1043,7 +1060,7 @@ def plan_rotation(plan, job):
                 continue
             a = {270: -90, -270: 90, -180: 180}.get(a, a)
             if str(k) in ids:
-                if a in (90, -90, 180):
+                if a == 180:            # лише догори дриґом; «на боці» — це звичайне вертикальне відео
                     rot[str(k)] = a
                 elif a == 0:
                     rot.pop(str(k), None)

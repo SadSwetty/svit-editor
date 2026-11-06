@@ -1231,7 +1231,7 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
         L("  УВАГА: DaVinci додав менше шматків, ніж у плані")
     rotated = []
     for ti, (src, sg) in zip(vi, metas):
-        rot = sg.get("rot")
+        rot = 180 if sg.get("rot") in (180, -180) else None   # лише догори дриґом
         if rot:
             # відео знято догори дриґом / на боці — повертаємо кліп (кут у DaVinci — проти годинникової)
             ok_r = ti.SetProperty("RotationAngle", float(-rot if rot in (90, -90) else rot))
