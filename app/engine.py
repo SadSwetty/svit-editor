@@ -1669,6 +1669,10 @@ def finalize_videos(job, data, videos, notes, out, version):
                 try:
                     text_all = textfx.render_items([x for cl in lists for x in as_lines(cl)], style, W, H,
                                                    out / f"text{tag}")
+                    if text_all and text_all[0].get("tp"):   # запасні субтитри, якщо Text+ у Media Pool немає
+                        p = out / f"subtitles_all{tag}.srt"
+                        if write_srt(p, [strip_marks(c) for c in lists], style.get("upper", False)):
+                            text_all[0]["srt"] = str(p)
                 except Exception as e:
                     _log(f"Svit-текст не намалювався: {e!r} — ставлю звичайні субтитри")
                     svit_text = False
@@ -1682,6 +1686,10 @@ def finalize_videos(job, data, videos, notes, out, version):
                 if svit_text:
                     try:
                         v["text"] = textfx.render_items(as_lines(chunks), style, W, H, out / f"text{tag}_{i:02}")
+                        if v["text"] and v["text"][0].get("tp"):
+                            p = out / f"subtitles_{i:02}{tag}.srt"
+                            if write_srt(p, [strip_marks(chunks)], style.get("upper", False)):
+                                v["text"][0]["srt"] = str(p)
                         done = True
                     except Exception as e:
                         _log(f"Svit-текст не намалювався: {e!r}")

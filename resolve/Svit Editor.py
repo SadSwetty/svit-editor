@@ -1494,9 +1494,165 @@ def build_text_comp(ti, anim, n, label, tp=None):
     return ", ".join(how)
 
 
+TEXT_STATE = {"note": ""}
+
+
+def find_title_template(mp):
+    """Титр Text+, який автор один раз перетягнув з Effects → Titles у Media Pool."""
+    found = []
+
+    def walk(folder, depth=0):
+        if found or depth > 6:
+            return
+        for c in folder.GetClipList() or []:
+            try:
+                typ = str(c.GetClipProperty("Type") or "").lower()
+                name = str(c.GetName() or "")
+            except Exception:
+                continue
+            if ("title" in typ or "fusion" in typ or "generator" in typ or "титр" in typ) and \
+                    ("text+" in name.lower() or "text +" in name.lower() or "svit text" in name.lower()):
+                found.append(c)
+                return
+        for sub in folder.GetSubFolderList() or []:
+            walk(sub, depth + 1)
+    try:
+        walk(mp.GetRootFolder())
+    except Exception as e:
+        L("Пошук Text+ у Media Pool: %s" % e)
+    return found[0] if found else None
+
+
+def setup_title(ti, tp, anim, n, label):
+    """Справжній титр Text+ на таймлайні: текст, шрифт, колір, позиція + світіння/halation/тінь/анімація."""
+    comp = None
+    try:
+        comp = ti.GetFusionCompByIndex(1)
+    except Exception:
+        comp = None
+    if not comp:
+        return "у титрі немає Fusion-композиції"
+    _POS[0] = 0
+    how = []
+    try:
+        comp.Lock()
+        tx = list((comp.GetToolList(False, "TextPlus") or {}).values())
+        mo = list((comp.GetToolList(False, "MediaOut") or {}).values())
+        if not tx or not mo:
+            return "у титрі немає Text+ / MediaOut"
+        tx = tx[0]
+        fam, sty, how_f = pick_font(tp["font"], tp["style"])
+        _set(tx, "StyledText", tp["text"])
+        _set(tx, "Font", fam)
+        _set(tx, "Style", sty)
+        _set(tx, "Size", float(tp["size"]))
+        _set(tx, "Center", {1: float(tp["cx"]), 2: float(tp["cy"])}, [float(tp["cx"]), float(tp["cy"])])
+        for i, c in enumerate(("Red1", "Green1", "Blue1")):
+            _set(tx, c, float(tp["rgb"][i]))
+        if tp.get("outline", 0) > 0.01:
+            dark = sum(tp["rgb"]) > 1.5
+            _set(tx, "Enabled2", 1)
+            _set(tx, "Thickness2", 0.02 + 0.08 * tp["outline"])
+            for c in ("Red2", "Green2", "Blue2"):
+                _set(tx, c, 0.0 if dark else 1.0)
+        how.append("шрифт %s %s (%s)" % (fam, sty, how_f))
+        cur = tx
+        if tp.get("glow", 0) > 0.01:
+            g = _nm(_tool(comp, "SoftGlow"), "SvTextGlow")
+            g.ConnectInput("Input", cur)
+            _set(g, "Threshold", 0.0)
+            _set(g, "Gain", 0.4 + 2.2 * tp["glow"])
+            _set(g, "XGlowSize", 4 + 30 * tp["glow"])
+            cur = g
+        if tp.get("halation", 0) > 0.01:
+            h = _nm(_tool(comp, "SoftGlow"), "SvTextHal")
+            h.ConnectInput("Input", cur)
+            for inp, v in (("Threshold", 0.0), ("Gain", 0.5 + 2.0 * tp["halation"]), ("XGlowSize", 2 + 10 * tp["halation"]),
+                           ("RedScale", 1.0), ("GreenScale", 0.36), ("BlueScale", 0.16)):
+                _set(h, inp, v)
+            cur = h
+        if tp.get("shadow", 0) > 0.01:
+            sh = _nm(_tool(comp, "BrightnessContrast"), "SvTextShadowColor")
+            sh.ConnectInput("Input", tx)
+            _set(sh, "Gain", 0.0)
+            sb = _nm(_tool(comp, "Blur"), "SvTextShadow")
+            sb.ConnectInput("Input", sh)
+            _set(sb, "XBlurSize", 2 + 14 * tp["shadow"])
+            _set(sb, "Blend", min(1.0, 0.5 + 0.6 * tp["shadow"]))
+            mg = _nm(_tool(comp, "Merge"), "SvTextOver")
+            mg.ConnectInput("Background", sb)
+            mg.ConnectInput("Foreground", cur)
+            cur = mg
+        attrs = comp.GetAttrs() or {}
+        a = float(attrs.get("COMPN_RenderStart") or 0)
+        b = float(attrs.get("COMPN_RenderEnd") or (n - 1))
+        if b <= a:
+            a, b = 0.0, float(max(1, n - 1))
+        cur, h2 = anim_chain(comp, cur, anim, a, b)
+        how.append(h2)
+        mo[0].ConnectInput("Input", cur)
+        try:
+            how.append("у вузлі: %s" % str(tx.GetInput("StyledText"))[:30])
+        except Exception:
+            pass
+    except Exception as e:
+        how.append("помилка: %s" % e)
+    finally:
+        try:
+            comp.Unlock()
+        except Exception:
+            pass
+    return ", ".join(how)
+
+
+def place_titles(sess, mp, tl, items, anim, tpl):
+    """Рядки — справжні титри Text+ (з шаблону в Media Pool) на окремій верхній доріжці."""
+    tl.AddTrack("video")
+    track = tl.GetTrackCount("video")
+    try:
+        tl.SetTrackName("video", track, "Svit Text")
+    except Exception:
+        pass
+    fps = timeline_fps(tl)
+    t0 = tl.GetStartFrame()
+    ok, prev_end = 0, -1
+    for i, it in enumerate(items):
+        rec = max(t0 + int(round(it["start"] * fps)), prev_end)
+        n = int(round(it["end"] * fps)) + t0 - rec
+        if i + 1 < len(items):
+            n = min(n, t0 + int(round(items[i + 1]["start"] * fps)) - rec)
+        if n < 2:
+            continue
+        res = mp.AppendToTimeline([{"mediaPoolItem": tpl, "startFrame": 0, "endFrame": n - 1,
+                                    "trackIndex": track, "recordFrame": rec}]) or []
+        if not res:
+            L("  титр #%d не став на таймлайн" % (i + 1))
+            continue
+        prev_end = rec + n
+        ok += 1
+        how = setup_title(res[0], it["tp"], anim, n, "title#%d" % (i + 1))
+        if i < 2 or "помилка" in how:
+            L("  титр #%d: %s" % (i + 1, how))
+    L("Svit-текст: титрів Text+ %d з %d на доріжці V%d (правляться в Inspector на Edit)" % (ok, len(items), track))
+    return ok
+
+
 def place_text(sess, mp, tl, items, anim):
-    """Svit-текст: PNG-рядки на нову верхню відеодоріжку, кожен у свій час, з анімацією."""
+    """Svit-текст на нову верхню відеодоріжку, кожен рядок у свій час, з анімацією.
+    Редагований текст — справжні титри Text+ з Media Pool; якщо Text+ там немає — Text+ усередині прозорого кліпу."""
     if not items:
+        return
+    if items[0].get("tp"):
+        tpl = find_title_template(mp)
+        if tpl:
+            L("Текст: беру титр «%s» з Media Pool" % tpl.GetName())
+            if place_titles(sess, mp, tl, items, anim, tpl):
+                return
+        TEXT_STATE["note"] = ("Текст поставив звичайною доріжкою субтитрів. Щоб він був титрами Text+ з твоїм шрифтом, "
+                              "кольором і світінням — один раз перетягни Effects → Titles → Text+ у Media Pool і "
+                              "перемонтуй (або натисни «Правка» з тим самим запитом).")
+        L("Текст: Text+ у Media Pool не знайдено — ставлю доріжку субтитрів")
+        add_subs(mp, items[0].get("srt"), tl)
         return
     paths = sorted({it["png"] for it in items if Path(it["png"]).exists()})
     if not paths:
@@ -1939,6 +2095,7 @@ def timeline_info(sess):
 
 
 def build(sess, data):
+    TEXT_STATE["note"] = ""
     project = sess.project
     mp = project.GetMediaPool()
     plan, stamp = data["plan"], data["stamp"]
@@ -2046,6 +2203,7 @@ def build(sess, data):
         if n not in tl_names:
             tl_names.append(n)
     return {"ok": True, "folder": fname, "count": len(ranges), "version": version, "fusion": stats, "timelines": tl_names,
+            "text_note": TEXT_STATE["note"],
             "log": str(LOG_PATH)}
 
 

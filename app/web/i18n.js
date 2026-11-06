@@ -279,6 +279,7 @@
     "Кожен рядок — окремий кліп на доріжці «Svit Text»: посувай і розтягуй на таймлайні. Слова, шрифт, колір і розмір правиш у Fusion: вузол Text+ (SvText).": "Each line is its own clip on the “Svit Text” track: move and stretch it on the timeline. Edit words, font, colour and size in Fusion: the Text+ node (SvText).",
     "Редагований Text+": "Editable Text+", "Картинкою": "As images",
     "Кожен рядок — картинка на доріжці «Svit Text»: виглядає точно як у перегляді, посувається й розтягується, але слова не редагуються.": "Each line is an image on the “Svit Text” track: looks exactly like the preview, can be moved and stretched, but the words can't be edited.",
+    "Кожен рядок — справжній титр Text+ на доріжці «Svit Text»: посувай на таймлайні, слова, шрифт і колір правиш в Inspector. Один раз перетягни Effects → Titles → Text+ у Media Pool — Svit бере його як основу.": "Each line is a real Text+ title on the “Svit Text” track: move it on the timeline, edit words, font and colour in the Inspector. Drag Effects → Titles → Text+ into the Media Pool once — Svit uses it as the base.",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",

@@ -364,10 +364,6 @@ def render_items(chunks, style, W, H, out_dir, upper=False):
     st["upper"] = bool(st.get("upper") or upper)
     editable = float(st.get("rap", 0) or 0) <= 2 and not st.get("as_image")
     blank = None
-    if editable:
-        from PIL import Image
-        blank = out_dir / "svit_text_base.png"
-        Image.new("RGBA", (W, H), (0, 0, 0, 0)).save(blank)
     items = sorted([c for c in chunks if c["text"].strip() and c["end"] - c["start"] > 0.15], key=lambda c: c["start"])
     res = []
     for i, c in enumerate(items, 1):
@@ -378,8 +374,7 @@ def render_items(chunks, style, W, H, out_dir, upper=False):
             continue
         it = {"start": round(c["start"], 3), "end": round(end, 3), "text": c["text"]}
         if editable:
-            it["png"] = str(blank)
-            it["tp"] = textplus_params(c["text"], st, W, H)
+            it["tp"] = textplus_params(c["text"], st, W, H)     # жодних картинок — справжній Text+
         else:
             p = out_dir / ("svit_line_%s.png" % _letters(i))   # без цифр — інакше DaVinci склеїть їх у секвенцію
             render(c["text"], st, W, H).save(p, optimize=True)

@@ -677,6 +677,8 @@ class Api:
                 svlog.log("DaVinci повернув помилку:\n" + resp["details"])
             raise RuntimeError((resp or {}).get("error", "DaVinci не зміг зібрати таймлайн."))
         result["folder"] = resp.get("folder", "")
+        if resp.get("text_note"):
+            result["notes"] = (resp["text_note"] + " " + (result.get("notes") or "")).strip()
         result["timelines"] = resp.get("timelines") or []
         self._last_build = {"plan": result, "layout": st.get("layout", "one"), "timelines": result["timelines"],
                             "orig_looks": [v.get("look") for v in result.get("videos", [])]}
