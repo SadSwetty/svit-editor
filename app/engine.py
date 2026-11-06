@@ -872,9 +872,14 @@ def lyric_lines(text):
     """Рядки тексту пісні: порожні рядки й позначки на кшталт [Приспів] пропускаємо, довгі рядки ділимо."""
     import re
     out = []
+    tag = re.compile(r"^(приспів|куплет|бридж|програш|вступ|кода|аутро|інтро|chorus|verse|bridge|intro|outro|"
+                     r"pre-?chorus|hook|приспев|куплет)\s*\d*\s*[:.\-]?\s*(\(?x?\d\)?)?$", re.I)
     for ln in (text or "").splitlines():
         ln = ln.strip()
-        if not ln or re.fullmatch(r"[\[(].*[\])]", ln):
+        # службові позначки: «|» праворуч, «(2)», «x2», «×2»
+        ln = re.sub(r"\s*\|+\s*", " ", ln)
+        ln = re.sub(r"\s*(\(\s*[x×]?\s*\d+\s*\)|\b[x×]\s*\d+)\s*$", "", ln, flags=re.I).strip()
+        if not ln or re.fullmatch(r"[\[(].*[\])]", ln) or tag.match(ln):
             continue
         words = ln.split()
         while len(" ".join(words)) > 42 and len(words) > 3:

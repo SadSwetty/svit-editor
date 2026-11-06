@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 26      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 27      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -926,6 +926,15 @@ def commit_comp(ti, comp, label, verbose=False, comp_name=SVIT_COMP):
             except Exception:
                 pass
             res += ", активна=%s, лишились=%s" % (added[-1], ti.GetFusionCompNameList())
+        elif before:
+            # DaVinci 21 інколи не додає імпортовану копію — лишаємо зібрану композицію і даємо їй нашу назву,
+            # щоб потім «Вигляд» і «Мій таймлайн» її впізнали
+            try:
+                ti.LoadFusionCompByName(before[-1])
+                ok_rn = ti.RenameFusionCompByName(before[-1], comp_name)
+                res += ", перейменовано %s→%s: %s" % (before[-1], comp_name, ok_rn)
+            except Exception as e:
+                res += ", перейменування: %s" % e
         try:
             path.unlink()
         except Exception:
@@ -1377,12 +1386,17 @@ def place_text(sess, mp, tl, items, anim):
     except Exception:
         folder = None
     imported = mp.ImportMedia(paths) or []
-    by_path = {}
+    by_path, by_name = {}, {}
     for c in imported:
         try:
             by_path[os.path.realpath(c.GetClipProperty("File Path"))] = c
         except Exception:
             pass
+        try:
+            by_name[c.GetName()] = c
+        except Exception:
+            pass
+    L("Текст: імпортовано %d з %d картинок" % (len(imported), len(paths)))
     if folder:
         try:
             mp.SetCurrentFolder(root)
@@ -1398,8 +1412,10 @@ def place_text(sess, mp, tl, items, anim):
     t0 = tl.GetStartFrame()
     ok, prev_end = 0, -1
     for i, it in enumerate(items):
-        mpi = by_path.get(os.path.realpath(it["png"]))
+        mpi = by_path.get(os.path.realpath(it["png"])) or by_name.get(os.path.basename(it["png"]))
         if not mpi:
+            if i < 3:
+                L("  текст #%d: картинку не знайдено в Media Pool (%s)" % (i + 1, os.path.basename(it["png"])))
             continue
         rec = t0 + int(round(it["start"] * fps))
         rec = max(rec, prev_end)
@@ -1476,17 +1492,34 @@ def playhead_first(tl, entries):
     return sorted(entries, key=dist)
 
 
+def has_sv(comp):
+    try:
+        return bool(comp and (comp.FindTool("SvTone") or comp.FindTool("SvHal")))
+    except Exception:
+        return False
+
+
 def comp_of(ti, name):
+    """Наша композиція: за назвою, а якщо DaVinci назву не дав — за нашими вузлами Sv*."""
     try:
         names = list(ti.GetFusionCompNameList() or [])
     except Exception:
         return None
-    if name not in names:
-        return None
-    try:
-        return ti.GetFusionCompByName(name)
-    except Exception:
-        return None
+    if name in names:
+        try:
+            return ti.GetFusionCompByName(name)
+        except Exception:
+            return None
+    for nm in names:
+        if nm in (SVIT_COMP, LOOK_COMP, TEXT_COMP):
+            continue
+        try:
+            c = ti.GetFusionCompByName(nm)
+        except Exception:
+            c = None
+        if has_sv(c):
+            return c
+    return None
 
 
 def foreign_comp(ti, mine):
@@ -1502,6 +1535,8 @@ def foreign_comp(ti, mine):
             return True
         try:
             c = ti.GetFusionCompByName(nm)
+            if has_sv(c):
+                continue                                       # наша, просто без назви
             if c and len(c.GetToolList(False) or {}) > 2:     # не лише MediaIn → MediaOut
                 return True
         except Exception:
@@ -1574,7 +1609,8 @@ def style_targets(sess, data):
                     pass
                 if TEXT_COMP in names:
                     continue
-                if SVIT_COMP in names:
+                unnamed_ours = LOOK_COMP not in names and SVIT_COMP not in names and comp_of(ti, SVIT_COMP) is not None
+                if SVIT_COMP in names or unnamed_ours:
                     # шматок з монтажу Svit (план не знайдено) — можна лише підкрутити значення, не перебудувати
                     ents.append((ti, {"look": data.get("look_override") or None, "src": None, "svit_only": True,
                                       "label": "#%d" % (len(ents) + 1)}))

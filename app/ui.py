@@ -30,7 +30,7 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
-BRIDGE_REV = 26        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
+BRIDGE_REV = 27        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
 URLS = {"keys": "https://platform.claude.com/settings/keys",
         "billing": "https://platform.claude.com/settings/billing",
         "usage": "https://platform.claude.com/usage"}
@@ -698,9 +698,8 @@ class Api:
         grain = st.get("style_grain")
         if grain is None:            # як задумано фактурою — показуємо, скільки зерна вийшло
             m = 0.4 + 0.9 * look / 100.0
-            grain = round(100 * min(1.0, 0.35 + 0.5 * m)) if any(engine.LOOKS.get(l, {}).get("grain") or
-                                                               l in ("vhs", "camcorder", "film8", "film16",
-                                                                     "bwfilm", "lostwave") for l in looks) else 0
+            grain_looks = ("vhs", "camcorder", "film8", "film16", "bwfilm", "lostwave")   # фактури із зерном
+            grain = round(100 * min(1.0, 0.35 + 0.5 * m)) if any(l in grain_looks for l in looks) else 0
         return {"look": look, "fx": int(st.get("fx_strength", 50)),
                 "speed": int(st.get("tr_speed", 60)),
                 "tone": int(st.get("auto_tone_strength", 70)) if st.get("auto_tone", True) else 0,
