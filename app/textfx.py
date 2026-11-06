@@ -323,14 +323,51 @@ def _letters(i):
     return a[(i // 676) % 26] + a[(i // 26) % 26] + a[i % 26]
 
 
+def textplus_params(text, style, W, H):
+    """Параметри для редагованого тексту Text+ у DaVinci: ті самі рядки, розмір і місце, що й у перегляді."""
+    from PIL import Image, ImageDraw
+    st = dict(DEFAULT_STYLE, **(style or {}))
+    text = text.replace("*", "")
+    if st.get("upper"):
+        text = text.upper()
+    base = min(W, H)
+    px = max(10, int(base * (0.035 + 0.075 * float(st["size"]) / 100.0)))
+    stroke = int(round(px * 0.09 * float(st["outline"]) / 100.0))
+    font = _font(st.get("font"), px)
+    lines = _wrap(ImageDraw.Draw(Image.new("L", (8, 8))), text, font, W * 0.84, stroke)
+    asc, desc = font.getmetrics() if hasattr(font, "getmetrics") else (px, px // 4)
+    lh = int((asc + desc) * 1.12)
+    y0 = position_box(st.get("pos", "bottom"), W, H, lh * len(lines))
+    cy = (y0 + lh * len(lines) / 2.0) / float(H)            # центр блоку від верху кадру
+    fam, sty = "Arial", "Bold"
+    try:
+        fam, sty = font.getname()
+    except Exception:
+        pass
+    r, g, b = _rgb(st["color"])
+    return {"text": "\n".join(lines), "font": fam, "style": sty or "Regular",
+            "size": round(px * 1.0 / W, 4),                # Text+ Size — частка ширини кадру
+            "cx": 0.5, "cy": round(1.0 - cy, 4),           # у Fusion (0,0) — лівий нижній кут
+            "rgb": [round(r / 255.0, 4), round(g / 255.0, 4), round(b / 255.0, 4)],
+            "outline": float(st["outline"]) / 100.0, "shadow": float(st["shadow"]) / 100.0,
+            "glow": float(st["glow"]) / 100.0, "halation": float(st["halation"]) / 100.0}
+
+
 def render_items(chunks, style, W, H, out_dir, upper=False):
-    """[{start,end,text}] → PNG-файли; повертає [{png,start,end}]. Сусідні рядки не перекриваються."""
+    """[{start,end,text}] → рядки для таймлайну. Звичайний стиль — редагований Text+ (картинка лише прозора
+    «основа» кліпу); реперський стиль — кожен рядок картинкою. Сусідні рядки не перекриваються."""
     out_dir = Path(out_dir)
     if out_dir.exists():
         shutil.rmtree(out_dir, ignore_errors=True)
     out_dir.mkdir(parents=True, exist_ok=True)
     st = dict(style or {})
     st["upper"] = bool(st.get("upper") or upper)
+    editable = float(st.get("rap", 0) or 0) <= 2
+    blank = None
+    if editable:
+        from PIL import Image
+        blank = out_dir / "svit_text_base.png"
+        Image.new("RGBA", (W, H), (0, 0, 0, 0)).save(blank)
     items = sorted([c for c in chunks if c["text"].strip() and c["end"] - c["start"] > 0.15], key=lambda c: c["start"])
     res = []
     for i, c in enumerate(items, 1):
@@ -339,9 +376,15 @@ def render_items(chunks, style, W, H, out_dir, upper=False):
             end = min(end, items[i]["start"])
         if end - c["start"] < 0.15:
             continue
-        p = out_dir / ("svit_line_%s.png" % _letters(i))   # без цифр — інакше DaVinci склеїть їх у секвенцію
-        render(c["text"], st, W, H).save(p, optimize=True)
-        res.append({"png": str(p), "start": round(c["start"], 3), "end": round(end, 3), "text": c["text"]})
+        it = {"start": round(c["start"], 3), "end": round(end, 3), "text": c["text"]}
+        if editable:
+            it["png"] = str(blank)
+            it["tp"] = textplus_params(c["text"], st, W, H)
+        else:
+            p = out_dir / ("svit_line_%s.png" % _letters(i))   # без цифр — інакше DaVinci склеїть їх у секвенцію
+            render(c["text"], st, W, H).save(p, optimize=True)
+            it["png"] = str(p)
+        res.append(it)
     return res
 
 

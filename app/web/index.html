@@ -242,6 +242,7 @@
 
         <div class="subhead" style="margin-top:18px">Вигляд тексту <i class="i left" data-tip="Svit-текст — Svit малює кожен рядок твоїм шрифтом, кольором, світінням і halation та кладе на окрему доріжку з анімацією. Субтитри DaVinci — звичайна доріжка субтитрів, стиль налаштовується в Inspector.">i</i></div>
         <div class="seg" id="tmode"><button data-v="svit">Svit-текст: шрифт, колір, ефекти</button><button data-v="srt">Субтитри DaVinci</button></div>
+        <div class="tedit" id="tedit"></div>
         <div id="tstyle">
           <div class="tlayout">
             <div class="tprev" id="tprev"><img id="tpbg" alt=""><img id="tptx" alt=""><div class="tpload" id="tpload">…</div>
@@ -1020,6 +1021,10 @@ const SV = {
     $$("#tanim button").forEach(b=>b.classList.toggle("on",b.dataset.v===t.anim));
     $$("#tpos .tpos").forEach(b=>b.classList.toggle("on",b.dataset.p===t.pos));
     const F=this.textFmt(); $("#tpos").classList.toggle("horiz", !F.vertical && !F.square); $("#tpos").classList.toggle("square", F.square);
+    $("#tedit").textContent = (this.st.text_mode||"svit")!=="svit" ? "Звичайна доріжка субтитрів: текст і час правиш прямо на таймлайні, стиль — в Inspector."
+      : (+t.rap>0 ? "Реперський стиль малюється картинками: рядки можна посувати й розтягувати на таймлайні, але слова не редагуються. Постав «Реперський стиль» на 0 — і текст буде редагованим."
+                  : "Кожен рядок — окремий кліп на доріжці «Svit Text»: посувай і розтягуй на таймлайні. Слова, шрифт, колір і розмір правиш у Fusion: вузол Text+ (SvText).");
+    $("#tedit").classList.toggle("warn2", (this.st.text_mode||"svit")==="svit" && +t.rap>0);
     $("#tfmtnote").textContent = F.vertical ? "· вертикальне відео" : F.square ? "· квадрат" : "· горизонтальне відео";
     if(this.fontsLoaded && document.activeElement!==$("#tfont")) $("#tfont").value=t.font||"";
     if(!this.fontsLoaded && this.st.adv_tab==="text") this.loadFonts() },

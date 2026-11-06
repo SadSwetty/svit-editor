@@ -579,3 +579,5 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 .lipi.on{background:#E2F55C}
 .lipi input{accent-color:#141414;width:16px;height:16px;margin:0}
 .lipm .row{margin-top:12px;justify-content:flex-end}
+.tedit{font:12px/1.5 var(--mono);background:var(--paper3);border:1.5px dashed var(--ink);padding:8px 10px;margin-top:8px}
+.tedit.warn2{border-color:#B4321E;color:#B4321E}

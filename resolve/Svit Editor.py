@@ -1291,13 +1291,70 @@ def add_subs(mp, srt, tl=None):
 TEXT_COMP = "Svit Text"
 
 
-def text_anim(ti, anim, n, label):
-    """Анімація рядка тексту: поява/зникнення прозорістю + підйом, поп або розмиття. n — довжина в кадрах."""
+def anim_chain(comp, cur, anim, a, b):
+    """Вузли анімації рядка: поява/зникнення прозорістю + підйом, поп або розмиття. Повертає (вузол, опис)."""
     kind = (anim or {}).get("anim", "fade")
     if kind == "none":
-        return "без анімації"
+        return cur, "без анімації"
     k = max(0.0, min(1.0, float((anim or {}).get("anim_strength", 50)) / 100.0))
     sm = max(0.0, min(1.0, float((anim or {}).get("anim_smooth", 50)) / 100.0))
+    how = []
+    din = max(2.0, min(round(3 + 20 * sm), (b - a) / 2.5))        # тривалість появи
+    dout = max(2.0, min(round(din * 0.6), (b - a) / 3.0))
+    if kind in ("rise", "pop"):
+        tr = _nm(_tool(comp, "Transform"), "SvTextMove")
+        tr.ConnectInput("Input", cur)
+        cur = tr
+        if kind == "pop":
+            s0 = 1.0 - (0.08 + 0.32 * k)
+            how.append("pop:" + keyframe(comp, tr, "Size", [(a, s0), (a + din, 1.0)], a, b))
+        else:
+            dy = 0.01 + 0.07 * k
+            ok = None
+            try:
+                tr.AddModifier("Center", "XYPath")
+                tr.SetInput("Center", {1: 0.5, 2: 0.5 - dy}, a)
+                tr.SetInput("Center", {1: 0.5, 2: 0.5}, a + din)
+                ok = "path"
+            except Exception:
+                ok = None
+            if not ok:
+                try:
+                    tr.Center.SetExpression("Point(0.5, 0.5 - %.4f*max(0, 1 - (time - %.1f)/%.1f))" % (dy, a, din))
+                    ok = "expr"
+                except Exception as e:
+                    ok = "не вдалось (%s)" % e
+            how.append("rise:" + ok)
+    if kind == "blur":
+        bl = _tool(comp, "Blur")
+        bl.ConnectInput("Input", cur)
+        cur = bl
+        how.append("blur:" + keyframe(comp, bl, "XBlurSize", [(a, 4 + 26 * k), (a + din, 0.0)], a, b))
+    fd = _nm(_tool(comp, "BrightnessContrast"), "SvTextFade")
+    fd.ConnectInput("Input", cur)
+    try:
+        fd.SetInput("Alpha", 1)                 # прозорість теж, а не лише колір
+    except Exception:
+        pass
+    how.append("fade:" + keyframe(comp, fd, "Gain", [(a, 0.0), (a + din, 1.0), (b - dout, 1.0), (b, 0.0)], a, b))
+    return fd, ", ".join(how)
+
+
+def _set(t, inp, *vals):
+    for v in vals:
+        try:
+            if t.SetInput(inp, v) is not False:
+                return True
+        except Exception:
+            continue
+    return False
+
+
+def build_text_comp(ti, anim, n, label, tp=None):
+    """Fusion-композиція рядка. tp — редагований текст: Text+ (слова, шрифт, колір правляться у Fusion),
+    навколо нього тінь, світіння й halation; без tp — анімуємо готову картинку рядка."""
+    if not tp and (anim or {}).get("anim") == "none":
+        return "картинка без анімації"
     _POS[0] = 0
     comp = ti.AddFusionComp()
     if not comp:
@@ -1317,46 +1374,59 @@ def text_anim(ti, anim, n, label):
         b = float(attrs.get("COMPN_RenderEnd") or (n - 1))
         if b <= a:
             a, b = 0.0, float(max(1, n - 1))
-        din = max(2.0, min(round(3 + 20 * sm), (b - a) / 2.5))        # тривалість появи
-        dout = max(2.0, min(round(din * 0.6), (b - a) / 3.0))
         cur = mi[0]
-        if kind in ("rise", "pop"):
-            tr = _tool(comp, "Transform")
-            tr.ConnectInput("Input", cur)
-            cur = tr
-            if kind == "pop":
-                s0 = 1.0 - (0.08 + 0.32 * k)
-                how.append("pop:" + keyframe(comp, tr, "Size", [(a, s0), (a + din, 1.0)], a, b))
-            else:
-                dy = 0.01 + 0.07 * k
-                ok = None
-                try:
-                    tr.AddModifier("Center", "XYPath")
-                    tr.SetInput("Center", [0.5, 0.5 - dy], a)
-                    tr.SetInput("Center", [0.5, 0.5], a + din)
-                    ok = "path"
-                except Exception:
-                    ok = None
-                if not ok:
-                    try:
-                        tr.Center.SetExpression("Point(0.5, 0.5 - %.4f*max(0, 1 - (time - %.1f)/%.1f))" % (dy, a, din))
-                        ok = "expr"
-                    except Exception as e:
-                        ok = "не вдалось (%s)" % e
-                how.append("rise:" + ok)
-        if kind == "blur":
-            bl = _tool(comp, "Blur")
-            bl.ConnectInput("Input", cur)
-            cur = bl
-            how.append("blur:" + keyframe(comp, bl, "XBlurSize", [(a, 4 + 26 * k), (a + din, 0.0)], a, b))
-        fd = _tool(comp, "BrightnessContrast")
-        fd.ConnectInput("Input", cur)
-        try:
-            fd.SetInput("Alpha", 1)                 # прозорість теж, а не лише колір
-        except Exception:
-            pass
-        how.append("fade:" + keyframe(comp, fd, "Gain", [(a, 0.0), (a + din, 1.0), (b - dout, 1.0), (b, 0.0)], a, b))
-        mo[0].ConnectInput("Input", fd)
+        if tp:
+            tx = _nm(_tool(comp, "TextPlus"), "SvText")
+            _set(tx, "StyledText", tp["text"])
+            _set(tx, "Font", tp["font"])
+            _set(tx, "Style", tp["style"])
+            _set(tx, "Size", float(tp["size"]))
+            _set(tx, "Center", {1: float(tp["cx"]), 2: float(tp["cy"])}, [float(tp["cx"]), float(tp["cy"])])
+            for i, c in enumerate(("Red1", "Green1", "Blue1")):
+                _set(tx, c, float(tp["rgb"][i]))
+            if tp.get("outline", 0) > 0.01:
+                dark = sum(tp["rgb"]) > 1.5
+                _set(tx, "Enabled2", 1)
+                _set(tx, "Thickness2", 0.02 + 0.08 * tp["outline"])
+                for c in ("Red2", "Green2", "Blue2"):
+                    _set(tx, c, 0.0 if dark else 1.0)
+            how.append("Text+ «%s» %s %s" % (tp["text"][:24].replace("\n", " "), tp["font"], tp["style"]))
+            txt = tx
+            if tp.get("glow", 0) > 0.01:
+                g = _nm(_tool(comp, "SoftGlow"), "SvTextGlow")
+                g.ConnectInput("Input", txt)
+                _set(g, "Threshold", 0.0)
+                _set(g, "Gain", 0.4 + 2.2 * tp["glow"])
+                _set(g, "XGlowSize", 4 + 30 * tp["glow"])
+                txt = g
+            if tp.get("halation", 0) > 0.01:
+                h = _nm(_tool(comp, "SoftGlow"), "SvTextHal")
+                h.ConnectInput("Input", txt)
+                for inp, v in (("Threshold", 0.0), ("Gain", 0.5 + 2.0 * tp["halation"]),
+                               ("XGlowSize", 2 + 10 * tp["halation"]), ("RedScale", 1.0), ("GreenScale", 0.36),
+                               ("BlueScale", 0.16)):
+                    _set(h, inp, v)
+                txt = h
+            base = mi[0]
+            if tp.get("shadow", 0) > 0.01:
+                sh = _nm(_tool(comp, "BrightnessContrast"), "SvTextShadowColor")
+                sh.ConnectInput("Input", tx)
+                _set(sh, "Gain", 0.0)
+                sb = _nm(_tool(comp, "Blur"), "SvTextShadow")
+                sb.ConnectInput("Input", sh)
+                _set(sb, "XBlurSize", 2 + 14 * tp["shadow"])
+                _set(sb, "Blend", min(1.0, 0.5 + 0.6 * tp["shadow"]))
+                ms = _tool(comp, "Merge")
+                ms.ConnectInput("Background", base)
+                ms.ConnectInput("Foreground", sb)
+                base = ms
+            mg = _nm(_tool(comp, "Merge"), "SvTextOver")
+            mg.ConnectInput("Background", base)
+            mg.ConnectInput("Foreground", txt)
+            cur = mg
+        cur, h2 = anim_chain(comp, cur, anim, a, b)
+        how.append(h2)
+        mo[0].ConnectInput("Input", cur)
         layout_nodes(comp, mi[0], mo[0])
     except Exception as e:
         how.append("помилка: %s" % e)
@@ -1373,7 +1443,7 @@ def place_text(sess, mp, tl, items, anim):
     """Svit-текст: PNG-рядки на нову верхню відеодоріжку, кожен у свій час, з анімацією."""
     if not items:
         return
-    paths = [it["png"] for it in items if Path(it["png"]).exists()]
+    paths = sorted({it["png"] for it in items if Path(it["png"]).exists()})
     if not paths:
         L("Текст: картинок не знайдено")
         return
@@ -1443,12 +1513,13 @@ def place_text(sess, mp, tl, items, anim):
         except Exception:
             pass
         try:
-            how = text_anim(res[0], anim, n, "txt#%d" % (i + 1))
+            how = build_text_comp(res[0], anim, n, "txt#%d" % (i + 1), it.get("tp"))
             if i < 2:
                 L("  текст #%d: %s" % (i + 1, how))
         except Exception as e:
             L("  текст #%d анімація: %s" % (i + 1, e))
-    L("Svit-текст: рядків %d з %d на доріжці V%d" % (ok, len(items), track))
+    L("Svit-текст: рядків %d з %d на доріжці V%d%s" % (ok, len(items), track,
+                                                      " (редагований Text+ — правиться у Fusion)" if items[0].get("tp") else ""))
 
 
 def style_params(data, plan):
