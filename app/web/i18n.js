@@ -218,6 +218,15 @@
     // прогрес
     "Не закривай вікно": "Don't close the window",
     "Минуло": "Elapsed", "Залишилось": "Remaining", "Токени": "Tokens",
+    "Вигляд": "Look", "без нового монтажу · 0 токенів": "no re-edit · 0 tokens", "Фактура": "Texture",
+    "як у монтажі": "as edited", "без вінтажу": "no vintage", "Вінтаж": "Vintage", "Фантоми": "Ghosts",
+    "Дрімі-розмиття": "Dreamy blur", "Зерно": "Grain", "Контраст": "Contrast", "Сила ефектів": "Effect strength",
+    "Швидкість переходів": "Transition speed", "натяк": "hint", "убита плівка": "wrecked film", "без": "none",
+    "подвійні": "double", "вимк.": "off", "горить": "glowing", "сон": "dream", "густе": "heavy", "як знято": "as shot",
+    "автоконтраст": "auto contrast", "делікатно": "subtle", "на повну": "full", "повільно": "slow", "блискавично": "lightning",
+    "Скинути": "Reset", "Застосувати": "Apply", "як зараз": "as now", "Оновлюю вигляд…": "Updating look…",
+    "Вигляд оновлено в DaVinci": "Look updated in DaVinci", "Зачекай, поки завершиться попередня дія": "Wait for the previous action to finish",
+    "Рухай повзунки і натисни «Застосувати» — Svit оновить ефекти прямо на готових таймлайнах у DaVinci. Монтаж і склейки не змінюються, Claude не викликається, токени не витрачаються.": "Move the sliders and press Apply — Svit updates the effects right on the finished DaVinci timelines. Cuts stay the same, Claude is not called, no tokens are spent.",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",
@@ -285,6 +294,8 @@
   // складені рядки: [регулярний вираз, заміна]
   const PL = (n, one, many) => (Math.abs(n) === 1 ? one : many);
   const RX = [
+    [/^Готово · оновлено шматків: (\d+)/, "Done · clips updated: $1"], [/ · з помилками: (\d+)/, " · errors: $1"],
+    [/^Оновлюю вигляд · (\d+) з (\d+)/, "Updating look · $1 of $2"],
     [/^(\d+) відео$/, (m, n) => `${n} ${PL(+n, "video", "videos")}`],
     [/^Готово · (\d+) відео$/, (m, n) => `Done · ${n} ${PL(+n, "video", "videos")}`],
     [/відео (\d+) з (\d+)/g, "video $1 of $2"],

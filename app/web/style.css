@@ -482,3 +482,17 @@ html,body{overflow-x:hidden}
 
 .mtot{background:var(--mark);color:var(--ink);padding:0 5px;font-weight:700}
 #names span i{font-style:normal;opacity:.55;margin-left:4px}
+/* ---- Вигляд після монтажу */
+.stylebox{display:none;width:100%;max-width:580px;margin-top:18px;text-align:left;border:1.5px solid var(--ink);background:var(--paper2);padding:14px;box-shadow:var(--sh)}
+.stylebox .free{font-weight:400;opacity:.6;font-size:12px;margin-left:6px}
+.stylebox .fld{margin:10px 0 4px}
+.stylebox select{width:100%}
+.stgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin-top:8px}
+.stl label{display:flex;justify-content:space-between;font-size:13px}
+.stl input[type=range]{width:100%}
+.stl .scale{display:flex;justify-content:space-between;font-size:11px;opacity:.55}
+.strow{display:flex;gap:8px;align-items:center;margin-top:12px}
+.strow .stprog{flex:1;visibility:hidden;font-size:12px}
+.strow .stprog.on{visibility:visible}
+.strow .stprog b{display:block;height:4px;background:var(--ink);width:0;transition:width .3s;margin-bottom:3px}
+@media(max-width:560px){.stgrid{grid-template-columns:1fr}}

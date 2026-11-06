@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 17      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 25      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -543,6 +543,10 @@ def flicker_keys(a, b, depth, base=1.0, step=2.0):
     return keys
 
 
+# глобальні множники вигляду (повзунки «Вигляд» після монтажу): фантоми і зерно
+STYLE = {"ghost": 1.0, "grain": 1.0}
+
+
 def add_overlay(comp, chain, cur, ov):
     """Ефекти «на весь ролик» (як Adjustment Clip): розмиття і halation з однаковою силою на кожному шматку."""
     how = []
@@ -599,7 +603,9 @@ def add_look(comp, chain, cur, name, m, lut_ok=False, a=0.0, b=100.0):
         if key == "shake":
             bl = min(0.6, p["weave"] * 150 * m)          # ледь помітне хитання кадру
         elif key == "prism":
-            bl = min(0.7, 0.25 + 0.1 * p.get("shift", 1.5) * m)    # фантоми (нерухомі)
+            bl = min(1.0, (0.25 + 0.1 * p.get("shift", 1.5) * m) * STYLE["ghost"])    # фантоми (нерухомі)
+        elif key == "grain":
+            bl = min(1.0, blend * STYLE["grain"])
         elif key == "vignette":
             bl = min(1.0, p.get("vig", 0.3) * 1.3 * m)
         if bl > 0.02 and ofx_node(comp, chain, cur, key, bl):
@@ -651,8 +657,13 @@ def add_look(comp, chain, cur, name, m, lut_ok=False, a=0.0, b=100.0):
         gl.SetInput("Gain", 0.3 + 0.6 * p["glow"] * m)
         cur[0] = gl
         how.append("glow")
-    if p.get("grain"):
-        cur[0] = chain(_tool(comp, "FilmGrain"))
+    if p.get("grain") and STYLE["grain"] > 0.02:
+        g = chain(_tool(comp, "FilmGrain"))
+        try:
+            g.SetInput("Blend", min(1.0, STYLE["grain"]))
+        except Exception:
+            pass
+        cur[0] = g
         how.append("grain")
     return "+".join(how)
 
@@ -970,7 +981,9 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
             step("glow", f)
         if "grain" in fx and look and LOOKS.get(look, {}).get("grain"):
             fx = fx - {"grain"}                 # зерно вже є у фактурі — не накладаємо вдруге
-        if "grain" in fx and ofx_node(comp, chain, cur, "grain", 0.4 + 0.6 * k):
+        if STYLE["grain"] <= 0.02:
+            fx = fx - {"grain"}
+        if "grain" in fx and ofx_node(comp, chain, cur, "grain", min(1.0, (0.4 + 0.6 * k) * STYLE["grain"])):
             done.append("grain(стоковий)")
         elif "grain" in fx:
             def f():
@@ -1190,21 +1203,90 @@ def add_subs(mp, srt):
         L("Субтитри не додались автоматично: %s" % e)
 
 
-def build(sess, data):
-    project = sess.project
-    mp = project.GetMediaPool()
-    plan, stamp = data["plan"], data["stamp"]
-    size = SIZES.get(data.get("format"), (1080, 1920))
+def style_params(data, plan):
+    """Параметри вигляду з налаштувань (спільні для монтажу і для «Вигляд» після монтажу)."""
     fxs = float(data.get("fx_strength", 0.5))
     lks = float(data.get("look_strength", 0.6))
     ov = {k: float(v) for k, v in (data.get("overlay") or {}).items() if float(v or 0) > 0}
     spd = float(data.get("tr_speed", 0.6))
     ts = float(data.get("tone_strength", 0))
+    STYLE["ghost"] = float(data.get("ghost", 1.0))
+    STYLE["grain"] = float(data.get("grain", 1.0))
     tone = {}
     if ts > 0:
         for sid, t in (plan.get("tone") or {}).items():
             tone[sid] = {"contrast": t.get("contrast", 0) * ts, "lift": t.get("lift", 0) * ts,
                          "gamma": 1 + (t.get("gamma", 1) - 1) * ts}
+    return fxs, lks, ov, spd, ts, tone
+
+
+def restyle(sess, data):
+    """«Вигляд» після монтажу: перебудовує Fusion-ефекти на вже готових таймлайнах з новими рівнями.
+    Шматки, склейки й монтаж не змінюються, Claude не викликається."""
+    project = sess.project
+    plan = data["plan"]
+    videos = plan.get("videos") or []
+    fxs, lks, ov, spd, ts, tone = style_params(data, plan)
+    if data.get("look_override") is not None:
+        for v in videos:
+            v["look"] = data["look_override"] or None
+    names = list(data.get("timelines") or [])
+    by_name = {}
+    for i in range(1, (project.GetTimelineCount() or 0) + 1):
+        t = project.GetTimelineByIndex(i)
+        if t:
+            by_name[t.GetName()] = t
+    if data.get("layout") == "one":
+        groups = [(by_name.get(names[0]), videos)] if names else []
+    else:
+        groups = [(by_name.get(n), [v]) for n, v in zip(names, videos)]
+    only = data.get("only_video")
+    if only is not None and data.get("layout") != "one":
+        groups = [g for i, g in enumerate(groups) if i == int(only)]
+    groups = [g for g in groups if g[0] is not None]
+    if not groups:
+        raise RuntimeError("Не знайшов таймлайни цього монтажу в проекті DaVinci (можливо, їх перейменували або видалили).")
+    total = sum(len(v["segments"]) for _, vs in groups for v in vs) or 1
+    done_n, stats = 0, {"ok": 0, "fail": 0, "errors": []}
+    L("=== Вигляд: таймлайнів %d, шматків %d, вінтаж %.0f%%, ефекти %.0f%%, halation %s, дрімі %s, фантоми %.0f%%, "
+      "зерно %.0f%%, контраст %.0f%%" % (len(groups), total, lks * 100, fxs * 100, ov.get("halation", 0),
+                                          ov.get("blur", 0), STYLE["ghost"] * 100, STYLE["grain"] * 100, ts * 100))
+    for tl, vids in groups:
+        project.SetCurrentTimeline(tl)
+        items = sorted(tl.GetItemListInTrack("video", 1) or [], key=lambda t: t.GetStart())
+        flat = [(v, k, sg) for v in vids for k, sg in enumerate(v["segments"])]
+        if len(items) != len(flat):
+            L("  «%s»: на таймлайні %d шматків, у плані %d — оновлюю по порядку" % (tl.GetName(), len(items), len(flat)))
+        for ti, (v, k, sg) in zip(items, flat):
+            segs = v["segments"]
+            ze = sg.get("zoom_end")
+            ratio = ze / max(sg.get("zoom", 1.0), 0.01) if ze and abs(ze - sg.get("zoom", 1.0)) > 0.005 else None
+            tin = sg.get("tr") if k > 0 else None
+            tout = segs[k + 1].get("tr") if k + 1 < len(segs) else None
+            tn = tone.get(str(sg["source"]))
+            # стара композиція Svit прибирається, нова збирається з новими рівнями
+            try:
+                for nm in (ti.GetFusionCompNameList() or []):
+                    ti.DeleteFusionCompByName(nm)
+            except Exception:
+                pass
+            dn, errs = apply_fusion(ti, ratio, sg.get("fx") or (), fxs, "#%d" % (k + 1), v.get("look"), lks,
+                                    tin, tout, overlay=ov, tone=tn, speed=spd)
+            stats["ok"] += 1 if not errs else 0
+            stats["fail"] += 1 if errs else 0
+            done_n += 1
+            if done_n % 3 == 0 or done_n == total:
+                sess.status(done_n / float(total), "Оновлюю вигляд · %d з %d" % (done_n, total))
+    L("=== Вигляд готово: оновлено %d, з помилками %d" % (stats["ok"], stats["fail"]))
+    return {"ok": True, "count": done_n, "fail": stats["fail"]}
+
+
+def build(sess, data):
+    project = sess.project
+    mp = project.GetMediaPool()
+    plan, stamp = data["plan"], data["stamp"]
+    size = SIZES.get(data.get("format"), (1080, 1920))
+    fxs, lks, ov, spd, ts, tone = style_params(data, plan)
     L("Автоконтраст (сила %.0f%%): %s; швидкість переходів %.0f%%" % (ts * 100, tone, spd * 100))
     stats = {"ok": 0, "fail": 0, "errors": []}
     L("=== Збірка (DaVinci-частина %s): відео %d, формат %s, fps %s, розкладка %s, версія %s" %
@@ -1296,7 +1378,15 @@ def build(sess, data):
     sess.status(1.0, "Готово")
     L("=== Готово: таймлайнів %d, шматків %d, з Fusion-композицією %d, Fusion успішно %d, з помилками %d, LUT %d" %
       (len(ranges), stats.get("total", 0), stats.get("comps", 0), stats["ok"], stats["fail"], stats.get("lut", 0)))
-    return {"ok": True, "folder": fname, "count": len(ranges), "version": version, "fusion": stats,
+    tl_names = []
+    for r in ranges:
+        try:
+            n = r[1].GetName()
+        except Exception:
+            n = r[0]
+        if n not in tl_names:
+            tl_names.append(n)
+    return {"ok": True, "folder": fname, "count": len(ranges), "version": version, "fusion": stats, "timelines": tl_names,
             "log": str(LOG_PATH)}
 
 
@@ -1357,6 +1447,8 @@ def main():
                         sess.respond(cid, {"sources": []})
                     elif cmd == "build":
                         sess.respond(cid, build(sess, data))
+                    elif cmd == "restyle":
+                        sess.respond(cid, restyle(sess, data))
                 except Exception as e:
                     tb = traceback.format_exc()
                     L("ПОМИЛКА в команді %s:\n%s" % (cmd, tb))
