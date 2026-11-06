@@ -581,3 +581,7 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 .lipm .row{margin-top:12px;justify-content:flex-end}
 .tedit{font:12px/1.5 var(--mono);background:var(--paper3);border:1.5px dashed var(--ink);padding:8px 10px;margin-top:8px}
 .tedit.warn2{border-color:#B4321E;color:#B4321E}
+.tpstat{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-top:8px;padding:8px 10px;border:1.5px solid var(--ink);font:12px/1.45 var(--mono);background:var(--paper3)}
+.tpstat.ok{background:#E2F55C}
+.tpstat.bad{border-color:#B4321E;color:#B4321E}
+.tpstat .btn{flex:none}

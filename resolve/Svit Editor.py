@@ -21,7 +21,7 @@ try:
     BRIDGE_VERSION = (HOME / "VERSION").read_text().strip()
 except Exception:
     BRIDGE_VERSION = "?"
-BRIDGE_REV = 27      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
+BRIDGE_REV = 28      # версія протоколу DaVinci-частини; вікно перевіряє, чи вона свіжа
 SCRIPT_PATH = (Path.home() / "Library" / "Application Support" / "Blackmagic Design" / "DaVinci Resolve" /
                "Fusion" / "Scripts" / "Utility" / "Svit Editor.py")
 LOG_PATH = LOG_DIR / ("davinci_%s.log" % time.strftime("%Y%m%d_%H%M%S"))
@@ -1269,23 +1269,49 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
 
 
 def add_subs(mp, srt, tl=None):
+    """Субтитри з файлу — від початку таймлайну. Пробуємо кілька способів і перевіряємо, де вони лягли."""
     if not srt:
         return
     try:
         subs = mp.ImportMedia([srt]) or []
-        if subs:
-            # субтитри від самого початку таймлайну (час у файлі — від нуля)
-            done = None
-            if tl is not None:
-                try:
-                    done = mp.AppendToTimeline([{"mediaPoolItem": subs[0], "recordFrame": tl.GetStartFrame()}])
-                except Exception:
-                    done = None
-            if not done:
-                done = mp.AppendToTimeline([{"mediaPoolItem": subs[0]}])
-            L("Субтитри %s: %s" % (os.path.basename(srt), "додано" if done else "не додались"))
     except Exception as e:
-        L("Субтитри не додались автоматично: %s" % e)
+        L("Субтитри не імпортувались: %s" % e)
+        return
+    if not subs:
+        L("Субтитри не імпортувались: %s" % os.path.basename(srt))
+        return
+    sub = subs[0]
+    if tl is None:
+        mp.AppendToTimeline([{"mediaPoolItem": sub}])
+        return
+    t0 = tl.GetStartFrame()
+
+    def first_start():
+        try:
+            its = tl.GetItemListInTrack("subtitle", 1) or []
+            return min(i.GetStart() for i in its) if its else None
+        except Exception:
+            return None
+    variants = [{"mediaPoolItem": sub, "recordFrame": t0, "trackIndex": 1},
+                {"mediaPoolItem": sub, "startFrame": 0, "recordFrame": t0, "trackIndex": 1, "mediaType": 1},
+                {"mediaPoolItem": sub, "recordFrame": t0}]
+    for k, v in enumerate(variants, 1):
+        try:
+            got = mp.AppendToTimeline([v]) or []
+        except Exception as e:
+            got = []
+            L("  субтитри спосіб %d: %s" % (k, e))
+        st = first_start()
+        if got and st is not None and abs(st - t0) <= 1:
+            L("Субтитри %s: з початку таймлайну (спосіб %d)" % (os.path.basename(srt), k))
+            return
+        if got:
+            try:
+                tl.DeleteClips(got)
+            except Exception:
+                L("Субтитри: лягли не на початок (%s), а прибрати не вдалось" % st)
+                return
+    L("Субтитри %s: не вдалося поставити з початку таймлайну" % os.path.basename(srt))
 
 
 TEXT_COMP = "Svit Text"
@@ -1497,30 +1523,46 @@ def build_text_comp(ti, anim, n, label, tp=None):
 TEXT_STATE = {"note": ""}
 
 
-def find_title_template(mp):
-    """Титр Text+, який автор один раз перетягнув з Effects → Titles у Media Pool."""
-    found = []
+def find_title_template(mp, verbose=True):
+    """Титр Text+, який автор один раз перетягнув з Effects → Titles у Media Pool (у будь-яку папку)."""
+    found, seen = [], []
 
-    def walk(folder, depth=0):
-        if found or depth > 6:
+    def walk(folder, path, depth=0):
+        if depth > 8:
             return
         for c in folder.GetClipList() or []:
             try:
-                typ = str(c.GetClipProperty("Type") or "").lower()
+                typ = str(c.GetClipProperty("Type") or "")
                 name = str(c.GetName() or "")
             except Exception:
                 continue
-            if ("title" in typ or "fusion" in typ or "generator" in typ or "титр" in typ) and \
-                    ("text+" in name.lower() or "text +" in name.lower() or "svit text" in name.lower()):
-                found.append(c)
-                return
+            tl_ = typ.lower()
+            if any(k in tl_ for k in ("video", "audio", "still", "image", "timeline", "subtitle", "compound")) \
+                    and "title" not in tl_ and "fusion" not in tl_:
+                continue
+            seen.append("%s/%s [%s]" % (path, name, typ))
+            nl = name.lower().replace(" ", "")
+            is_title = any(k in tl_ for k in ("title", "fusion", "generator", "титр", "генератор"))
+            if ("text+" in nl or "textplus" in nl or "svittext" in nl) or (is_title and "text" in nl):
+                found.append((0 if "text+" in nl else 1, c))
         for sub in folder.GetSubFolderList() or []:
-            walk(sub, depth + 1)
+            try:
+                walk(sub, path + "/" + str(sub.GetName()), depth + 1)
+            except Exception:
+                pass
     try:
-        walk(mp.GetRootFolder())
+        walk(mp.GetRootFolder(), "Master")
     except Exception as e:
         L("Пошук Text+ у Media Pool: %s" % e)
-    return found[0] if found else None
+    if verbose:
+        L("Пошук Text+: у Media Pool не-медіа елементів %d%s" % (len(seen), (": " + "; ".join(seen[:12])) if seen else ""))
+    found.sort(key=lambda x: x[0])
+    return found[0][1] if found else None
+
+
+def textplus_status(sess):
+    tpl = find_title_template(sess.project.GetMediaPool())
+    return {"ok": True, "found": bool(tpl), "name": tpl.GetName() if tpl else ""}
 
 
 def setup_title(ti, tp, anim, n, label):
@@ -1637,13 +1679,12 @@ def place_titles(sess, mp, tl, items, anim, tpl):
     return ok
 
 
-def place_text(sess, mp, tl, items, anim):
+def place_text(sess, mp, tl, items, anim, tpl=None):
     """Svit-текст на нову верхню відеодоріжку, кожен рядок у свій час, з анімацією.
     Редагований текст — справжні титри Text+ з Media Pool; якщо Text+ там немає — Text+ усередині прозорого кліпу."""
     if not items:
         return
     if items[0].get("tp"):
-        tpl = find_title_template(mp)
         if tpl:
             L("Текст: беру титр «%s» з Media Pool" % tpl.GetName())
             if place_titles(sess, mp, tl, items, anim, tpl):
@@ -2094,10 +2135,17 @@ def timeline_info(sess):
     return {"ok": True, "timeline": tl.GetName(), "clips": n, "adjust": len(adjustment_items(tl))}
 
 
+TPL = [None]
+
+
 def build(sess, data):
     TEXT_STATE["note"] = ""
     project = sess.project
     mp = project.GetMediaPool()
+    TPL[0] = None
+    if any((it or {}).get("tp") for it in (data["plan"].get("text_all") or [])[:1]) or \
+            any(((v.get("text") or [{}])[0] or {}).get("tp") for v in data["plan"].get("videos") or []):
+        TPL[0] = find_title_template(mp)       # шукаємо до створення нових папок
     plan, stamp = data["plan"], data["stamp"]
     size = SIZES.get(data.get("format"), (1080, 1920))
     fxs, lks, ov, spd, ts, tone = style_params(data, plan)
@@ -2153,7 +2201,7 @@ def build(sess, data):
         for mus, st in songs:          # треки — після всіх відео, щоб не зсували кінець таймлайну
             place_song(sess, mp, tl, mus, st)
         add_subs(mp, plan.get("srt_all"), tl)
-        place_text(sess, mp, tl, plan.get("text_all"), plan.get("text_anim"))
+        place_text(sess, mp, tl, plan.get("text_all"), plan.get("text_anim"), TPL[0])
     else:
         for i, v in enumerate(videos, 1):
             sess.status(0.1 + 0.8 * (i - 1) / len(videos), "Монтую ролик %d з %d" % (i, len(videos)))
@@ -2170,7 +2218,7 @@ def build(sess, data):
             except Exception:
                 pass
             add_subs(mp, v.get("srt"), tl)
-            place_text(sess, mp, tl, v.get("text"), plan.get("text_anim"))
+            place_text(sess, mp, tl, v.get("text"), plan.get("text_anim"), TPL[0])
             ranges.append((name, tl, a, b - 1))
 
     if data.get("auto_render") and ranges:
@@ -2266,6 +2314,8 @@ def main():
                         sess.respond(cid, build(sess, data))
                     elif cmd == "restyle":
                         sess.respond(cid, restyle(sess, data))
+                    elif cmd == "textplus_status":
+                        sess.respond(cid, textplus_status(sess))
                     elif cmd == "timeline_info":
                         sess.respond(cid, timeline_info(sess))
                 except Exception as e:

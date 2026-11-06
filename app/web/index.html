@@ -243,6 +243,7 @@
         <div class="subhead" style="margin-top:18px">Вигляд тексту <i class="i left" data-tip="Svit-текст — Svit малює кожен рядок твоїм шрифтом, кольором, світінням і halation та кладе на окрему доріжку з анімацією. Субтитри DaVinci — звичайна доріжка субтитрів, стиль налаштовується в Inspector.">i</i></div>
         <div class="seg" id="tmode"><button data-v="svit">Редагований Text+</button><button data-v="img">Картинкою</button><button data-v="srt">Субтитри DaVinci</button></div>
         <div class="tedit" id="tedit"></div>
+        <div class="tpstat" id="tpstat"><span id="tpstxt">Text+ у Media Pool: ще не перевіряв</span><button class="btn" onclick="SV.tpCheck()">Перевірити</button></div>
         <div id="tstyle">
           <div class="tlayout">
             <div class="tprev" id="tprev"><img id="tpbg" alt=""><img id="tptx" alt=""><div class="tpload" id="tpload">…</div>
@@ -1022,6 +1023,8 @@ const SV = {
     $$("#tpos .tpos").forEach(b=>b.classList.toggle("on",b.dataset.p===t.pos));
     const F=this.textFmt(); $("#tpos").classList.toggle("horiz", !F.vertical && !F.square); $("#tpos").classList.toggle("square", F.square);
     const tm=this.st.text_mode||"svit";
+    $("#tpstat").style.display = tm==="svit" && !(+t.rap>0) ? "flex" : "none";
+    if(tm==="svit" && !(+t.rap>0) && !this.tpChecked && this.st.adv_tab==="text" && this.bridge){ this.tpChecked=true; setTimeout(()=>this.tpCheck(),50) }
     $("#tedit").textContent = tm==="srt" ? "Звичайна доріжка субтитрів: текст і час правиш прямо на таймлайні, стиль — в Inspector."
       : tm==="img" ? "Кожен рядок — картинка на доріжці «Svit Text»: виглядає точно як у перегляді, посувається й розтягується, але слова не редагуються."
       : (+t.rap>0 ? "Реперський стиль малюється картинками: рядки можна посувати й розтягувати на таймлайні, але слова не редагуються. Постав «Реперський стиль» на 0 — і текст буде редагованим."
@@ -1061,6 +1064,13 @@ const SV = {
     el.getAnimations().forEach(a=>a.cancel());
     if(t.anim==="none") return;
     el.animate([from,{opacity:1,transform:"none",filter:"none"}],{duration:dur*1000,easing:ease,fill:"both"}) },
+  async tpCheck(){
+    $("#tpstxt").textContent="Перевіряю Media Pool…";
+    const r=await this.api("textplus_status"); this.tpChecked=true;
+    const el=$("#tpstat");
+    if(!r||!r.ok){ $("#tpstxt").textContent=(r&&r.error)||"DaVinci не відповідає"; el.className="tpstat"; return }
+    if(r.found){ $("#tpstxt").textContent="Text+ у Media Pool: знайдено «"+r.name+"» ✓ — текст стане титрами Text+"; el.className="tpstat ok" }
+    else { $("#tpstxt").textContent="Text+ у Media Pool не знайдено. Edit → Effects → Toolbox → Titles → перетягни Text+ у Media Pool цього проєкту, потім натисни «Перевірити»"; el.className="tpstat bad" } },
   durSec(){ const m=this.st.dur_mode; return m==="custom" ? (this.st.dur_custom||20) : (["15","30","60"].includes(m) ? +m : 0) },
   durToMusic(){   // з музикою тривалість задає шматок треку — підганяємо його під вибрану тривалість
     const d=this.durSec(), m=this.st.music; if(!d||!m||!m.path||!this.st.music_on) return;

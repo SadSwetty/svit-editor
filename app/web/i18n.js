@@ -280,6 +280,8 @@
     "Редагований Text+": "Editable Text+", "Картинкою": "As images",
     "Кожен рядок — картинка на доріжці «Svit Text»: виглядає точно як у перегляді, посувається й розтягується, але слова не редагуються.": "Each line is an image on the “Svit Text” track: looks exactly like the preview, can be moved and stretched, but the words can't be edited.",
     "Кожен рядок — справжній титр Text+ на доріжці «Svit Text»: посувай на таймлайні, слова, шрифт і колір правиш в Inspector. Один раз перетягни Effects → Titles → Text+ у Media Pool — Svit бере його як основу.": "Each line is a real Text+ title on the “Svit Text” track: move it on the timeline, edit words, font and colour in the Inspector. Drag Effects → Titles → Text+ into the Media Pool once — Svit uses it as the base.",
+    "Перевірити": "Check", "Text+ у Media Pool: ще не перевіряв": "Text+ in Media Pool: not checked yet", "Перевіряю Media Pool…": "Checking the Media Pool…",
+    "Text+ у Media Pool не знайдено. Edit → Effects → Toolbox → Titles → перетягни Text+ у Media Pool цього проєкту, потім натисни «Перевірити»": "Text+ not found in the Media Pool. Edit → Effects → Toolbox → Titles → drag Text+ into this project's Media Pool, then press Check",
     "Скасувати": "Cancel", "Скасовую…": "Cancelling…", "Монтаж скасовано": "Editing cancelled",
     "Починаю…": "Starting…",
     "Слухаю слова": "Listening to words", "Шукаю найгучніші моменти": "Finding the loudest moments",
@@ -347,6 +349,7 @@
   // складені рядки: [регулярний вираз, заміна]
   const PL = (n, one, many) => (Math.abs(n) === 1 ? one : many);
   const RX = [
+    [/^Text\+ у Media Pool: знайдено «(.+)» ✓ — текст стане титрами Text\+$/, "Text+ in Media Pool: found “$1” ✓ — text will be Text+ titles"],
     [/^Позначено: (\d+) відео · (.+)$/, (m,n,r)=>`Marked: ${n} ${PL(+n,"video","videos")} · ${r}`],
     [/^Перегляд на кадрі з «(.+)» — без токенів$/, "Preview on a frame from “$1” — no tokens"],
     [/ефекти ляжуть на Adjustment Clip \((\d+)\)/, "effects go onto the Adjustment Clip ($1)"],

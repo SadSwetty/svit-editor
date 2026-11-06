@@ -30,7 +30,7 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
-BRIDGE_REV = 27        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
+BRIDGE_REV = 28        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
 URLS = {"keys": "https://platform.claude.com/settings/keys",
         "billing": "https://platform.claude.com/settings/billing",
         "usage": "https://platform.claude.com/usage"}
@@ -841,6 +841,12 @@ class Api:
                 self._style_need.pop(bool(p.get("manual")), None)
             self._js("restyleFail", friendly_error(e))
             return None
+
+    def textplus_status(self):
+        try:
+            return self.bridge.send("textplus_status", {}, timeout=20) or {"ok": False}
+        except Exception as e:
+            return {"ok": False, "error": friendly_error(e)}
 
     def timeline_info(self):
         try:
