@@ -10,6 +10,10 @@ import time
 from pathlib import Path
 
 RES = Path(sys.argv[1]).resolve()
+# Офіційна сторінка завантаження DaVinci Resolve від Blackmagic Design. Адреса вшита в підписаний
+# інсталятор і перевіряється перед відкриттям — підмінити її, не зламавши підпис, не вийде.
+DAVINCI_URL = "https://www.blackmagicdesign.com/support/family/davinci-resolve-and-fusion"
+DAVINCI_HOST = "www.blackmagicdesign.com"
 HOME = Path.home() / ".svit-editor"
 PF = HOME / "install-progress.txt"
 LOG = HOME / "install.log"
@@ -18,6 +22,22 @@ LOG = HOME / "install.log"
 def installed_version():
     v = HOME / "VERSION"
     return v.read_text().strip() if v.exists() and (HOME / "app" / "ui.py").exists() else None
+
+
+def davinci_installed():
+    for base in (Path("/Applications"), Path.home() / "Applications"):
+        for name in ("DaVinci Resolve/DaVinci Resolve.app", "DaVinci Resolve Studio/DaVinci Resolve Studio.app",
+                     "DaVinci Resolve.app", "DaVinci Resolve Studio.app"):
+            if (base / name).exists():
+                return True
+    return False
+
+
+def open_davinci_download():
+    from urllib.parse import urlsplit
+    u = urlsplit(DAVINCI_URL)
+    if u.scheme == "https" and u.hostname == DAVINCI_HOST:
+        subprocess.run(["open", DAVINCI_URL])
 
 
 def log_tail(n=14):
@@ -33,7 +53,8 @@ class Api:
         self.proc = None
 
     def ready(self):
-        return {"version": (RES / "payload" / "VERSION").read_text().strip(), "installed": installed_version()}
+        return {"version": (RES / "payload" / "VERSION").read_text().strip(), "installed": installed_version(),
+                "davinci": davinci_installed()}
 
     def action(self, a):
         if a in ("install", "python"):
@@ -45,6 +66,8 @@ class Api:
                 if subprocess.run(["open", "-a", name]).returncode == 0:
                     break
             threading.Timer(0.3, self._close).start()
+        elif a == "get_davinci":
+            open_davinci_download()
         elif a == "log":
             subprocess.run(["open", str(LOG)])
         elif a == "quit":

@@ -7,3 +7,8 @@ __pycache__/
 svit-signing/
 # trial-шрифт: ліцензія не дозволяє публічне поширення вихідників
 app/web/fonts/
+# особисті збірки з кодом доступу та локальні секрети сервера
+*особиста*.zip
+access_code
+.dev.vars
+server/.wrangler/

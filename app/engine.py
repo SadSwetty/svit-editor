@@ -21,6 +21,35 @@ except Exception:   # pragma: no cover
 HOME = Path.home() / ".svit-editor"
 CONFIG = HOME / "config.json"
 
+# Сервер-посередник Svit (Cloudflare Worker, див. server/README.md). Справжній ключ Claude
+# лежить лише на сервері; програма надсилає туди код доступу svit-…, який видає автор.
+# Адреса вшита в підписаний код програми, тож підмінити її без зламу підпису не можна.
+SERVER_URL = "https://svit-editor.CHANGE-ME.workers.dev"
+ACCESS_PREFIX = "svit-"
+
+
+def key_kind(key):
+    """'svit' — код доступу через сервер Svit, 'own' — власний ключ Claude, '' — нічого."""
+    key = (key or "").strip()
+    if key.startswith(ACCESS_PREFIX):
+        return "svit"
+    if key.startswith("sk-ant-"):
+        return "own"
+    return ""
+
+
+def make_client(cfg=None, key=None):
+    """Клієнт Claude: з кодом доступу — через сервер Svit, з власним ключем — напряму."""
+    import anthropic
+    if key is None:
+        key = (cfg if cfg is not None else load_cfg()).get("api_key", "")
+    key = (key or "").strip()
+    if key_kind(key) == "svit":
+        if "CHANGE-ME" in SERVER_URL:
+            raise RuntimeError("Сервер Svit ще не підключений у цій версії програми. Встав власний ключ Claude.")
+        return anthropic.Anthropic(api_key=key, base_url=SERVER_URL)
+    return anthropic.Anthropic(api_key=key)
+
 MAX_FRAMES = 400             # кадрів на весь матеріал (йдуть листами по 4)
 FRAME_STEP_SEC = 2.0        # мінімальний крок між кадрами
 FRAME_SIZE = 384
@@ -1528,8 +1557,7 @@ class Job:
                 pass
 
         # ---- план від Claude
-        import anthropic
-        client = anthropic.Anthropic(api_key=cfg.get("api_key", ""))
+        client = make_client(cfg)
         model = s.get("model", "claude-sonnet-5-5")
         self.report("plan", 0.02, "Рахую точну ціну")
         content, seg_window, frame_step = None, 0, 1
@@ -1995,7 +2023,7 @@ def revise(job_dir, edit_text, progress, cancel_event, rng=None):
     videos = cur["videos"]
     cfg = load_cfg()
     model = job["settings"].get("model", "claude-sonnet-5-5")
-    client = anthropic.Anthropic(api_key=cfg.get("api_key", ""))
+    client = make_client(cfg)
 
     def check():
         if cancel_event.is_set():

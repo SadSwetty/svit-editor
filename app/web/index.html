@@ -32,14 +32,15 @@
     </header>
     <div class="h1" style="margin-top:18px">Вітаю в Svit Editor</div>
     <div class="sub2">Щоб монтувати, програмі потрібен ключ Claude — це як пароль. Вставляється один раз.</div>
+    <div class="sub2" style="margin-top:6px">Маєш код доступу від автора (svit-…)? Просто встав його в поле нижче — крок 1 і 2 тоді не потрібні.</div>
     <div class="steps3">
       <div class="s3"><div class="n">1</div><div class="tx">Створи ключ на сайті Claude<small>Увійди → Create Key → скопіюй</small></div>
         <button class="btn" onclick="SV.api('open_url','keys')">Відкрити сайт</button></div>
       <div class="s3"><div class="n">2</div><div class="tx">Поповни баланс<small>Кількох доларів вистачить надовго</small></div>
         <button class="btn" onclick="SV.api('open_url','billing')">Поповнити</button></div>
-      <div class="s3"><div class="n">3</div><div class="tx">Встав ключ сюди</div></div>
+      <div class="s3"><div class="n">3</div><div class="tx">Встав ключ сюди<small>sk-ant-… — свій ключ Claude · svit-… — код доступу</small></div></div>
     </div>
-    <div class="keyrow"><input id="key" type="password" placeholder="sk-ant-…" spellcheck="false">
+    <div class="keyrow"><input id="key" type="password" placeholder="sk-ant-… або svit-…" spellcheck="false" autocomplete="off">
       <button class="eye" onclick="SV.toggleKey()" title="Показати"><svg width="22" height="16" viewBox="0 0 22 16" fill="none" stroke="#141414" stroke-width="2"><path d="M1 8 Q11 -3 21 8 Q11 19 1 8Z"/><circle cx="11" cy="8" r="3" fill="#141414"/></svg></button></div>
     <div class="msg" id="keymsg"></div>
     <button class="go wide" id="keybtn" onclick="SV.saveKey()">Перевірити і зберегти</button>
@@ -447,13 +448,13 @@
 <div class="sheet" id="sheet" onclick="if(event.target===this)SV.sheet(false)">
   <div class="pane">
     <div class="h1" style="font-size:20px;margin:0 0 12px">Налаштування</div>
-    <div class="kv"><span>Ключ Claude</span><span id="keyinfo">—</span></div>
+    <div class="kv"><span>API ключ</span><span id="keyinfo">—</span></div>
     <div class="kv"><span>Токенів цього місяця</span><span id="spend">0</span></div>
     <div class="kv"><span>Версія</span><span id="ver">—</span></div>
     <div class="kv"><span>Мова інтерфейсу</span><span class="langsw" id="langsw"><button data-l="uk" onclick="SV.setLang('uk')">UA</button><button data-l="en" onclick="SV.setLang('en')">EN</button></span></div>
     <div class="row" style="justify-content:flex-start">
-      <button class="btn" onclick="SV.changeKey()">Змінити ключ</button>
-      <button class="btn" onclick="SV.api('open_url','usage')">Витрати на сайті</button>
+      <button class="btn" onclick="SV.changeKey()">Оновити API ключ</button>
+      <button class="btn" id="usagebtn" onclick="SV.api('open_url','usage')">Витрати на сайті</button>
     </div>
     <div class="kv" style="margin-top:14px"><span>Оновлення</span><span id="updstate">—</span></div>
     <div class="row" style="justify-content:flex-start"><button class="btn" onclick="SV.checkUpdate(true)">Оновитись</button></div>
@@ -509,7 +510,7 @@ const SV = {
     if(!this.st.welcome_hide){ $("#wver").textContent = s.version || ""; $("#wnoshow").checked=false; setTimeout(()=>$("#welcome").classList.add("on"), 250) }
     else if(this.whatsnew) setTimeout(()=>this.showWhatsNew(), 400);
     $$("#vertag").forEach(e=>e.textContent = "v"+(s.version||"—"));
-    this.keyInfo(s.key_tail); RATE = s.rate || 1000;
+    this.keyInfo(s.key_tail, s.key_kind); RATE = s.rate || 1000;
     $("#costcoin").innerHTML = coin(26);
     $("#spend").innerHTML = coin(16) + " " + money(s.spend||0);
     this.bind(); this.paint(); this.renderShots(); this.renderSources();
@@ -519,7 +520,8 @@ const SV = {
     window.addEventListener("resize",()=>this.drawWave());
     window.addEventListener("keydown",e=>this.musicKey(e));
   },
-  keyInfo(t){ $("#keyinfo").textContent = t ? "підключено …"+t : "не вставлено" },
+  keyInfo(t,kind){ $("#keyinfo").textContent = !t ? "не вставлено" : (kind==="svit" ? "сервер Svit · код …"+t : "свій ключ …"+t);
+    const u=$("#usagebtn"); if(u) u.style.display = kind==="svit" ? "none" : "" },
 
   bind(){
     $("#prompt").addEventListener("input",e=>{this.st.prompt=e.target.value; this.save()});
@@ -836,11 +838,11 @@ const SV = {
   async saveKey(){
     const k=$("#key").value.trim(), m=$("#keymsg"), b=$("#keybtn");
     m.className="msg";
-    if(!k.startsWith("sk-ant-")){ m.textContent="Ключ має починатися з sk-ant-"; m.classList.add("shake"); return }
+    if(!k.startsWith("sk-ant-") && !k.startsWith("svit-")){ m.textContent="Ключ має починатися з sk-ant- або svit-"; m.classList.add("shake"); return }
     b.textContent="Перевіряю…"; m.textContent="";
     const r = await this.api("check_key", k);
     b.textContent="Перевірити і зберегти";
-    if(r && r.ok){ m.className="msg ok"; m.textContent="✓ Ключ працює"; this.keyInfo(k.slice(-4)); setTimeout(()=>this.show("main"),700) }
+    if(r && r.ok){ m.className="msg ok"; m.textContent="✓ Ключ працює"; this.keyInfo(k.slice(-4), r.kind); setTimeout(()=>this.show("main"),700) }
     else { m.textContent=(r&&r.msg)||"Не вдалося перевірити ключ"; m.classList.add("shake") }
   },
   changeKey(){ this.sheet(false); $("#keyback").style.display="inline-block"; $("#key").value=""; this.show("activate") },

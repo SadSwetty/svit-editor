@@ -19,6 +19,9 @@ jobs:
           VER="$(cat VERSION | tr -d '[:space:]')"
           ZIP="release/Svit Editor $VER.zip"
           test -f "$ZIP" || { echo "немає $ZIP"; exit 1; }
+          # захист: особисті збірки з кодом доступу чи ключем ніколи не публікуються
+          if unzip -l "$ZIP" | grep -q "payload/access_code"; then echo "У $ZIP вшитий код доступу — це особиста збірка, публікацію скасовано"; exit 1; fi
+          if unzip -p "$ZIP" | grep -aqE "sk-ant-[A-Za-z0-9_-]{20,}"; then echo "У $ZIP знайдено ключ Claude — публікацію скасовано"; exit 1; fi
           PRE=""
           case "$VER" in *alpha*|*beta*|*rc*) PRE="--prerelease";; *) PRE="--latest";; esac
           cp "$ZIP" "Svit.Editor.$VER.zip"
