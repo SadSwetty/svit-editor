@@ -1,0 +1,43 @@
+# Збирає, підписує і публікує реліз прямо на GitHub — без Мака.
+# Запускається, коли змінюється файл VERSION у main (або вручну: Actions → build-release → Run).
+# Потрібен секрет репозиторію SVIT_SIGN_KEY_HEX — вміст svit-signing/ed25519.key.
+name: build-release
+on:
+  push:
+    branches: [main]
+    paths: ["VERSION"]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: build-release
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Pillow
+        run: pip install pillow
+      - name: Build & sign
+        env:
+          SVIT_SIGN_KEY_HEX: ${{ secrets.SVIT_SIGN_KEY_HEX }}
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/ci_build.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VER="$(tr -d '[:space:]' < VERSION)"
+          ASSET="dist/Svit.Editor.$VER.zip"
+          case "$VER" in *alpha*|*beta*|*rc*) PRE="--prerelease";; *) PRE="--latest";; esac
+          if gh release view "v$VER" >/dev/null 2>&1; then
+            gh release upload "v$VER" "$ASSET" --clobber
+            gh release edit "v$VER" --notes-file dist/notes.md
+          else
+            gh release create "v$VER" "$ASSET" --target "$GITHUB_SHA" \
+              --title "Svit Editor $VER" --notes-file dist/notes.md $PRE
+          fi

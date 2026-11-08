@@ -33,7 +33,9 @@ AI-монтажер для DaVinci Resolve на Mac. Пишеш словами, 
 - `resolve/Svit Editor.py` — частина всередині DaVinci (Python 3.6+)
 - `installer/res/` — інсталятор
 - `server/` — сервер-посередник для кодів доступу (Cloudflare Worker), інструкція в `server/README.md`
-- `bash build.sh` — збирає підписаний інсталятор у `dist/`.
+- Релізи збирає й підписує GitHub (`.github/workflows/build-release.yml`): достатньо змінити `VERSION`
+  і запушити в main. Потрібен секрет репозиторію `SVIT_SIGN_KEY_HEX` (вміст `svit-signing/ed25519.key`).
+- `bash build.sh` — локальна збірка підписаного інсталятора в `dist/`.
   `SVIT_ACCESS_CODE=svit-… bash build.sh` — особиста збірка з вшитим кодом (не публікувати).
   Ключ підпису **не зберігається в репозиторії** і передається через `SVIT_SIGN_KEY`.
 
