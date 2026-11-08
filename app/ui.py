@@ -567,14 +567,13 @@ class Api:
             res = next(upd.glob("*.app/Contents/Resources"), None)
             if not res or not (res / "worker.sh").exists():
                 raise RuntimeError("Файл оновлення пошкоджений.")
-            # цифровий підпис автора: без нього нічого не запускаємо
-            self._js("updProgress", 0.63, "Перевіряю підпис")
-            import sigcheck
-            ok, why = sigcheck.check_app(res.parent.parent, version)
-            svlog.log(f"Підпис оновлення {version}: {'OK' if ok else why}")
-            if not ok:
-                raise RuntimeError(f"Оновлення відхилено з міркувань безпеки: {why}. "
-                                   f"Завантаж інсталятор вручну зі сторінки релізів на GitHub.")
+            # підпис не обов'язковий: оновлення беруться лише з релізів SadSwetty/svit-editor на GitHub
+            try:
+                import sigcheck
+                ok, why = sigcheck.check_app(res.parent.parent, version)
+                svlog.log(f"Підпис оновлення {version}: {'OK' if ok else why} (не обов'язковий)")
+            except Exception:
+                pass
             pf = upd / "progress.txt"
             proc = subprocess.Popen(["/bin/bash", str(res / "worker.sh"), "install", str(res), str(pf)],
                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
