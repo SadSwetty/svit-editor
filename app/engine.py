@@ -863,6 +863,15 @@ def seg_from_list(a, music=False):
     return d
 
 
+def plan_beats(v):
+    """Скільки ударів музики покривають шматки ролика з плану Claude (до чистки)."""
+    n = 0
+    for x in v.get("segments") or []:
+        d = seg_from_list(x, True) if isinstance(x, (list, tuple)) else (x if isinstance(x, dict) else {})
+        n += max(1, int(round(_f(d.get("beats"), 2))))
+    return n
+
+
 def grammar_check(segs, title=""):
     """Журнал: скільки jump cut'ів (той самий план підряд) і яка різноманітність крупності."""
     jumps = sum(1 for a, b in zip(segs, segs[1:])
@@ -1042,10 +1051,15 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
     if reframed[0]:
         _log(f"Різноманіття: інше кадрування для повторних об'єктів — {reframed[0]} шматків")
     if grid is not None and segs and cursor < beat_to:
-        # добиваємо до кінця фрагмента пісні останнім шматком
-        last = segs[-1]
         extra = grid[beat_to] - grid[cursor]
-        last["end"] = round(min(durations[last["source"]], last["end"] + extra), 3)
+        if extra > TAIL_STRETCH:
+            # план закінчився раніше за пісню — не розтягуємо один кліп на півхвилини, а добиваємо
+            # короткими шматками в темпі решти монтажу (спершу ліпсінк саме на цей момент пісні)
+            cursor = autofill_tail(segs, job, used, durations, grid, cursor, beat_to, reframe)
+        if cursor < beat_to:
+            last = segs[-1]
+            extra = grid[beat_to] - grid[cursor]
+            last["end"] = round(min(durations[last["source"]], last["end"] + extra), 3)
     out = []
     for it in segs:
         if it.pop("tighten", False) and data[it["source"]]["words"]:
@@ -1062,6 +1076,68 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
         if str(it["source"]) in rot:
             it["rot"] = rot[str(it["source"])]
     return out
+
+
+TAIL_STRETCH = 4.0   # хвіст до стількох секунд просто дотягуємо останнім кліпом
+
+
+def autofill_tail(segs, job, used, durations, grid, cursor, beat_to, reframe):
+    """Заповнює удари від cursor до beat_to короткими шматками. Повертає новий cursor."""
+    import statistics
+    sync = job.get("sync") or {}
+    mus = job.get("music_info") or {}
+    beats_used = [x.get("beat", 0) for x in segs]
+    steps = [b - a for a, b in zip([0] + beats_used, beats_used) if b - a > 0]
+    nb = max(1, min(8, int(round(statistics.median(steps))) if steps else 2))
+    tmpl = {k: segs[-1].get(k) for k in ("look",) if k in segs[-1]}
+    sources = [sid for sid in durations if durations[sid] >= 1.0]
+    if not sources:
+        return cursor
+    added, k = 0, 0
+    prev_sid = segs[-1]["source"]
+    while cursor < beat_to:
+        nxt = min(beat_to, cursor + nb)
+        dur = grid[nxt] - grid[cursor]
+        song_t = mus.get("start", 0) + grid[cursor]
+        pick = None
+        # 1) ліпсінк-дубль, де саме зараз звучить ця частина пісні
+        sync_items = list(sync.items())
+        for j in range(len(sync_items)):
+            sid_s, sy = sync_items[(added + j) % len(sync_items)]
+            sid = int(sid_s)
+            st = song_t - sy["offset"]
+            if sid != prev_sid and sid in durations and st >= 0 and st + dur <= durations[sid]:
+                pick, synced = (sid, st), True
+                break
+        # 2) інакше — по колу різні джерела, вільний момент
+        if pick is None:
+            synced = False
+            for _ in range(len(sources)):
+                sid = sources[k % len(sources)]
+                k += 1
+                if sid == prev_sid or dur > durations[sid]:
+                    continue
+                want = (durations[sid] - dur) * ((k * 0.37) % 1.0)
+                st = free_start(used.get(sid, []), dur, want, durations[sid])
+                if st is not None:
+                    pick = (sid, st)
+                    break
+        if pick is None:
+            break
+        sid, st = pick
+        item = {"source": sid, "start": round(st, 3), "end": round(st + dur, 3), "beat": nxt,
+                "zoom": 1.0, "pan_x": 0, "pan_y": 0, "fx": [], "tr": "", "auto": True}
+        item.update(tmpl)
+        if synced:
+            item["sync"] = True
+        reframe(item)
+        used.setdefault(sid, []).append((st, st + dur))
+        segs.append(item)
+        prev_sid, cursor = sid, nxt
+        added += 1
+    if added:
+        _log(f"Автодобивка кінця: {added} шматків по ~{nb} ударів (план Claude закінчився раніше за пісню)")
+    return cursor
 
 
 def pick_look(want, s, prev=None):
@@ -1607,6 +1683,48 @@ class Job:
             except Exception as e:
                 _log(f"Не вдалося дозамовити відео: {e!r}")
                 self.warnings.append(f"Claude зробив {have} відео замість {want}.")
+        mus_i = job.get("music_info")
+        if mus_i and plan.get("videos"):
+            total = len(mus_i["grid"]) - 1
+            short = [(i, plan_beats(v)) for i, v in enumerate(plan["videos"])]
+            short = [(i, got) for i, got in short if got < total * 0.92]
+            if short:
+                # Claude «втомився» і не дописав ролик до кінця пісні — просимо продовження (матеріал у кеші)
+                spb = (mus_i["grid"][-1] - mus_i["grid"][0]) / max(1, total)
+                lines = [f"- відео {i + 1} «{plan['videos'][i].get('title', '')}»: є {got} з {total} ударів, "
+                         f"бракує {total - got} (≈{(total - got) * spb:.0f} с, від {got * spb:.0f} с пісні до кінця)"
+                         for i, got in short]
+                _log("План коротший за пісню: " + "; ".join(f"відео {i + 1}: {got}/{total}" for i, got in short))
+                cont_msgs = messages + [{"role": "assistant", "content": text},
+                                        {"role": "user", "content":
+                                         "Ти не дописав ролики до кінця пісні:\n" + "\n".join(lines) +
+                                         "\nДопиши ПРОДОВЖЕННЯ кожного з них — тільки нові шматки з того удару, де "
+                                         "зупинився, до кінця пісні. Той самий темп і енергія, що й на початку "
+                                         "(кінець пісні не менш важливий — фінальні приспіви й кульмінація), "
+                                         "ліпсінк-дублі на свої рядки, нові моменти без повторів уже взятих. "
+                                         "Сума beats у продовженні = кількості ударів, яких бракує. "
+                                         "Поверни ТІЛЬКИ JSON: {\"videos\": [{\"index\": номер відео, "
+                                         "\"segments\": [...]}]}"}]
+                try:
+                    cont, _t, u3 = ask_plan(client, model, cont_msgs, self.check,
+                                            lambda f, c, m: self.report("plan", 0.8 + 0.19 * f, "Монтую кінець пісні"),
+                                            tin or 0, self.out, "Монтую кінець пісні")
+                    usage = Usage(usage, u3)
+                    for cv in cont.get("videos") or []:
+                        try:
+                            idx = int(cv.get("index")) - 1
+                        except (TypeError, ValueError):
+                            continue
+                        if 0 <= idx < len(plan["videos"]) and cv.get("segments"):
+                            plan["videos"][idx]["segments"] = list(plan["videos"][idx].get("segments") or []) \
+                                + list(cv["segments"])
+                    _log("Після продовження: " + "; ".join(
+                        f"відео {i + 1}: {plan_beats(v)}/{total}" for i, v in enumerate(plan["videos"])))
+                    text = json.dumps(plan, ensure_ascii=False)
+                except Cancelled:
+                    raise
+                except Exception as e:
+                    _log(f"Не вдалося дописати кінець: {e!r} — добиваю автоматично")
         self.cost = usage_cost(model, usage)
         month_total = add_spend(self.cost)
 
