@@ -9,11 +9,7 @@ AI-монтажер для DaVinci Resolve на Mac. Пишеш словами, 
 2. Відкрий **Svit Editor Installer** → «Встановити».
    Перший раз macOS попросить дозвіл: Системні параметри → Приватність і безпека → «Усе одно відкрити».
 3. DaVinci Resolve **Studio** → Workspace → Scripts → **Svit Editor**.
-4. Встав код доступу `svit-…` від автора **або** свій ключ Claude API (створюється на platform.claude.com).
-   Змінити пізніше: Налаштування → «Оновити API ключ».
-
-Потрібні: Mac, DaVinci Resolve **Studio** 21 (кнопка встановлення є в інсталяторі) і Python 3.11
-(інсталятор сам завантажить його з python.org і перевірить підпис).
+4. Встав свій ключ Claude API (створюється на platform.claude.com).
 
 Оновлення приходять автоматично. Кожне оновлення підписане цифровим підписом автора,
 і програма встановлює лише справжні версії.
@@ -32,11 +28,7 @@ AI-монтажер для DaVinci Resolve на Mac. Пишеш словами, 
 - `app/ui.py`, `app/web/` — вікно програми
 - `resolve/Svit Editor.py` — частина всередині DaVinci (Python 3.6+)
 - `installer/res/` — інсталятор
-- `server/` — сервер-посередник для кодів доступу (Cloudflare Worker), інструкція в `server/README.md`
-- Релізи збирає й підписує GitHub (`.github/workflows/build-release.yml`): достатньо змінити `VERSION`
-  і запушити в main. Потрібен секрет репозиторію `SVIT_SIGN_KEY_HEX` (вміст `svit-signing/ed25519.key`).
-- `bash build.sh` — локальна збірка підписаного інсталятора в `dist/`.
-  `SVIT_ACCESS_CODE=svit-… bash build.sh` — особиста збірка з вшитим кодом (не публікувати).
+- `bash build.sh` — збирає підписаний інсталятор у `dist/`.
   Ключ підпису **не зберігається в репозиторії** і передається через `SVIT_SIGN_KEY`.
 
 © Svit AI · Бобогорохія

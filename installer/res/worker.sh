@@ -10,12 +10,7 @@ LOG="$DIR/install.log"
 PKGS="${SVIT_PKGS:-faster-whisper anthropic pillow numpy av pywebview>=5.1 yt-dlp certifi}"
 MODEL_DIR="$HOME/.cache/huggingface/hub/models--Systran--faster-whisper-medium"
 MODEL_BYTES=1530000000
-# Python 3.11 з офіційного python.org. Після завантаження перевіряємо розмір і цифровий підпис Apple
-# Developer ID від Python Software Foundation — підмінений файл не відкриється.
-PY_VER="3.11.9"
-PY_URL="https://www.python.org/ftp/python/$PY_VER/python-$PY_VER-macos11.pkg"
-PY_SIZE=44860848
-PY_SIGNER="Developer ID Installer: Python Software Foundation"
+PY_URL="https://www.python.org/ftp/python/3.13.3/python-3.13.3-macos11.pkg"
 VERSION="$(cat "$RES/payload/VERSION" 2>/dev/null || echo "?")"
 
 mkdir -p "$DIR"
@@ -27,43 +22,45 @@ p()    { echo "P|$1|$2|$3" >> "$PF"; [ "$MODE" = "cli" ] && echo "[$1%] $3"; ret
 fail() { echo "E|$1|$2" >> "$PF"; echo "ПОМИЛКА: $2" >> "$LOG"; [ "$MODE" = "cli" ] && echo "Помилка: $2"; exit 1; }
 
 find_python() {
-  # нове середовище будуємо лише на Python 3.11 — перевірена версія для всіх компонентів
-  local c
-  for c in "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3" \
-           "/opt/homebrew/bin/python3.11" "/usr/local/bin/python3.11"; do
-    if [ -x "$c" ] && "$c" -c 'import sys; sys.exit(0 if sys.version_info[:2] == (3, 11) else 1)' 2>/dev/null; then
-      if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ] && ! file -L "$c" 2>/dev/null | grep -q arm64; then
-        continue
-      fi
+  local c v
+  if [ "$(sysctl -n hw.optional.arm64 2>/dev/null)" = "1" ]; then
+    for v in 3.13 3.12 3.11 3.10 3.9; do
+      for c in "/Library/Frameworks/Python.framework/Versions/$v/bin/python3" "/opt/homebrew/bin/python$v"; do
+        [ -x "$c" ] && file -L "$c" 2>/dev/null | grep -q arm64 && { echo "$c"; return 0; }
+      done
+    done
+  fi
+  for v in 3.13 3.12 3.11 3.10 3.9; do
+    for c in "/Library/Frameworks/Python.framework/Versions/$v/bin/python3" \
+             "/opt/homebrew/bin/python$v" "/usr/local/bin/python$v"; do
+      [ -x "$c" ] && { echo "$c"; return 0; }
+    done
+  done
+  for c in /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+    if [ -x "$c" ] && "$c" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
       echo "$c"; return 0
     fi
   done
+  if xcode-select -p >/dev/null 2>&1 && [ -x /usr/bin/python3 ] && \
+     /usr/bin/python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
+    echo /usr/bin/python3; return 0
+  fi
   return 1
 }
 
 # ---------------------------------------------------------------- завантаження Python
 if [ "$MODE" = "python" ]; then
   PKG="$DIR/python-installer.pkg"
-  rm -f "$PKG"
-  p 2 python "Завантажую Python $PY_VER"
+  p 2 python "Завантажую Python"
   curl -fsSL "$PY_URL" -o "$PKG" >> "$LOG" 2>&1 &
   CP=$!
   while kill -0 $CP 2>/dev/null; do
     SZ=$(stat -f%z "$PKG" 2>/dev/null || echo 0)
-    PCT=$(( SZ * 95 / PY_SIZE )); [ $PCT -gt 95 ] && PCT=95
-    p $PCT python "Завантажую Python $PY_VER · $(( SZ / 1048576 )) з $(( PY_SIZE / 1048576 )) МБ"
+    PCT=$(( SZ * 95 / 72000000 )); [ $PCT -gt 95 ] && PCT=95
+    p $PCT python "Завантажую Python · $(( SZ / 1048576 )) МБ"
     sleep 0.5
   done
-  wait $CP || { open "https://www.python.org/downloads/release/python-3119/"; fail download "Не вдалося завантажити Python. Відкрив сторінку завантаження — встанови звідти й натисни «Спробувати ще раз»."; }
-  p 97 python "Перевіряю підпис Python"
-  SZ=$(stat -f%z "$PKG" 2>/dev/null || echo 0)
-  SIG="$(pkgutil --check-signature "$PKG" 2>&1)"
-  echo "$SIG" >> "$LOG"
-  if [ "$SZ" != "$PY_SIZE" ] || ! echo "$SIG" | grep -q "Status: signed by a developer certificate issued by Apple" \
-     || ! echo "$SIG" | grep -q "1\. $PY_SIGNER ("; then
-    rm -f "$PKG"
-    fail download "Завантажений Python не пройшов перевірку підпису — файл видалено. Перевір інтернет і спробуй ще раз."
-  fi
+  wait $CP || { open "https://www.python.org/downloads/macos/"; fail download "Не вдалося завантажити Python. Відкрив сторінку завантаження — встанови звідти й натисни «Спробувати ще раз»."; }
   p 100 python "Відкриваю встановлення Python"
   open "$PKG"
   echo "D|$VERSION|python" >> "$PF"
@@ -94,7 +91,7 @@ fi
 
 VENV="$DIR/venv"
 if [ "$UPDATE" = "0" ]; then
-  PYB="$(find_python)" || { echo "E|nopython|Потрібен Python 3.11." >> "$PF"; exit 2; }
+  PYB="$(find_python)" || { echo "E|nopython|Потрібен Python 3.9 або новіший." >> "$PF"; exit 2; }
   p 6 env "Готую середовище"
   # нове середовище будуємо поруч і підміняємо в кінці, щоб не зламати те, що зараз працює
   if [ -x "$DIR/venv/bin/python3" ]; then VENV="$DIR/venv-new"; else VENV="$DIR/venv"; fi
@@ -186,23 +183,6 @@ if [ -d "$HOME/.tiktok-editor" ]; then
 fi
 [ -f "$DIR/config.json" ] || echo '{"api_key": ""}' > "$DIR/config.json"
 chmod 600 "$DIR/config.json"
-# особиста збірка від автора: вшитий код доступу до сервера Svit (лише якщо ключа ще немає)
-if [ -f "$RES/payload/access_code" ]; then
-  "$DIR/venv/bin/python3" - "$DIR/config.json" "$RES/payload/access_code" >> "$LOG" 2>&1 <<'PY'
-import json, sys
-cfg_p, code_p = sys.argv[1], sys.argv[2]
-code = open(code_p, encoding="utf-8").read().strip()
-try:
-    cfg = json.load(open(cfg_p, encoding="utf-8"))
-except Exception:
-    cfg = {}
-if code.startswith("svit-") and not (cfg.get("api_key") or "").strip():
-    cfg["api_key"] = code
-    json.dump(cfg, open(cfg_p, "w", encoding="utf-8"), ensure_ascii=False, indent=2)
-    print("код доступу Svit встановлено")
-PY
-  chmod 600 "$DIR/config.json"
-fi
 
 # деінсталятор поруч з програмою
 cp "$RES/uninstall.command" "$DIR/Видалити Svit Editor.command" 2>/dev/null && chmod +x "$DIR/Видалити Svit Editor.command"

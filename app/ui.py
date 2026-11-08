@@ -133,22 +133,11 @@ def vtuple(v):
     return tuple(out[:3]) + (1, 0, 0)
 
 
-def friendly_error(e, kind=None):
+def friendly_error(e):
     svlog.log(f"помилка: {e!r}")
     name, text = type(e).__name__, str(e)
-    if kind is None:
-        try:
-            kind = engine.key_kind(engine.load_cfg().get("api_key", ""))
-        except Exception:
-            kind = ""
     if "Authentication" in name or "401" in text:
-        if kind == "svit":
-            return "Код доступу Svit не підходить або відкликаний. Онови ключ у налаштуваннях (шестерня вгорі)."
-        return "Ключ Claude не підходить. Онови його в налаштуваннях (шестерня вгорі)."
-    if kind == "svit" and ("Денний ліміт" in text):
-        return "Денний ліміт запитів для твого коду вичерпано. Спробуй завтра."
-    if ("credit balance" in text.lower() or "billing" in text.lower()) and kind == "svit":
-        return "На сервері Svit закінчились кошти. Напиши автору програми."
+        return "Ключ Claude не підходить. Зміни його в налаштуваннях (шестерня вгорі)."
     if "credit balance" in text.lower() or "billing" in text.lower():
         return "На балансі Claude закінчились кошти. Поповни баланс і спробуй ще раз."
     if "RateLimit" in name or "429" in text:
@@ -187,7 +176,6 @@ class Api:
             except Exception:
                 pass
         return {"settings": cfg.get("settings", {}), "has_key": bool(key), "key_tail": key[-4:] if key else "",
-                "key_kind": engine.key_kind(key),
                 "spend": cfg.get("spend", {}).get(time.strftime("%Y-%m"), 0.0), "version": VERSION,
                 "bridge": self.bridge.ok, "sources": self.bridge.sources() if self.bridge.ok else {},
                 "shots": shots, "on_top": cfg.get("on_top", True), "rate": engine.TOKENS_PER_USD,
@@ -272,18 +260,15 @@ class Api:
 
     # ---- ключ
     def check_key(self, key):
-        key = (key or "").strip()
-        kind = engine.key_kind(key)
-        if not kind:
-            return {"ok": False, "msg": "Ключ має починатися з sk-ant- (свій ключ Claude) або svit- (код доступу)."}
         try:
-            engine.make_client(key=key).models.list(limit=1)
+            import anthropic
+            anthropic.Anthropic(api_key=key).models.list(limit=1)
         except Exception as e:
-            return {"ok": False, "msg": friendly_error(e, kind)}
+            return {"ok": False, "msg": friendly_error(e)}
         cfg = engine.load_cfg()
         cfg["api_key"] = key
         engine.save_cfg(cfg)
-        return {"ok": True, "kind": kind}
+        return {"ok": True}
 
     # ---- перетягування кліпів
     VIDEO_EXT = {".mov", ".mp4", ".m4v", ".mxf", ".avi", ".mkv", ".mts", ".m2ts", ".webm", ".3gp"}

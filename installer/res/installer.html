@@ -35,9 +35,6 @@ p{font:12px/1.6 var(--mono);text-transform:uppercase;letter-spacing:.04em;color:
 pre{margin-top:12px;max-height:80px;overflow:auto;font:11px var(--mono);background:var(--paper3);border:1.5px dashed var(--ink);padding:8px;text-align:left;width:100%;white-space:pre-wrap;user-select:text}
 .stamp{width:96px;height:96px}
 .row{margin-top:16px}
-.dvx{margin-top:16px;border-top:1.5px dashed var(--ink);padding-top:10px;display:flex;flex-direction:column;align-items:center}
-.dvx p{margin-top:0}
-.dvx .btn{margin-top:10px}
 </style></head>
 <body>
 
@@ -62,8 +59,6 @@ pre{margin-top:12px;max-height:80px;overflow:auto;font:11px var(--mono);backgrou
     <div class="feat"><span>Монтаж за запитом</span><span>Зум і кадрування</span><span>Субтитри</span></div>
     <div class="actions"><button class="go" id="gobtn" onclick="post('install')"><svg width="16" height="16" viewBox="-10 -10 20 20"><path class="" style="transform-origin:0px 0px" d="M0 -9 C1.08 -2.25 2.25 -1.08 9 0 C2.25 1.08 1.08 2.25 0 9 C-1.08 2.25 -2.25 1.08 -9 0 C-2.25 -1.08 -1.08 -2.25 0 -9Z" fill="#FBFAF6" stroke="none"/></svg><span id="golbl">Встановити</span></button>
     <button class="link" onclick="post('quit')">Не зараз</button></div>
-    <div class="dvx" id="dvx" style="display:none"><p>DaVinci Resolve на цьому Маку не знайдено. Svit Editor працює всередині DaVinci Resolve <b>Studio 21</b>.</p>
-      <button class="btn" onclick="post('get_davinci')">Встановити DaVinci Resolve 21</button></div>
   </div>
 </section>
 
@@ -163,7 +158,7 @@ pre{margin-top:12px;max-height:80px;overflow:auto;font:11px var(--mono);backgrou
     <h1 id="dt" style="margin-top:10px">Svit Editor готовий</h1>
     <p id="ds">Перезапусти DaVinci і відкрий:</p>
     <div class="how"><span>Workspace</span>→<span>Scripts</span>→<b>Svit Editor</b></div>
-    <div class="row"><button class="btn" onclick="post('quit')">Закрити</button><button class="go" id="dvopen" onclick="post('davinci')">Відкрити DaVinci</button><button class="go" id="dvget" style="display:none" onclick="post('get_davinci')">Встановити DaVinci Resolve 21</button></div>
+    <div class="row"><button class="btn" onclick="post('quit')">Закрити</button><button class="go" onclick="post('davinci')">Відкрити DaVinci</button></div>
   </div>
 </section>
 
@@ -201,7 +196,6 @@ anim();
 const S={
   init(st){
     document.querySelectorAll(".ver").forEach(e=>e.textContent="v"+st.version);
-    if(!st.davinci){ $("#dvx").style.display="block"; $("#dvopen").style.display="none"; $("#dvget").style.display="" }
     if(st.installed){ $("#wt").textContent = st.installed===st.version ? "Svit Editor "+st.version+" вже встановлений" : "Оновити Svit Editor";
       $("#ws").textContent = st.installed===st.version ? "Можна перевстановити, якщо щось працює не так. Ключ і налаштування залишаться."
         : "Версія "+st.installed+" → "+st.version+". Займе менше хвилини, ключ і налаштування залишаться.";

@@ -44,16 +44,6 @@ python3 -c "from PIL import Image; im=Image.open('app/web/icon.png'); im.thumbna
 cp "resolve/Svit Editor.py" "$R/payload/resolve/"
 cp VERSION "$R/payload/VERSION"
 
-# Особиста збірка для конкретної людини: SVIT_ACCESS_CODE=svit-… bash build.sh
-# Код доступу потрапляє лише в цей zip і НІКОЛИ не має йти в release/ чи на GitHub.
-PRIVATE=0
-if [ -n "$SVIT_ACCESS_CODE" ]; then
-  case "$SVIT_ACCESS_CODE" in svit-?*) ;; *) echo "SVIT_ACCESS_CODE має починатися з svit-"; exit 1;; esac
-  printf '%s' "$SVIT_ACCESS_CODE" > "$R/payload/access_code"
-  chmod 600 "$R/payload/access_code"
-  PRIVATE=1
-fi
-
 # цифровий підпис: маніфест sha256 усіх файлів + підпис Ed25519 приватним ключем автора
 KEY="${SVIT_SIGN_KEY:-$(cd "$(dirname "$0")/.." && pwd)/svit-signing/ed25519.key}"
 if [ -f "$KEY" ]; then
@@ -62,12 +52,5 @@ if [ -f "$KEY" ]; then
 else
   echo "УВАГА: немає ключа підпису ($KEY) — збірка НЕ підписана, автооновлення її не прийме"
 fi
-if [ "$PRIVATE" = "1" ]; then
-  OUT="Svit Editor $VER (особиста — не публікувати).zip"
-  (cd dist && zip -qry "$OUT" "Svit Editor Installer.app")
-  echo "dist/$OUT"
-  echo "УВАГА: у цьому архіві код доступу. Передай його людині особисто, НЕ клади в release/ і не комміть."
-else
-  (cd dist && zip -qry "Svit Editor $VER.zip" "Svit Editor Installer.app")
-  echo "dist/Svit Editor $VER.zip"
-fi
+(cd dist && zip -qry "Svit Editor $VER.zip" "Svit Editor Installer.app")
+echo "dist/Svit Editor $VER.zip"
