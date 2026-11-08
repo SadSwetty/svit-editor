@@ -288,6 +288,32 @@ def decode_audio_16k(path, check=lambda: None):
         c.close()
 
 
+def src_off(src):
+    """Звідки в файлі починається використана частина (обрізаний на таймлайні кліп або In/Out у Media Pool)."""
+    try:
+        return max(0.0, float(src.get("offset") or 0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def window_words(segs, words, src):
+    """Слова й фрази лише з використаної частини файлу, час — від її початку."""
+    w0 = src_off(src)
+    if not w0 and not src.get("trimmed"):
+        return segs, words
+    w1 = w0 + float(src["duration"])
+    sh = lambda x: dict(x, start=round(x["start"] - w0, 3), end=round(x["end"] - w0, 3))
+    return ([sh(x) for x in segs if x["end"] > w0 and x["start"] < w1],
+            [sh(x) for x in words if x["start"] >= w0 - 0.05 and x["end"] <= w1 + 0.05])
+
+
+def window_frames(path, times, on_pct, check, src):
+    """grab_frames у межах використаної частини: час на вході й виході — від її початку."""
+    w0 = src_off(src)
+    got = grab_frames(path, [t + w0 for t in times], on_pct, check)
+    return [(round(max(0.0, t - w0), 3), j) for t, j in got] if w0 else got
+
+
 def audio_energy(path, on_pct, check, duration):
     """Гучність по секундах, 0–9."""
     import av
@@ -1422,6 +1448,8 @@ class Job:
             lip = src.get("name") in marked
             try:
                 off, conf = _m.sync_offset(song_path, src["path"], env)
+                if off is not None:
+                    off = round(off + src_off(src), 3)   # зсув відносно початку використаної частини
             except Cancelled:
                 raise
             except Exception as e:
@@ -1472,7 +1500,7 @@ class Job:
                 def lp(f, base=done_sec, dur=src["duration"], k=k, name=src["name"]):
                     self.report("listen", (base + f * dur) / self.total,
                                 f"Слухаю слова · відео {k} з {n}", file=name)
-                segs, words = tr.run(src["path"], lp, self.check)
+                segs, words = window_words(*tr.run(src["path"], lp, self.check), src)
             data[src["id"]] = {"segs": segs, "words": words, "energy": []}
             done_sec += src["duration"]
 
@@ -1481,7 +1509,9 @@ class Job:
             def sp(f, base=done_sec, dur=src["duration"], k=k, name=src["name"]):
                 self.report("sound", (base + f * dur) / self.total,
                             f"Шукаю найгучніші моменти · відео {k} з {n}", file=name)
-            data[src["id"]]["energy"] = audio_energy(src["path"], sp, self.check, src["duration"])
+            lv = audio_energy(src["path"], sp, self.check, src_off(src) + src["duration"])
+            w0 = int(src_off(src))
+            data[src["id"]]["energy"] = lv[w0:w0 + int(math.ceil(src["duration"]))] if (w0 or src.get("trimmed")) else lv
             done_sec += src["duration"]
 
         frames = {}
@@ -1505,7 +1535,7 @@ class Job:
                 def fp(f, base=done_n, cnt=len(times), k=k, name=src["name"]):
                     self.report("look", (base + f * cnt) / total_n,
                                 f"Дивлюсь кадри · відео {k} з {n}", file=name)
-                frames[src["id"]] = grab_frames(src["path"], times, fp, self.check)
+                frames[src["id"]] = window_frames(src["path"], times, fp, self.check, src)
                 done_n += len(times)
 
         # автоконтраст: тон кожного джерела (з уже знятих кадрів або з кількох швидких)
@@ -1517,8 +1547,8 @@ class Job:
                     jp = [j for _, j in frames.get(src["id"], [])]
                     if not jp:
                         d = src["duration"]
-                        jp = [j for _, j in grab_frames(src["path"], [d * f for f in (0.15, 0.35, 0.55, 0.75, 0.9)],
-                                                        lambda f: None, self.check)]
+                        jp = [j for _, j in window_frames(src["path"], [d * f for f in (0.15, 0.35, 0.55, 0.75, 0.9)],
+                                                          lambda f: None, self.check, src)]
                     t = tone_of(jp)
                 except Cancelled:
                     raise

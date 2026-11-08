@@ -779,10 +779,11 @@ const SV = {
       $("#names").innerHTML=""; return }
     $("#matbig").textContent = list.length + " " + plural(list.length,"відео","відео","відео");
     const longest=Math.max(...list.map(x=>x.duration||0));
-    $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '');
+    const trimmed=list.filter(x=>x.trimmed).length;
+    $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '') + (trimmed ? ' · обрізаних ' + trimmed : '');
     $("#clearbtn").style.display = this.st.source_mode==="dropped" ? "inline-block" : "none";
     const restDur=list.slice(6).reduce((a,b)=>a+(b.duration||0),0);
-    $("#names").innerHTML = list.slice(0,6).map(x=>`<span title="${esc(x.name)}">${esc(x.name)} <i>${clock(x.duration||0)}</i></span>`).join("") + (list.length>6?`<span>+${list.length-6} <i>${clock(restDur)}</i></span>`:"");
+    $("#names").innerHTML = list.slice(0,6).map(x=>`<span title="${esc(x.name)}${x.trimmed?' — лише обрізана частина':''}">${esc(x.name)} <i>${clock(x.duration||0)}${x.trimmed?' обр.':''}</i></span>`).join("") + (list.length>6?`<span>+${list.length-6} <i>${clock(restDur)}</i></span>`:"");
   },
 
   async estimate(){

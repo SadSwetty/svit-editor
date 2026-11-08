@@ -942,7 +942,9 @@ class Api:
             for i, it in enumerate(items, 1):
                 sources.append({"id": i, "uid": it["uid"], "name": it["name"], "path": it["path"],
                                 "duration": float(it["duration"]), "fps": it.get("fps", 25),
-                                "resolution": it.get("resolution", "")})
+                                "resolution": it.get("resolution", ""),
+                                # обрізаний кліп: беремо лише цю частину файлу
+                                "offset": float(it.get("offset") or 0), "trimmed": bool(it.get("trimmed"))})
             cfg = engine.load_cfg()
             stamp = time.strftime("%Y%m%d_%H%M%S")
             out = HOME / "jobs" / stamp

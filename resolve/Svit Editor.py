@@ -122,6 +122,78 @@ def clip_info(item):
             "resolution": str(item.GetClipProperty("Resolution") or "")}
 
 
+def _try(obj, name, *a):
+    try:
+        f = getattr(obj, name, None)
+        return f(*a) if f else None
+    except Exception:
+        return None
+
+
+def _num(x):
+    try:
+        return float(x)
+    except Exception:
+        return None
+
+
+def timeline_window(ti, info, tl_fps):
+    """Яку частину файлу використовує кліп на таймлайні: (початок, тривалість) у секундах.
+    Пробуємо кілька способів API (залежать від версії DaVinci) і беремо перший правдоподібний."""
+    fps = info["fps"] or 25.0
+    full = info["duration"]
+    length = None
+    d = _num(_try(ti, "GetDuration"))
+    if d:
+        length = d / (tl_fps or fps)
+    cands = []
+    sf = _num(_try(ti, "GetSourceStartFrame"))
+    if sf is not None:
+        cands.append(sf / fps)
+    st = _num(_try(ti, "GetSourceStartTime"))
+    if st is not None:
+        cands.append(st)
+    lo = _num(_try(ti, "GetLeftOffset"))
+    if lo is not None:
+        cands += [lo / fps, lo / (tl_fps or fps)]
+    if length is None:
+        ef = _num(_try(ti, "GetSourceEndFrame"))
+        if sf is not None and ef is not None and ef > sf:
+            length = (ef - sf) / fps
+    if not length or length <= 0:
+        return None
+    for c in cands:
+        if c is not None and c >= -0.01 and c + length <= full + 0.15:
+            return max(0.0, c), min(length, full - max(0.0, c))
+    return None
+
+
+def mark_window(item, info):
+    """In/Out, позначені на кліпі в Media Pool (клавіші I та O)."""
+    m = _try(item, "GetMarkInOut") or {}
+    v = m.get("video") or m.get("audio") or {}
+    a, b = _num(v.get("in")), _num(v.get("out"))
+    if a is None or b is None or b <= a:
+        return None
+    fps = info["fps"] or 25.0
+    st, ln = a / fps, (b - a + 1) / fps
+    if st < 0 or st + ln > info["duration"] + 0.15:
+        return None
+    return st, min(ln, info["duration"] - st)
+
+
+def with_window(info, win, uid_suffix=""):
+    if not win:
+        return info
+    st, ln = win
+    if st < 0.04 and abs(ln - info["duration"]) < 0.08:
+        return info                       # не обрізано — весь файл
+    out = dict(info, offset=round(st, 3), duration=round(ln, 3), trimmed=True)
+    if uid_suffix:
+        out["uid"] = info["uid"] + uid_suffix
+    return out
+
+
 class Session:
     def __init__(self, resolve):
         self.resolve = resolve
@@ -162,19 +234,34 @@ class Session:
         elif mode == "dropped":
             items = list(self.dropped)
         else:
+            # з таймлайну: кожен кліп — лише та частина файлу, що лишилась після обрізки
             tl = project.GetCurrentTimeline()
-            seen = set()
+            out, seen = [], set()
             if tl:
+                tfps = timeline_fps(tl)
+                tis = []
                 for idx in range(1, (tl.GetTrackCount("video") or 1) + 1):
-                    for ti in tl.GetItemListInTrack("video", idx) or []:
-                        mpi = ti.GetMediaPoolItem()
-                        if mpi and mpi.GetUniqueId() not in seen:
-                            seen.add(mpi.GetUniqueId())
-                            items.append(mpi)
+                    tis += tl.GetItemListInTrack("video", idx) or []
+                tis.sort(key=lambda t: (_num(_try(t, "GetStart")) or 0))
+                for ti in tis:
+                    mpi = _try(ti, "GetMediaPoolItem")
+                    info = clip_info(mpi) if mpi else None
+                    if not info:
+                        continue
+                    win = timeline_window(ti, info, tfps)
+                    key = (info["uid"], round(win[0], 2) if win else None, round(win[1], 2) if win else None)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    info = with_window(info, win, "@%d" % int(round((win or (0,))[0] * 1000)))
+                    self.items[info["uid"]] = mpi
+                    out.append(info)
+            return out
         out = []
         for it in items:
             info = clip_info(it)
             if info:
+                info = with_window(info, mark_window(it, info))
                 self.items[info["uid"]] = it
                 out.append(info)
         return out
@@ -1214,8 +1301,9 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
     infos, metas = [], []
     for sg in video["segments"]:
         src = by_id[sg["source"]]
-        sf = int(round(sg["start"] * src["fps"]))
-        ef = max(sf + 1, int(round(sg["end"] * src["fps"])))
+        off = float(src.get("offset") or 0)      # обрізаний кліп: час шматка — від початку використаної частини
+        sf = int(round((sg["start"] + off) * src["fps"]))
+        ef = max(sf + 1, int(round((sg["end"] + off) * src["fps"])))
         info = {"mediaPoolItem": src["item"], "startFrame": sf, "endFrame": ef, "trackIndex": 1}
         if mus:
             info["mediaType"] = 1   # тільки картинка — звучить трек
