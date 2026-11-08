@@ -1575,7 +1575,7 @@ class Job:
                 break
             seg_window = 20 if not seg_window else seg_window * 2
             frame_step *= 2
-        est_out = 800 + 900 * 5
+        est_out = 800 + 900 * 5 + THINK_EST   # сам план + роздуми моделі
         if tin:
             self.report("plan", 0.05, "Монтую",
                         tokens_in=tin, cost_estimate=price_of(model, tin, est_out))
@@ -1712,7 +1712,12 @@ def usage_cost(model, u):
     return (tin * pin + cw * pin * 1.25 + cr * pin * 0.1 + tout * pout) / 1e6
 
 
-MAX_OUT = 32000      # ліміт довжини відповіді Claude (токени)
+# Ліміт відповіді Claude (токени). Моделі 5.5 спершу «думають», і ці роздуми теж рахуються
+# в ліміт — тому запас великий, а глибину роздумів тримаємо помірною через effort.
+MAX_OUT = 64000
+PLAN_EFFORT = "medium"   # перша спроба: розумно, але без роздумів на всі 64K
+RETRY_EFFORT = "low"     # повтор: майже без роздумів, одразу план
+THINK_EST = 12000        # орієнтовні роздуми на effort=medium — для оцінки ціни
 PLAN_PHASES = ["переглядаю матеріал", "обираю найкращі моменти", "вибудовую ритм і структуру",
                "розставляю склейки"]
 
@@ -1724,7 +1729,7 @@ class Usage:
             setattr(self, k, sum((getattr(u, k, 0) or 0) for u in us if u is not None))
 
 
-def ask_claude(client, model, messages, check, on_progress, tin_hint=0, label="Монтую"):
+def ask_claude(client, model, messages, check, on_progress, tin_hint=0, label="Монтую", effort=PLAN_EFFORT):
     """Потокова відповідь Claude. Прогрес рухається і за часом (поки Claude «думає» над великим
     матеріалом і ще нічого не пише), і за кількістю написаного. Повертає (текст, usage, stop_reason)."""
     import threading
@@ -1757,8 +1762,10 @@ def ask_claude(client, model, messages, check, on_progress, tin_hint=0, label="�
     th = threading.Thread(target=tick, daemon=True)
     th.start()
     try:
+        # extra_body — щоб працювало з будь-якою версією бібліотеки anthropic
         with client.messages.stream(model=model, max_tokens=MAX_OUT, system=SYSTEM_PROMPT,
-                                    messages=messages) as stream:
+                                    messages=messages,
+                                    extra_body={"output_config": {"effort": effort}}) as stream:
             for chunk in stream.text_stream:
                 check()
                 state["text"] += chunk
@@ -1766,7 +1773,8 @@ def ask_claude(client, model, messages, check, on_progress, tin_hint=0, label="�
     finally:
         state["done"] = True
     stop = getattr(final, "stop_reason", None)
-    _log(f"Claude відповів: {len(state['text'])} символів, stop_reason={stop}, usage={getattr(final, 'usage', None)}")
+    _log(f"Claude відповів (effort={effort}): {len(state['text'])} символів, stop_reason={stop}, "
+         f"usage={getattr(final, 'usage', None)}")
     return state["text"], final.usage, stop
 
 
@@ -1782,15 +1790,24 @@ def ask_plan(client, model, messages, check, on_progress, tin_hint=0, out_dir=No
             obj["notes"] = ("План вийшов задовгим і обрізався — частину останніх шматків прибрано. "
                             + str(obj.get("notes") or "")).strip()
         return obj, text, usage
-    _log("JSON не розібрано — прошу Claude повторити тільки JSON")
-    retry = messages + [{"role": "assistant", "content": text.strip() or "(порожньо)"},
-                        {"role": "user", "content":
-                         "Твоя відповідь обірвалась або не містить коректного JSON. Поверни ТІЛЬКИ валідний JSON "
-                         "у потрібному форматі, без пояснень. Будь лаконічним: короткі notes, why і caption, "
-                         "без зайвих пробілів."}]
+    _log("JSON не розібрано — прошу Claude повторити тільки JSON, з меншими роздумами")
+    hint = ("Поверни ТІЛЬКИ валідний JSON у потрібному форматі, без пояснень. Довго не обмірковуй — "
+            "одразу пиши план. Будь лаконічним: короткі notes, why і caption, без зайвих пробілів.")
+    if text.strip():
+        retry = messages + [{"role": "assistant", "content": text.strip()},
+                            {"role": "user", "content": "Твоя відповідь обірвалась або не містить коректного JSON. "
+                             + hint}]
+    else:
+        # порожня відповідь (усе пішло на роздуми) — повторюємо той самий запит з підказкою
+        retry = [dict(m) for m in messages]
+        last = retry[-1]
+        if isinstance(last.get("content"), str):
+            last["content"] = last["content"] + "\n\n" + hint
+        else:
+            last["content"] = list(last["content"]) + [{"type": "text", "text": hint}]
     text2, usage2, stop2 = ask_claude(client, model, retry, check,
                                       lambda f, c, m: on_progress(0.6 + 0.37 * f, c, f"{label} · ще раз"),
-                                      tin_hint, label)
+                                      tin_hint, label, effort=RETRY_EFFORT)
     _save_raw(out_dir, text2, 2)
     usage = Usage(usage, usage2)
     obj = try_parse(text2, need)
@@ -2008,6 +2025,7 @@ def estimate_edit(job_dir, span, full):
     nseg = sum(len(v["segments"]) for v in cur["videos"])
     plan_tok = 40 * nseg + 400
     tout = (300 + 70 * nseg) if full else (150 + int(span / SEG_LEN.get(job["settings"].get("pace", "normal"), 4.5) + 1) * 70)
+    tout += THINK_EST // 2   # правка — менше роздумів, ніж повний монтаж
     cached = (tin * p["in"] * 0.1 + plan_tok * p["in"] + tout * p["out"]) / 1e6
     fresh = (tin * p["in"] * 1.25 + plan_tok * p["in"] + tout * p["out"]) / 1e6
     return {"cost": cached, "cost_nocache": fresh}
