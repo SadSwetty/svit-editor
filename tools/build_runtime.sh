@@ -39,6 +39,8 @@ build() {   # build <pbs-arch> <our-arch> <pip-platform> <constraints>
     --target "$site" --platform "$plat" --python-version 3.11 --implementation cp --abi cp311
     --only-binary=:all: --find-links "$WORK/purewheels" -c "$WORK/cons-$arch.txt")
   "${PIPX[@]}" -r "$REQ" $MAC_EXTRA
+  # faster-whisper без залежностей: вони вже стоять, а onnxruntime для нього необов'язковий (нижче)
+  "${PIPX[@]}" --no-deps faster-whisper
   # необов'язкові: без них Svit працює (фільтр тиші в розпізнаванні мови, маскування під браузер для TikTok)
   for opt in onnxruntime curl_cffi; do
     "${PIPX[@]}" "$opt" || echo "::warning::$arch: $opt недоступний — середовище буде без нього"

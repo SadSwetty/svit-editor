@@ -7,9 +7,8 @@ av
 pywebview>=5.1
 yt-dlp[default]
 certifi
-faster-whisper
 ctranslate2
 huggingface_hub
 tokenizers
 tqdm
-# onnxruntime і curl_cffi — необов'язкові, ставляться окремо (див. tools/build_runtime.sh)
+# faster-whisper (без залежностей), onnxruntime і curl_cffi — необов'язкові, ставляться окремо (див. tools/build_runtime.sh)
