@@ -24,6 +24,18 @@ jobs:
           ls /usr/bin/llvm-lipo* /usr/bin/llvm-otool* 2>/dev/null || true
       - name: Build
         run: bash plugins/svit-film/ofx/build_cross.sh
+      - name: Sign (ad-hoc)
+        # Без підпису macOS на Apple Silicon не завантажує плагін, і DaVinci його не бачить.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG=$(gh api "repos/indygreg/apple-platform-rs/releases?per_page=30" --jq '[.[]|select(.tag_name|startswith("apple-codesign/"))][0].tag_name')
+          echo "rcodesign: $TAG"
+          gh release download "$TAG" -R indygreg/apple-platform-rs -p '*x86_64-unknown-linux-musl.tar.gz' -O rc.tgz
+          tar xzf rc.tgz && RC=$(find . -name rcodesign -type f | head -1) && chmod +x "$RC"
+          "$RC" sign plugins/svit-film/ofx/build/SvitFilm.ofx.bundle
+          "$RC" print-signature-info plugins/svit-film/ofx/build/SvitFilm.ofx.bundle/Contents/MacOS/SvitFilm.ofx | head -20
+          rm -rf rc.tgz apple-codesign-*
       - name: Inspect
         run: |
           F=plugins/svit-film/ofx/build/SvitFilm.ofx.bundle/Contents/MacOS/SvitFilm.ofx
@@ -31,7 +43,8 @@ jobs:
           OT=$(ls /usr/bin/llvm-otool* | head -1); NM=$(ls /usr/bin/llvm-nm* | grep -v ld | head -1)
           for A in arm64 x86_64; do
             echo "== $A"; "$NM" --arch=$A -gU "$F" | grep -i ofx
-            "$OT" -arch $A -l "$F" | grep -E "LC_CODE_SIGNATURE|LC_ID_DYLIB|minos|LC_BUILD_VERSION" -A2 | head -12
+            "$OT" -arch $A -l "$F" | grep -E "LC_CODE_SIGNATURE|LC_ID_DYLIB|minos|LC_BUILD_VERSION" -A2 | head -16
+            "$OT" -arch $A -l "$F" | grep -q LC_CODE_SIGNATURE || { echo "::error::$A slice is not signed"; exit 1; }
             "$OT" -arch $A -L "$F"
           done
       - name: Package

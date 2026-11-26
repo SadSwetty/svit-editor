@@ -37,7 +37,7 @@ SRC="$(find "$TMP/x" -maxdepth 3 -type d -name SvitFilm.ofx.bundle | head -1)"
 osascript -e 'on run argv
   set s to quoted form of item 1 of argv
   set d to quoted form of item 2 of argv
-  do shell script "mkdir -p " & d & " && rm -rf " & d & "/SvitFilm.ofx.bundle && cp -R " & s & " " & d & "/ && xattr -dr com.apple.quarantine " & d & "/SvitFilm.ofx.bundle; true" with administrator privileges with prompt "Svit Film хоче оновити свій ефект для DaVinci Resolve."
+  do shell script "mkdir -p " & d & " && rm -rf " & d & "/SvitFilm.ofx.bundle && cp -R " & s & " " & d & "/ && xattr -dr com.apple.quarantine " & d & "/SvitFilm.ofx.bundle; codesign --force --deep -s - " & d & "/SvitFilm.ofx.bundle; true" with administrator privileges with prompt "Svit Film хоче оновити свій ефект для DaVinci Resolve."
 end run' "$SRC" "$DST" >/dev/null 2>&1 \
   || { say "Оновлення скасовано або не вдалося."; exit 1; }
 say "Svit Film оновлено до $LATEST.\n\nПерезапусти DaVinci Resolve, щоб нова версія запрацювала."

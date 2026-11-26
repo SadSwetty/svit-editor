@@ -11,7 +11,7 @@ B="build/SvitFilm.ofx.bundle"
 rm -rf build && mkdir -p "$B/Contents/MacOS" "$B/Contents/Resources" build/obj
 for T in aarch64 x86_64; do
   $ZIG c++ -target $T-macos.11.0 -std=c++17 -O3 -ffast-math -fvisibility=hidden -shared \
-    -DSVIT_VERSION="\"$VER\"" -Iopenfx/include -Isrc src/SvitFilm.cpp -o build/obj/SvitFilm-$T.ofx
+    -DSVIT_VERSION="\"$VER\"" -Iopenfx/include -Isrc src/SvitFilm.cpp -Wl,-install_name,@rpath/SvitFilm.ofx -o build/obj/SvitFilm-$T.ofx
 done
 "$LIPO" -create build/obj/SvitFilm-aarch64.ofx build/obj/SvitFilm-x86_64.ofx -output "$B/Contents/MacOS/SvitFilm.ofx"
 "$LIPO" -info "$B/Contents/MacOS/SvitFilm.ofx"
