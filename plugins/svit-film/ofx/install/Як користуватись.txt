@@ -52,7 +52,12 @@ FILM GRAIN (2.1)
 Size, Amount, Film Resolution, Shadows/Midtones/Highlights, Chroma, Film Type, Mode.
 
 SVIT LOOK (2.2) — 30 готових образів
-Група «Svit Look» угорі: обери образ, і всі повзунки нижче виставляться. Далі докручуй що завгодно.
+Група «Svit Look» угорі. Щойно накладений плагін нічого не змінює (картинка 1:1, DaVinci її просто пропускає).
+«None (clean)» повертає все в чистий стан.
+Галочка «Apply All Settings»:
+  • увімкнена — обираєш образ, і ВСІ повзунки нижче стають рівно як в образі. Далі докручуй що завгодно;
+  • вимкнена — образ працює «під капотом», а повзунки стоять на нулі. Усе, що крутиш, додається
+    поверх готової картинки (Exposure +0.3 = образ, тільки світліший; Mix 50 = половина образу).
 Svit Classic, Night Tram, Neon Rain, Frankivsk '98, Karpaty Fog, Super 8 Summer, Home Movie '74,
 16mm Doc, 16mm Indie Day, Portra Skin, Ektar Punch, Velvia Mountains, Slide Show '72,
 Kodachrome Memory, Bleach Bypass, Cross Process '99, Tri-X Street, HP5 Concert, Expired Superia,

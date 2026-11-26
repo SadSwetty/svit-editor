@@ -244,4 +244,69 @@ inline bool applyLook(Params& P, int i, double amount = 1.0) {
     return true;
 }
 
+// «Чистий» стан плагіна: усе вимкнено/на нулі (це типові значення в DaVinci). Образи ж задумані на базі
+// Params() — плівка і друк увімкнені.
+inline Params neutralParams() {
+    Params N; N.filmOn = false; N.printOn = false; return N;
+}
+
+// Режим «Apply All Settings» вимкнено: образ працює «під капотом», а повзунки показують лише ВАШІ поправки
+// поверх нього (на нулі = рівно образ). Числа додаються до значень образу, перемикачі/вибори, змінені
+// з чистого стану, перекривають образ, Mix множиться.
+inline Params lookPlusOffsets(const Params& user, int look, double amount) {
+    Params R = user;
+    Params L;
+    if (!applyLook(L, look, amount)) return user;
+    const Params N = neutralParams();
+    for (auto& f : lookFields()) {
+        double u = getField(user, f), n = getField(N, f), l = getField(L, f);
+        if (!std::strcmp(f.name, "mix")) { setField(R, f, l * u / 100.0); continue; }
+        if (f.d) {
+            double lo, hi; fieldRange(f.name, lo, hi);
+            setField(R, f, std::clamp(l + (u - n), lo, hi));
+        } else {
+            setField(R, f, u != n ? u : l);
+        }
+    }
+    return R;
+}
+
+// Чи нічого не змінюється (тоді DaVinci просто пропускає кадр — без жодного перерахунку і без втрат)
+inline bool isIdentity(const Params& P) {
+    const Params N = neutralParams();
+    bool sameSpace = (P.input == IN_REC709 && (P.output == OUT_REC709)) ||
+                     (P.input == IN_REC2020 && P.output == OUT_REC2020) ||
+                     (P.input == IN_APPLE20 && P.output == OUT_APPLE20);
+    if (P.mix <= 0.0 && sameSpace) return true;
+    if (!sameSpace) return false;
+    for (auto& f : lookFields()) {
+        if (!std::strcmp(f.name, "mix")) continue;
+        // параметри, які нічого не роблять, поки їхній модуль вимкнений
+        if (!P.filmOn && (!std::strcmp(f.name, "stock") || !std::strcmp(f.name, "pushPull"))) continue;
+        if (!P.printOn && (!std::strcmp(f.name, "print") || !std::strcmp(f.name, "printExposure") ||
+                           !std::strcmp(f.name, "lightR") || !std::strcmp(f.name, "lightG") || !std::strcmp(f.name, "lightB"))) continue;
+        if (getField(P, f) != getField(N, f)) {
+            // окремі модулі вимкнені — їхні повзунки байдужі
+            static const char* dev[] = {"contrastBoost", "gammaCorr", "colorSep", "colorBoost"};
+            static const char* comp[] = {"impact", "compWhite", "tonalRange", "colorDensity"};
+            static const char* hal[] = {"halProfile", "srcLimiter", "bgGain", "smoothness", "localDiff", "globalDiff", "amplify", "hue", "halImpact"};
+            static const char* grain[] = {"grainProfile", "grainSize", "grainAmount", "filmRes", "gShadows", "gMid", "gHigh", "chroma", "filmType", "grainMode"};
+            static const char* exp[] = {"blackPoint", "whitePoint"};
+            static const char* leak[] = {"leakHue", "leakSpeed", "leakPos"};
+            static const char* age[] = {"storage"};
+            auto in = [&](const char* const* a, int n) { for (int k = 0; k < n; ++k) if (!std::strcmp(a[k], f.name)) return true; return false; };
+            if (!P.devOn && in(dev, 4)) continue;
+            if (!P.compOn && in(comp, 4)) continue;
+            if (!P.halOn && in(hal, 9)) continue;
+            if (!P.grainOn && in(grain, 10)) continue;
+            if (!P.expandOn && in(exp, 2)) continue;
+            if (P.leak <= 0 && in(leak, 3)) continue;
+            if (P.age <= 0 && in(age, 1)) continue;
+            if (!std::strcmp(f.name, "expandOn")) continue;   // без плівки/друку розтягувати нічого
+            return false;
+        }
+    }
+    return true;
+}
+
 }  // namespace svitfilm

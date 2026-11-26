@@ -173,13 +173,16 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     for (int k = 0; k < kNumPrints; ++k) printNames.push_back(kPrints[k].name);
     printNames.push_back("Film Scan (no print)");
 
-    std::vector<std::string> lookNameStore = {"None (manual)"};
+    std::vector<std::string> lookNameStore = {"None (clean)"};
     for (auto& l : looks()) lookNameStore.push_back(l.name);
     std::vector<const char*> lookNames;
     for (auto& n : lookNameStore) lookNames.push_back(n.c_str());
     defineGroup(ps, "gLook", "Svit Look");
     defineChoice(ps, "look", "Look", lookNames.data(), (int)lookNames.size(), 0, "gLook",
-                 "30 ready looks. Picking one sets the controls below; then tweak anything.");
+                 "Ready looks. None = clean image, nothing applied.");
+    defineBool(ps, "lookApplyAll", "Apply All Settings", 1, "gLook",
+               "On: picking a look sets every control below to the look's values - tweak anything. "
+               "Off: the look works underneath and the controls stay at zero; whatever you change is added on top of the look.");
     defineDouble(ps, "lookAmount", "Look Amount", 100.0, 0.0, 200.0, "gLook",
                  "Strength of the look: 0 = no look, 100 = as designed, 200 = double. Re-applies the look.", 1, 1);
     defineLabel(ps, "lookInfo", "About", "Pick a look or set everything by hand.", "gLook");
@@ -199,7 +202,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineChoice(ps, "stock", "Profile", stockNames.data(), kNumStocks, 1, "gFilm", "Camera film stock.");
     defineDouble(ps, "pushPull", "Push/Pull (Ev)", 0.0, -2.0, 3.0, "gFilm",
                  "Push (+) / pull (-) processing: contrast, fog and grain change; the print is re-timed.", 0.1, 3);
-    defineBool(ps, "filmOn", "Enabled", 1, "gFilm", "Off = neutral reference negative.");
+    defineBool(ps, "filmOn", "Enabled", 0, "gFilm", "Off = neutral reference negative.");
     defineLabel(ps, "status", "Profile Status", kStocks[1].status, "gFilm");
 
     defineGroup(ps, "gDev", "Film Developer", false);
@@ -223,7 +226,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineDouble(ps, "lightR", "Printer Light R", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more red light = less red.", 0.5, 1);
     defineDouble(ps, "lightG", "Printer Light G", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more green light = less green.", 0.5, 1);
     defineDouble(ps, "lightB", "Printer Light B", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more blue light = less blue.", 0.5, 1);
-    defineBool(ps, "printOn", "Enabled", 1, "gPrint", "Off = neutral reference print.");
+    defineBool(ps, "printOn", "Enabled", 0, "gPrint", "Off = neutral reference print.");
 
     defineGroup(ps, "gHal", "Halation");
     defineChoice(ps, "halProfile", "Profile", kHalProfileNames, kNumHalProfiles, 0, "gHal",
@@ -324,12 +327,14 @@ void updateStatus(OfxImageEffectHandle inst) {
     if (gParam->paramSetValue) gParam->paramSetValue(h, svitfilm::statusText(p));
 }
 
-// вибір образу: виставити всі його параметри (спершу типові значення, потім образ)
+// вибір образу. Apply All Settings увімкнено — усі повзунки стають як в образі; вимкнено (або None) —
+// повзунки скидаються в чистий стан (у режимі «поверх образу» це означає «рівно образ»).
 void applyLookParams(OfxImageEffectHandle inst) {
     if (!gParam->paramSetValue) return;
     int i = getI(inst, "look", 0);
-    svitfilm::Params P;
-    if (!svitfilm::applyLook(P, i, getD(inst, "lookAmount", 0) / 100.0)) return;
+    bool all = getI(inst, "lookApplyAll", 0) != 0;
+    svitfilm::Params P = svitfilm::neutralParams();
+    if (i > 0 && all && !svitfilm::applyLook(P, i, getD(inst, "lookAmount", 0) / 100.0)) return;
     OfxParamSetHandle ps; OfxParamHandle h;
     gEffect->getParamSet(inst, &ps);
     for (auto& f : svitfilm::lookFields()) {
@@ -338,7 +343,7 @@ void applyLookParams(OfxImageEffectHandle inst) {
         if (f.d) gParam->paramSetValue(h, v); else gParam->paramSetValue(h, (int)v);
     }
     if (gParam->paramGetHandle(ps, "lookInfo", &h, nullptr) == kOfxStatOK)
-        gParam->paramSetValue(h, svitfilm::looks()[i - 1].info);
+        gParam->paramSetValue(h, i > 0 ? svitfilm::looks()[i - 1].info : "Clean image. Pick a look or set everything by hand.");
     updateStatus(inst);
 }
 
@@ -350,7 +355,7 @@ OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs
     if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
     if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
     if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
-    if ((!std::strcmp(name, "look") || !std::strcmp(name, "lookAmount")) && (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
+    if ((!std::strcmp(name, "look") || !std::strcmp(name, "lookAmount") || !std::strcmp(name, "lookApplyAll")) && (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
         applyLookParams(inst);
     return kOfxStatOK;
 }
@@ -415,19 +420,7 @@ void perfLog(int w, int h, double ms, const svitfilm::Params& p, bool metal = fa
     n = 0; sum = 0; mx = 0; maxConc = 0;
 }
 
-OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
-    OfxTime t = 0;
-    gProp->propGetDouble(inArgs, kOfxPropTime, 0, &t);
-    OfxImageClipHandle srcClip, dstClip;
-    gEffect->clipGetHandle(inst, kOfxImageEffectSimpleSourceClipName, &srcClip, nullptr);
-    gEffect->clipGetHandle(inst, kOfxImageEffectOutputClipName, &dstClip, nullptr);
-    Img dst, src;
-    if (!dst.fetch(dstClip, t)) return kOfxStatFailed;
-    if (!src.fetch(srcClip, t)) return kOfxStatFailed;
-    if (dst.depth != kOfxBitDepthFloat || src.depth != kOfxBitDepthFloat ||
-        dst.comps != kOfxImageComponentRGBA || src.comps != kOfxImageComponentRGBA)
-        return kOfxStatErrImageFormat;
-
+svitfilm::Params readParams(OfxImageEffectHandle inst, OfxTime t) {
     svitfilm::Params p;
     p.input = getI(inst, "input", t); p.output = getI(inst, "output", t);
     p.exposure = getD(inst, "exposure", t); p.blacks = getD(inst, "blacks", t); p.whites = getD(inst, "whites", t);
@@ -458,6 +451,35 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     p.leakPos = getI(inst, "leakPos", t); p.cross = getD(inst, "cross", t); p.flicker = getD(inst, "flicker", t);
     p.mix = getD(inst, "mix", t);
     p.fastPreview = getI(inst, "fastPreview", t) != 0;
+    int look = getI(inst, "look", t);
+    if (look > 0 && !getI(inst, "lookApplyAll", t)) p = svitfilm::lookPlusOffsets(p, look, getD(inst, "lookAmount", t) / 100.0);
+    return p;
+}
+
+// Нічого не змінюється → кажемо DaVinci взяти кадр як є (жодної блідості, нуль навантаження)
+OfxStatus isIdentity(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs, OfxPropertySetHandle outArgs) {
+    OfxTime t = 0;
+    gProp->propGetDouble(inArgs, kOfxPropTime, 0, &t);
+    if (!svitfilm::isIdentity(readParams(inst, t))) return kOfxStatReplyDefault;
+    gProp->propSetString(outArgs, kOfxPropName, 0, kOfxImageEffectSimpleSourceClipName);
+    gProp->propSetDouble(outArgs, kOfxPropTime, 0, t);
+    return kOfxStatOK;
+}
+
+OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
+    OfxTime t = 0;
+    gProp->propGetDouble(inArgs, kOfxPropTime, 0, &t);
+    OfxImageClipHandle srcClip, dstClip;
+    gEffect->clipGetHandle(inst, kOfxImageEffectSimpleSourceClipName, &srcClip, nullptr);
+    gEffect->clipGetHandle(inst, kOfxImageEffectOutputClipName, &dstClip, nullptr);
+    Img dst, src;
+    if (!dst.fetch(dstClip, t)) return kOfxStatFailed;
+    if (!src.fetch(srcClip, t)) return kOfxStatFailed;
+    if (dst.depth != kOfxBitDepthFloat || src.depth != kOfxBitDepthFloat ||
+        dst.comps != kOfxImageComponentRGBA || src.comps != kOfxImageComponentRGBA)
+        return kOfxStatErrImageFormat;
+
+    svitfilm::Params p = readParams(inst, t);
     {   // хост може сам попросити чорнову якість (OFX 1.4 renderQualityDraft)
         int draft = 0;
         if (gProp->propGetInt(inArgs, "OfxImageEffectPropRenderQualityDraft", 0, &draft) == kOfxStatOK && draft) p.fastPreview = true;
@@ -513,13 +535,14 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     return kOfxStatOK;
 }
 
-OfxStatus mainEntry(const char* action, const void* handle, OfxPropertySetHandle inArgs, OfxPropertySetHandle) {
+OfxStatus mainEntry(const char* action, const void* handle, OfxPropertySetHandle inArgs, OfxPropertySetHandle outArgs) {
     auto eff = (OfxImageEffectHandle)handle;
     try {
         if (!std::strcmp(action, kOfxActionLoad)) return onLoad();
         if (!std::strcmp(action, kOfxActionDescribe)) return describe(eff);
         if (!std::strcmp(action, kOfxImageEffectActionDescribeInContext)) return describeInContext(eff, inArgs);
         if (!std::strcmp(action, kOfxImageEffectActionRender)) return render(eff, inArgs);
+        if (!std::strcmp(action, kOfxImageEffectActionIsIdentity)) return isIdentity(eff, inArgs, outArgs);
         if (!std::strcmp(action, kOfxActionInstanceChanged)) return instanceChanged(eff, inArgs);
         if (!std::strcmp(action, kOfxActionCreateInstance)) { updateStatus(eff); return kOfxStatOK; }
         if (!std::strcmp(action, kOfxActionUnload) || !std::strcmp(action, kOfxActionDestroyInstance))

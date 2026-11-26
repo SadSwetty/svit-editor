@@ -156,6 +156,12 @@ int main(int argc, char** argv) {
     if (run(kOfxActionCreateInstance, inst, nullptr)) return 9;
     PropSet ra; setD((OfxPropertySetHandle)&ra, kOfxPropTime, 0, 12.0);
     int win[4] = {0, 0, W, H}; setIN((OfxPropertySetHandle)&ra, kOfxImageEffectPropRenderWindow, 4, win);
+    {
+        PropSet ia, io; setD((OfxPropertySetHandle)&ia, kOfxPropTime, 0, 12.0);
+        OfxStatus st = pl->mainEntry(kOfxImageEffectActionIsIdentity, inst, (OfxPropertySetHandle)&ia, (OfxPropertySetHandle)&io);
+        char* nm = nullptr; getS((OfxPropertySetHandle)&io, kOfxPropName, 0, &nm);
+        printf("isIdentity -> %d %s\n", st, st == kOfxStatOK && nm ? nm : "(render)");
+    }
     if (run(kOfxImageEffectActionRender, inst, (OfxPropertySetHandle)&ra)) return 10;
     for (auto& kv : gStrings) printf("string %s = %s\n", kv.first.c_str(), kv.second.c_str());
     run(kOfxActionDestroyInstance, inst, nullptr); run(kOfxActionUnload, nullptr, nullptr);

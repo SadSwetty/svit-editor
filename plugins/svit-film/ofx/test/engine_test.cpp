@@ -233,6 +233,28 @@ int main() {
         CHECK(Hh.mix == 50 && Hh.grainAmount < B.grainAmount, "half look mixes and halves grain");
     }
 
+    // чистий стан: плагін нічого не робить (DaVinci пропускає кадр)
+    {
+        Params N = neutralParams();
+        CHECK(isIdentity(N), "neutral params must be identity");
+        Params L = N; applyLook(L, 5, 1.0);
+        CHECK(!isIdentity(L), "a look must not be identity");
+        Params E = N; E.exposure = 0.5; CHECK(!isIdentity(E), "exposure change is not identity");
+        Params S = N; S.input = IN_SLOG3SG3; CHECK(!isIdentity(S), "log input is a conversion, not identity");
+        // режим «поверх образу»: повзунки на нулі = рівно образ
+        for (int i = 1; i <= (int)looks().size(); ++i) {
+            Params A; applyLook(A, i, 0.7);
+            Params B = lookPlusOffsets(N, i, 0.7);
+            bool same = true;
+            for (auto& f : lookFields()) if (std::fabs(getField(A, f) - getField(B, f)) > 1e-9) same = false;
+            CHECK(same, "look %d: zero offsets must equal the look", i);
+        }
+        Params U = N; U.exposure = 0.5; U.mix = 50;
+        Params B = lookPlusOffsets(U, 1, 1.0); Params A; applyLook(A, 1, 1.0);
+        CHECK(std::fabs(B.exposure - (A.exposure + 0.5)) < 1e-9 && std::fabs(B.mix - A.mix * 0.5) < 1e-9, "offsets add on top of the look");
+        printf("clean state / Apply All Settings ok\n");
+    }
+
     printf(fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);
     return fails ? 1 : 0;
 }
