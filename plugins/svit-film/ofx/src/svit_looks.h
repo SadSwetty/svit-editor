@@ -273,19 +273,19 @@ inline Params lookPlusOffsets(const Params& user, int look, double amount) {
 
 // Чи нічого не змінюється (тоді DaVinci просто пропускає кадр — без жодного перерахунку і без втрат)
 // ---- Об'єктиви: готові набори для секції Lens (0 — Custom, повзунки як є)
-struct LensPreset { const char* name; const char* info; double dist, zoom, ca, blur, swirl, tilt, vig; int frame; double fsize, fsoft; };
+struct LensPreset { const char* name; const char* info; double dist, zoom, ca, blur, swirl, tilt, vig; int frame; double fsize, fsoft, glow; };
 inline const std::vector<LensPreset>& lensPresets() {
     static const std::vector<LensPreset> L = {
-        {"Helios 44-2 58/2 (swirl)", "Soviet classic: swirly bokeh, soft corners, gentle falloff.", 0, 100, 25, 50, 90, 0, 40, 0, 100, 20},
-        {"Jupiter-9 85/2", "Soft, glowy portrait lens with mild swirl.", 0, 100, 15, 25, 25, 0, 30, 0, 100, 20},
-        {"Petzval 85 (strong swirl)", "Sharp centre, wild spinning edges.", 0, 100, 20, 80, 100, 0, 55, 0, 100, 20},
-        {"Disposable Camera 30mm", "Plastic lens: barrel bend, colour fringes, dark soft corners.", 22, 100, 55, 55, 10, 0, 60, 0, 100, 20},
-        {"Lomo LC-A 32mm", "Famous tunnel vignette and punchy centre.", 12, 100, 20, 30, 10, 0, 85, 0, 100, 20},
-        {"Super 8 Zoom", "Home movie camera: soft edges, fringes, rounded gate.", 10, 103, 35, 35, 15, 0, 45, 2, 100, 45},
-        {"VX1000 Fisheye (MK1)", "90s skate/rap video fisheye in a 4:3 frame.", 70, 100, 40, 30, 10, 0, 40, 3, 100, 12},
-        {"Circular Fisheye 8mm", "Full circle fisheye with black around it.", 55, 100, 35, 25, 10, 0, 30, 1, 100, 4},
-        {"Tilt-Shift Miniature", "Sharp band in the middle, blur top and bottom.", 0, 100, 0, 0, 0, 80, 20, 0, 100, 20},
-        {"Old Cine Prime", "Vintage cinema glass: slight pincushion, soft corners, rounded gate.", -20, 102, 15, 25, 20, 0, 35, 2, 104, 60},
+        {"Helios 44-2 58/2 (swirl)", "Soviet classic wide open: swirly edges, soft glow, gentle falloff.", -4, 100, 25, 55, 85, 0, 40, 0, 100, 20, 30},
+        {"Jupiter-9 85/2", "Soft, glowy portrait lens with mild swirl.", 0, 100, 15, 35, 25, 0, 30, 0, 100, 20, 40},
+        {"Petzval 85 (strong swirl)", "Sharp centre, wild spinning edges.", 2, 100, 20, 85, 100, 0, 55, 0, 100, 20, 25},
+        {"Disposable Camera 30mm", "Plastic lens: barrel bend, colour fringes, dark soft corners.", 22, 100, 55, 60, 10, 0, 60, 0, 100, 20, 15},
+        {"Lomo LC-A 32mm", "Famous tunnel vignette and punchy centre.", 12, 100, 20, 35, 10, 0, 85, 0, 100, 20, 10},
+        {"Super 8 Zoom", "Home movie camera: soft edges, fringes, rounded gate.", 10, 103, 35, 40, 15, 0, 45, 2, 100, 45, 20},
+        {"VX1000 Fisheye (MK1)", "90s skate/rap video fisheye in a 4:3 frame.", 70, 100, 40, 35, 10, 0, 40, 3, 100, 12, 5},
+        {"Circular Fisheye 8mm", "Full circle fisheye with black around it.", 55, 100, 35, 30, 10, 0, 30, 1, 100, 4, 5},
+        {"Tilt-Shift Miniature", "Sharp band in the middle, blur top and bottom.", 0, 100, 0, 0, 0, 80, 20, 0, 100, 20, 0},
+        {"Old Cine Prime", "Vintage cinema glass: slight pincushion, soft corners, rounded gate.", -20, 102, 15, 30, 20, 0, 35, 2, 104, 60, 25},
     };
     return L;
 }

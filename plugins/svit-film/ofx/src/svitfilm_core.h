@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "profiles_gen.h"
+#include "gpu_shared.h"
 
 namespace svitfilm {
 
@@ -103,7 +104,7 @@ struct Params {
     double vignette = 0, weave = 0;
     // Lens: оптика перед плівкою
     bool lensOn = false; double distortion = 0, lensZoom = 100, chromAb = 0, edgeBlur = 0, swirl = 0, tiltShift = 0, lensVig = 0;
-    int frameMode = 0; double frameSize = 100, frameSoft = 20;
+    int frameMode = 0; double frameSize = 100, frameSoft = 20, lensGlow = 0;
     // Expired Film (унікальне Svit): вік плівки і умови зберігання
     double age = 0; int storage = 1;
     // Light Leak (унікальне Svit): засвітка крізь щілину касети/дверцят камери
@@ -459,8 +460,8 @@ inline LensK makeLens(const Params& P, int w, int h) {
         S = std::min({1.0f / (1.0f + L.K), 1.0f / (1.0f + L.K * ax * ax), 1.0f / (1.0f + L.K * ay * ay)});
     }
     L.S = S / (1.0f + L.CA) / ((float)std::clamp(P.lensZoom, 50.0, 200.0) / 100.0f);
-    L.blur = (float)std::clamp(P.edgeBlur, 0.0, 100.0) / 100.0f * 0.020f * hd;
-    L.tilt = (float)std::clamp(P.tiltShift, 0.0, 100.0) / 100.0f * 0.010f * hd;
+    L.blur = (float)std::clamp(P.edgeBlur, 0.0, 100.0) / 100.0f * 0.022f * hd;
+    L.tilt = (float)std::clamp(P.tiltShift, 0.0, 100.0) / 100.0f * 0.016f * hd;
     L.swirl = (float)std::clamp(P.swirl, 0.0, 100.0) / 100.0f * 0.85f;
     L.vig = (float)std::clamp(P.lensVig, 0.0, 100.0) / 100.0f * 0.9f;
     if (L.frameMode == 1) { L.fHalfH = fs * h * 0.5f; }
@@ -471,7 +472,7 @@ inline LensK makeLens(const Params& P, int w, int h) {
 }
 inline bool lensActive(const Params& P) {
     return P.lensOn && (P.distortion != 0 || P.lensZoom != 100 || P.chromAb > 0 || P.edgeBlur > 0 || P.tiltShift > 0 ||
-                        P.lensVig > 0 || P.frameMode > 0);
+                        P.lensVig > 0 || P.frameMode > 0 || P.lensGlow > 0);
 }
 // множник світла: оптична вінетка × рамка
 inline float lensMask(const LensK& L, int x, int y) {
@@ -494,33 +495,35 @@ inline float lensMask(const LensK& L, int x, int y) {
     return m;
 }
 
-// вибірка через об'єктив: для кожного каналу — своя точка (дисторсія + аберація), розмиття — 12 променів
-// (спіраль Фогеля), еліпс витягнутий по дотичній (swirl). sample(sx, sy, c) повертає декодоване значення.
+// вибірка через об'єктив: для кожного каналу — своя точка (дисторсія + поперечна аберація)
 template <class F>
 inline void lensSample(const LensK& L, int x, int y, int dx, int dy, float* a, F sample) {
     float px = x + 0.5f - L.cx, py = y + 0.5f - L.cy;
-    float nx = px / L.Rn, ny = py / L.Rn, r2 = nx * nx + ny * ny, r = std::sqrt(r2);
+    float nx = px / L.Rn, ny = py / L.Rn, r2 = nx * nx + ny * ny;
     float f = L.S * (1.0f + L.K * r2) * L.Rs / L.Rn;
-    float e = std::clamp((r - 0.25f) / 0.75f, 0.0f, 1.0f); e = e * e * (3.0f - 2.0f * e);
-    float be = L.blur * e * e;
-    float at = std::clamp((std::fabs(py) / L.halfH - 0.15f) / 0.75f, 0.0f, 1.0f); at = at * at * (3.0f - 2.0f * at);
-    float bt = L.tilt * at;
-    float b = std::sqrt(be * be + bt * bt);
-    float sw = b > 0 ? L.swirl * be / b : 0.0f;
-    float tx = 1, ty = 0; if (r > 1e-6f) { tx = -ny / r; ty = nx / r; }
-    int n = b < 0.6f ? 1 : std::min(24, std::max(10, (int)(b * 0.7f)));
-    float rot = (hash3((uint32_t)x, (uint32_t)y, 991u) >> 8) * (6.2831853f / 16777216.0f);   // поворот візерунка: шум замість «двійників»
-    float acc[3] = {0, 0, 0};
-    for (int i = 0; i < n; ++i) {
-        float ux = 0, uy = 0;
-        if (n > 1) { float ang = i * 2.39996323f + rot, rad = std::sqrt((i + 0.5f) / n); ux = std::cos(ang) * rad; uy = std::sin(ang) * rad; }
-        float ox = tx * ux * b + ty * uy * b * (1.0f - sw), oy = ty * ux * b - tx * uy * b * (1.0f - sw);
-        for (int c = 0; c < 3; ++c) {
-            float fc = f * (c == 0 ? 1.0f + L.CA : c == 2 ? 1.0f - L.CA : 1.0f);
-            acc[c] += sample(L.cx + (px + ox) * fc + dx, L.cy + (py + oy) * fc + dy, c);
-        }
+    for (int c = 0; c < 3; ++c) {
+        float fc = f * (c == 0 ? 1.0f + L.CA : c == 2 ? 1.0f - L.CA : 1.0f);
+        a[c] = sample(L.cx + px * fc + dx, L.cy + py * fc + dy, c);
     }
-    for (int c = 0; c < 3; ++c) a[c] = acc[c] / n;
+}
+// план розмиття об'єктива (рівні піраміди), спільний для процесора і відеокарти
+struct LensBlur { bool on = false; LensP p{}; };
+inline int lensDs(float sigma) { int ds = 1; while (ds < 64 && sigma / (ds * 2) >= 2.5f) ds *= 2; return ds; }
+inline LensBlur lensBlurPlan(const Params& P, int w, int h) {
+    LensBlur B;
+    if (!P.lensOn || (P.edgeBlur <= 0 && P.tiltShift <= 0)) return B;
+    const LensK L = makeLens(P, w, h);
+    B.on = true;
+    LensP& p = B.p;
+    p.w = w; p.h = h; p.cx = L.cx; p.cy = L.cy; p.Rn = L.Rn; p.halfH = L.halfH;
+    p.blur = L.blur * 0.5f; p.tilt = L.tilt * 0.5f; p.swirl = L.swirl;   // σ = половина радіуса диска
+    const float smax = std::max(0.6f, std::sqrt(p.blur * p.blur + p.tilt * p.tilt));
+    p.s1 = 0.18f * smax; p.s2 = 0.45f * smax; p.s3 = smax;
+    p.d1 = lensDs(p.s1); p.d2 = lensDs(p.s2); p.d3 = lensDs(p.s3);
+    p.w1 = (w + p.d1 - 1) / p.d1; p.h1 = (h + p.d1 - 1) / p.d1;
+    p.w2 = (w + p.d2 - 1) / p.d2; p.h2 = (h + p.d2 - 1) / p.d2;
+    p.w3 = (w + p.d3 - 1) / p.d3; p.h3 = (h + p.d3 - 1) / p.d3;
+    return B;
 }
 
 inline double smoothstepD(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
@@ -1117,12 +1120,26 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
     };
     // просторові ефекти (halation, bloom, MTF, маска) потребують кадру в пам'яті; без них — один прохід
     const float filmResPx = (100.0f - (float)P.filmRes) / 25.0f * 3.7f / pixUM;
+    const LensBlur lensB = lensBlurPlan(P, w, h);
     const bool needFrame = (P.halOn && P.halImpact > 0 && P.amplify > 0) || P.bloom > 0 ||
-                           (P.grainOn && filmResPx >= 0.3f);
+                           (P.grainOn && filmResPx >= 0.3f) || lensB.on;
     std::vector<float> lin;
     if (needFrame) {
         lin.resize((size_t)w * h * 3);
         parallelRows(h, [&](int y) { for (int x = 0; x < w; ++x) stage1(x, y, &lin[((size_t)y * w + x) * 3]); });
+    }
+    // 1а) об'єктив: розмиття до країв / tilt-shift / swirl (до плівки)
+    if (lensB.on) {
+        const LensP& lp = lensB.p;
+        auto level = [&](int ds, int lw, int lh, float sg) {
+            std::vector<float> b((size_t)lw * lh * 3);
+            DownP dp{w, h, ds, lw, lh, 0, 0, 0, 0.0f, 0, 0, 0};
+            parallelRows(lh, [&](int y) { for (int x = 0; x < lw; ++x) downG(lin.data(), b.data(), dp, x, y); });
+            gaussBlur(b, lw, lh, 3, sg / ds);
+            return b;
+        };
+        auto b1 = level(lp.d1, lp.w1, lp.h1, lp.s1), b2 = level(lp.d2, lp.w2, lp.h2, lp.s2), b3 = level(lp.d3, lp.w3, lp.h3, lp.s3);
+        parallelRows(h, [&](int y) { for (int x = 0; x < w; ++x) lensMixG(lin.data(), b1.data(), b2.data(), b3.data(), lp, x, y); });
     }
 
     // 1б) роздільна здатність плівки (MTF емульсії): гаусове розмиття ~3.7 мкм при 75

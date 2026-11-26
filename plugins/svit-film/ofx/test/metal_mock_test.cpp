@@ -49,6 +49,7 @@ static void runKernel(int kid, unsigned gx, unsigned gy) {
             case K_ACCUM: k_accum(B(0), B(1), *(AccP*)B(2), g); break;
             case K_HALAPPLY: k_halApply(B(0), B(1), B(2), *(KParams*)B(3), g); break;
             case K_BLOOMMIX: k_bloomMix(B(0), B(1), *(KParams*)B(2), g); break;
+            case K_LENSMIX: k_lensMix(B(0), B(1), B(2), B(3), *(LensP*)B(4), g); break;
             }
         }
 }

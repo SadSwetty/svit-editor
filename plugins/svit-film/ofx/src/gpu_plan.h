@@ -16,6 +16,7 @@ struct FramePlan {
     float filmResPx = 0;                 // розмиття MTF (у пікселях кадру)
     bool halOn = false; float halT = 0; std::vector<BlurStep> halComps;
     bool bloomOn = false; float bloomSigma = 0; int bloomDsMin = 1;
+    LensBlur lens;
 };
 
 inline void putLut(FramePlan& fp, int id, const Lut& L) {
@@ -97,7 +98,8 @@ inline FramePlan buildPlan(const Params& P, int w, int h) {
     // просторові кроки
     fp.filmResPx = (100.0f - (float)P.filmRes) / 25.0f * 3.7f / pixUM;
     const bool halOn = P.halOn && P.halImpact > 0 && P.amplify > 0;
-    k.needFrame = halOn || P.bloom > 0 || (P.grainOn && fp.filmResPx >= 0.3f);
+    fp.lens = lensBlurPlan(P, w, h);
+    k.needFrame = halOn || P.bloom > 0 || (P.grainOn && fp.filmResPx >= 0.3f) || fp.lens.on;
     if (!(P.grainOn && fp.filmResPx >= 0.3f)) fp.filmResPx = 0;
     fp.halOn = halOn;
     if (halOn) {
@@ -212,6 +214,18 @@ inline void runPlanCPU(const float* src, int srcRowFloats, float* dst, int dstRo
     if (k.needFrame) {
         lin.resize((size_t)w * h * 3);
         for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) stage1G(src, T, k, x, y, &lin[((size_t)y * w + x) * 3]);
+        if (fp.lens.on) {
+            const LensP& lp = fp.lens.p;
+            auto level = [&](int ds, int lw, int lh, float sg) {
+                std::vector<float> b((size_t)lw * lh * 3);
+                DownP dp{w, h, ds, lw, lh, 0, 0, 0, 0.0f, 0, 0, 0};
+                for (int y = 0; y < lh; ++y) for (int x = 0; x < lw; ++x) downG(lin.data(), b.data(), dp, x, y);
+                cpuBlur(b, lw, lh, sg / ds);
+                return b;
+            };
+            auto b1 = level(lp.d1, lp.w1, lp.h1, lp.s1), b2 = level(lp.d2, lp.w2, lp.h2, lp.s2), b3 = level(lp.d3, lp.w3, lp.h3, lp.s3);
+            for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) lensMixG(lin.data(), b1.data(), b2.data(), b3.data(), lp, x, y);
+        }
         if (fp.filmResPx >= 0.3f) cpuBlur(lin, w, h, fp.filmResPx);
         if (fp.halOn) {
             struct Lv { int ds, w, h; std::vector<float> b; };

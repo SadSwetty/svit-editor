@@ -10,6 +10,8 @@
 #include <thread>
 #include <string>
 #include <vector>
+#include <fstream>
+#include <sys/stat.h>
 
 #if !defined(_WIN32)
 #include <dlfcn.h>
@@ -134,6 +136,36 @@ void defineChoice(OfxParamSetHandle ps, const char* name, const char* label, con
     if (parent) gProp->propSetString(pp, kOfxParamPropParent, 0, parent);
 }
 
+// ---- Улюблені образи: ~/Library/Application Support/Svit Film/favorites.txt (назва образу в рядку)
+std::string favDir() {
+    const char* home = std::getenv("HOME");
+    std::string h = home ? home : "/tmp";
+#ifdef __APPLE__
+    return h + "/Library/Application Support/Svit Film";
+#else
+    return h + "/.svitfilm";
+#endif
+}
+std::vector<std::string> readFavs() {
+    std::vector<std::string> v;
+    std::ifstream f(favDir() + "/favorites.txt");
+    std::string line;
+    while (std::getline(f, line)) {
+        if (line.empty()) continue;
+        for (auto& l : svitfilm::looks())
+            if (line == l.name) { v.push_back(line); break; }   // лише ті, що існують
+    }
+    return v;
+}
+void writeFavs(const std::vector<std::string>& v) {
+    std::string d = favDir();
+    std::string parent = d.substr(0, d.rfind('/'));
+    mkdir(parent.c_str(), 0755); mkdir(d.c_str(), 0755);
+    std::ofstream f(d + "/favorites.txt");
+    for (auto& n : v) f << n << "\n";
+}
+static std::vector<std::string> gFavMenu;   // що показано в меню «★ Favourites» (знімок при завантаженні плагіна)
+
 void defineButton(OfxParamSetHandle ps, const char* name, const char* label, const char* parent,
                   const char* hint) {
     OfxPropertySetHandle pp;
@@ -173,13 +205,25 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     for (int k = 0; k < kNumPrints; ++k) printNames.push_back(kPrints[k].name);
     printNames.push_back("Film Scan (no print)");
 
+    gFavMenu = readFavs();
     std::vector<std::string> lookNameStore = {"None (clean)"};
-    for (auto& l : looks()) lookNameStore.push_back(l.name);
+    for (auto& l : looks()) {
+        bool fav = false;
+        for (auto& f : gFavMenu) if (f == l.name) fav = true;
+        lookNameStore.push_back(fav ? std::string("\xE2\x98\x85 ") + l.name : std::string(l.name));
+    }
     std::vector<const char*> lookNames;
     for (auto& n : lookNameStore) lookNames.push_back(n.c_str());
+    std::vector<std::string> favStore = {gFavMenu.empty() ? "(none yet - pick a look and press Add / Remove Favourite)" : "Pick a favourite..."};
+    for (auto& f : gFavMenu) favStore.push_back(f);
+    std::vector<const char*> favNames;
+    for (auto& n : favStore) favNames.push_back(n.c_str());
     defineGroup(ps, "gLook", "Svit Look");
+    defineChoice(ps, "favLook", "\xE2\x98\x85 Favourites", favNames.data(), (int)favNames.size(), 0, "gLook",
+                 "Your favourite looks. New favourites appear here after DaVinci restarts.");
     defineChoice(ps, "look", "Look", lookNames.data(), (int)lookNames.size(), 0, "gLook",
-                 "Ready looks. None = clean image, nothing applied.");
+                 "Ready looks (\xE2\x98\x85 = favourite). None = clean image, nothing applied.");
+    defineButton(ps, "favToggle", "\xE2\x98\x85 Add / Remove Favourite", "gLook", "Add the current look to favourites, or remove it.");
     defineBool(ps, "lookApplyAll", "Apply All Settings", 1, "gLook",
                "On: picking a look sets every control below to the look's values - tweak anything. "
                "Off: the look works underneath and the controls stay at zero; whatever you change is added on top of the look.");
@@ -212,6 +256,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineDouble(ps, "edgeBlur", "Edge Softness", 0.0, 0.0, 100.0, "gLens", "Corners go soft like old glass.");
     defineDouble(ps, "swirl", "Swirl", 0.0, 0.0, 100.0, "gLens", "Edge blur spins around the centre (Helios / Petzval).");
     defineDouble(ps, "tiltShift", "Tilt-Shift", 0.0, 0.0, 100.0, "gLens", "Blur top and bottom, sharp band in the middle.");
+    defineDouble(ps, "lensGlow", "Glow", 0.0, 0.0, 100.0, "gLens", "Soft halo of old uncoated glass wide open.");
     defineDouble(ps, "lensVig", "Lens Vignette", 0.0, 0.0, 100.0, "gLens", "Natural light falloff of the lens.");
     {
         static const char* fr[] = {"None", "Round (Fisheye)", "Film Gate (rounded)", "4:3 Gate"};
@@ -381,8 +426,40 @@ void applyLensPreset(OfxImageEffectHandle inst) {
     auto setI = [&](const char* n, int v) { if (gParam->paramGetHandle(ps, n, &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, v); };
     setI("lensOn", 1);
     setD("distortion", L.dist); setD("lensZoom", L.zoom); setD("chromAb", L.ca); setD("edgeBlur", L.blur); setD("swirl", L.swirl);
-    setD("tiltShift", L.tilt); setD("lensVig", L.vig); setI("frameMode", L.frame); setD("frameSize", L.fsize); setD("frameSoft", L.fsoft);
+    setD("tiltShift", L.tilt); setD("lensVig", L.vig); setD("lensGlow", L.glow); setI("frameMode", L.frame); setD("frameSize", L.fsize); setD("frameSoft", L.fsoft);
     if (gParam->paramGetHandle(ps, "lensInfo", &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, L.info);
+}
+
+void setInfo(OfxImageEffectHandle inst, const std::string& text) {
+    OfxParamSetHandle ps; OfxParamHandle h;
+    gEffect->getParamSet(inst, &ps);
+    if (gParam->paramSetValue && gParam->paramGetHandle(ps, "lookInfo", &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, text.c_str());
+}
+void toggleFavourite(OfxImageEffectHandle inst) {
+    int i = getI(inst, "look", 0);
+    if (i <= 0 || i > (int)svitfilm::looks().size()) { setInfo(inst, "Pick a look first, then press Add / Remove Favourite."); return; }
+    std::string name = svitfilm::looks()[i - 1].name;
+    auto v = readFavs();
+    bool had = false;
+    for (size_t k = 0; k < v.size(); ++k) if (v[k] == name) { v.erase(v.begin() + k); had = true; break; }
+    if (!had) v.push_back(name);
+    writeFavs(v);
+    setInfo(inst, had ? "Removed \"" + name + "\" from favourites (menu updates after DaVinci restart)."
+                      : "\xE2\x98\x85 Added \"" + name + "\" to favourites (shows in the Favourites menu after DaVinci restart).");
+}
+void pickFavourite(OfxImageEffectHandle inst) {
+    int f = getI(inst, "favLook", 0);
+    if (f <= 0 || f > (int)gFavMenu.size() || !gParam->paramSetValue) return;
+    OfxParamSetHandle ps; OfxParamHandle h;
+    gEffect->getParamSet(inst, &ps);
+    const auto& L = svitfilm::looks();
+    for (int i = 0; i < (int)L.size(); ++i)
+        if (gFavMenu[f - 1] == L[i].name) {
+            if (gParam->paramGetHandle(ps, "look", &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, i + 1);
+            applyLookParams(inst);
+            break;
+        }
+    if (gParam->paramGetHandle(ps, "favLook", &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, 0);
 }
 
 OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
@@ -391,6 +468,9 @@ OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs
     gProp->propGetString(inArgs, kOfxPropName, 0, &name);
     gProp->propGetString(inArgs, kOfxPropChangeReason, 0, &reason);
     if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
+    const bool user = !reason || !std::strcmp(reason, kOfxChangeUserEdited);
+    if (!std::strcmp(name, "favToggle") && user) toggleFavourite(inst);
+    if (!std::strcmp(name, "favLook") && user) pickFavourite(inst);
     if (!std::strcmp(name, "lensProfile") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) applyLensPreset(inst);
     if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
     if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
@@ -493,9 +573,11 @@ svitfilm::Params readParams(OfxImageEffectHandle inst, OfxTime t) {
     p.chromAb = getD(inst, "chromAb", t); p.edgeBlur = getD(inst, "edgeBlur", t); p.swirl = getD(inst, "swirl", t);
     p.tiltShift = getD(inst, "tiltShift", t); p.lensVig = getD(inst, "lensVig", t); p.frameMode = getI(inst, "frameMode", t);
     p.frameSize = getD(inst, "frameSize", t); p.frameSoft = getD(inst, "frameSoft", t);
+    p.lensGlow = getD(inst, "lensGlow", t);
     p.fastPreview = getI(inst, "fastPreview", t) != 0;
     int look = getI(inst, "look", t);
     if (look > 0 && !getI(inst, "lookApplyAll", t)) p = svitfilm::lookPlusOffsets(p, look, getD(inst, "lookAmount", t) / 100.0);
+    if (p.lensOn && p.lensGlow > 0) p.bloom = std::min(2.0, p.bloom + p.lensGlow / 100.0 * 0.6);   // сяйво старого скла = розсіювання
     return p;
 }
 

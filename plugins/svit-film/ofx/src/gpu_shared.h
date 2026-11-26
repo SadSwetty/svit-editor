@@ -222,28 +222,12 @@ inline float lensTapG(DEVC float* src, DEVC float* T, CONSTP KParams& k, float s
 }
 inline void lensSampleG(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, int y, THR float* a) {
     float px = (float)x + 0.5f - k.lcx, py = (float)y + 0.5f - k.lcy;
-    float nx = px / k.lRn, ny = py / k.lRn, r2 = nx * nx + ny * ny, r = f_sqrt(r2);
+    float nx = px / k.lRn, ny = py / k.lRn, r2 = nx * nx + ny * ny;
     float f = k.lS * (1.0f + k.lK * r2) * k.lRs / k.lRn;
-    float e = fcl((r - 0.25f) / 0.75f, 0.0f, 1.0f); e = e * e * (3.0f - 2.0f * e);
-    float be = k.lBlur * e * e;
-    float at = fcl((f_abs(py) / k.lHalfH - 0.15f) / 0.75f, 0.0f, 1.0f); at = at * at * (3.0f - 2.0f * at);
-    float bt = k.lTilt * at;
-    float b = f_sqrt(be * be + bt * bt);
-    float sw = b > 0.0f ? k.lSwirl * be / b : 0.0f;
-    float tx = 1.0f, ty = 0.0f; if (r > 1e-6f) { tx = -ny / r; ty = nx / r; }
-    int n = b < 0.6f ? 1 : imn(24, imx(10, (int)(b * 0.7f)));
-    float rot = (float)(hash3((uint)x, (uint)y, 991u) >> 8) * (6.2831853f / 16777216.0f);
-    float acc[3] = {0.0f, 0.0f, 0.0f};
-    for (int i = 0; i < n; ++i) {
-        float ux = 0.0f, uy = 0.0f;
-        if (n > 1) { float ang = (float)i * 2.39996323f + rot, rad = f_sqrt(((float)i + 0.5f) / (float)n); ux = f_cos(ang) * rad; uy = f_sin(ang) * rad; }
-        float ox = tx * ux * b + ty * uy * b * (1.0f - sw), oy = ty * ux * b - tx * uy * b * (1.0f - sw);
-        for (int c = 0; c < 3; ++c) {
-            float fc = f * (c == 0 ? 1.0f + k.lCA : (c == 2 ? 1.0f - k.lCA : 1.0f));
-            acc[c] += lensTapG(src, T, k, k.lcx + (px + ox) * fc + (float)k.dx, k.lcy + (py + oy) * fc + (float)k.dy, c);
-        }
+    for (int c = 0; c < 3; ++c) {
+        float fc = f * (c == 0 ? 1.0f + k.lCA : (c == 2 ? 1.0f - k.lCA : 1.0f));
+        a[c] = lensTapG(src, T, k, k.lcx + px * fc + (float)k.dx, k.lcy + py * fc + (float)k.dy, c);
     }
-    for (int c = 0; c < 3; ++c) a[c] = acc[c] / (float)n;
 }
 inline float lensMaskG(CONSTP KParams& k, int x, int y) {
     float px = (float)x + 0.5f - k.lcx, py = (float)y + 0.5f - k.lcy, m = 1.0f;
@@ -532,6 +516,57 @@ inline void bloomMixG(DEVW float* lin, DEVC float* b, CONSTP KParams& k, int x, 
     sample3G(b, k.bloomW, k.bloomH, ((float)x + 0.5f) / (float)k.bloomDs - 0.5f, ((float)y + 0.5f) / (float)k.bloomDs - 0.5f, v);
     int q = (y * k.w + x) * 3;
     for (int c = 0; c < 3; ++c) lin[q + c] = fmx(lin[q + c] + k.bloomA * (v[c] - lin[q + c]), 0.0f);
+}
+
+// ---- Lens: розмиття до країв / tilt-shift / swirl по кадру в лінійному світлі.
+// Три заздалегідь розмиті копії (σ: 0.18, 0.45, 1.0 від максимуму) — кожен піксель плавно переходить між ними
+// за своїм радіусом розмиття; swirl — вибірка вздовж дотичної (боке «закручується» навколо центру).
+// Розмито в лінійному світлі сцени, тож яскраві точки розпливаються яскравими плямами, як у справжньому об'єктиві.
+struct LensP {
+    int w, h, d1, w1, h1, d2, w2, h2, d3, w3, h3, pad;
+    float cx, cy, Rn, blur, tilt, swirl, halfH, s1, s2, s3, pad1, pad2;
+};
+inline void lensTapsG(DEVC float* b, int bw, int bh, int ds, float x, float y, float tx, float ty, float len, int n, THR float* o) {
+    o[0] = 0.0f; o[1] = 0.0f; o[2] = 0.0f;
+    for (int i = 0; i < n; ++i) {
+        float off = n > 1 ? ((float)i / (float)(n - 1) * 2.0f - 1.0f) * len : 0.0f;
+        float v[3];
+        sample3G(b, bw, bh, (x + tx * off) / (float)ds - 0.5f, (y + ty * off) / (float)ds - 0.5f, v);
+        o[0] += v[0]; o[1] += v[1]; o[2] += v[2];
+    }
+    o[0] /= (float)n; o[1] /= (float)n; o[2] /= (float)n;
+}
+inline void lensMixG(DEVW float* lin, DEVC float* b1, DEVC float* b2, DEVC float* b3, CONSTP LensP& p, int x, int y) {
+    float px = (float)x + 0.5f - p.cx, py = (float)y + 0.5f - p.cy;
+    float nx = px / p.Rn, ny = py / p.Rn, r = f_sqrt(nx * nx + ny * ny);
+    float e = fcl((r - 0.2f) / 0.8f, 0.0f, 1.0f); e = e * e * (3.0f - 2.0f * e);
+    float be = p.blur * e * e;
+    float at = fcl((f_abs(py) / p.halfH - 0.12f) / 0.78f, 0.0f, 1.0f); at = at * at * (3.0f - 2.0f * at);
+    float bt = p.tilt * at;
+    float sg = f_sqrt(be * be + bt * bt);   // потрібна σ розмиття в пікселях
+    if (sg < 0.25f) return;
+    float sw = p.swirl * be / sg;
+    float len = sw * sg * 2.5f;
+    float pr = f_sqrt(px * px + py * py);
+    float tx = 1.0f, ty = 0.0f; if (pr > 1e-3f) { tx = -py / pr; ty = px / pr; }
+    int n = len > 0.75f ? 9 : 1;
+    float fx = (float)x + 0.5f, fy = (float)y + 0.5f;
+    int q = (y * p.w + x) * 3;
+    float lo[3], hi[3], t;
+    if (sg <= p.s1) {
+        lo[0] = lin[q]; lo[1] = lin[q + 1]; lo[2] = lin[q + 2];
+        lensTapsG(b1, p.w1, p.h1, p.d1, fx, fy, tx, ty, len, n, hi);
+        t = sg / p.s1;
+    } else if (sg <= p.s2) {
+        lensTapsG(b1, p.w1, p.h1, p.d1, fx, fy, tx, ty, len, n, lo);
+        lensTapsG(b2, p.w2, p.h2, p.d2, fx, fy, tx, ty, len, n, hi);
+        t = (sg - p.s1) / (p.s2 - p.s1);
+    } else {
+        lensTapsG(b2, p.w2, p.h2, p.d2, fx, fy, tx, ty, len, n, lo);
+        lensTapsG(b3, p.w3, p.h3, p.d3, fx, fy, tx, ty, len, n, hi);
+        t = fcl((sg - p.s2) / (p.s3 - p.s2), 0.0f, 1.0f);
+    }
+    for (int c = 0; c < 3; ++c) lin[q + c] = fmx(lo[c] + (hi[c] - lo[c]) * t, 0.0f);
 }
 
 #endif

@@ -52,7 +52,7 @@ int main() {
     for (int i = 0; i < (int)lensPresets().size(); ++i) {
         const auto& L = lensPresets()[i]; Params Q; Q.lensOn = true; Q.distortion = L.dist; Q.lensZoom = L.zoom; Q.chromAb = L.ca;
         Q.edgeBlur = L.blur; Q.swirl = L.swirl; Q.tiltShift = L.tilt; Q.lensVig = L.vig; Q.frameMode = L.frame; Q.frameSize = L.fsize;
-        Q.frameSoft = L.fsoft; Q.weave = 0.5; Q.frame = 3; cmp(L.name, Q);
+        Q.frameSoft = L.fsoft; Q.bloom = L.glow / 100 * 0.6; Q.weave = 0.5; Q.frame = 3; cmp(L.name, Q);
     }
     { Params Q; Q.lensOn = true; Q.distortion = 60; Q.halOn = true; Q.bloom = 0.5; Q.grainOn = true; cmp("lens + spatial", Q); }
     for (int i = 1; i <= (int)looks().size(); ++i) { Params Q; Q.frame = 5; applyLook(Q, i); cmp(looks()[i - 1].name, Q); }

@@ -88,3 +88,11 @@ kernel void k_bloomMix(device float* lin [[buffer(0)]], device const float* b [[
     if (x >= k.w || y >= k.h) return;
     bloomMixG(lin, b, k, x, y);
 }
+
+kernel void k_lensMix(device float* lin [[buffer(0)]], device const float* b1 [[buffer(1)]],
+                      device const float* b2 [[buffer(2)]], device const float* b3 [[buffer(3)]],
+                      constant LensP& p [[buffer(4)]], uint2 gid [[thread_position_in_grid]]) {
+    int x = (int)gid.x, y = (int)gid.y;
+    if (x >= p.w || y >= p.h) return;
+    lensMixG(lin, b1, b2, b3, p, x, y);
+}

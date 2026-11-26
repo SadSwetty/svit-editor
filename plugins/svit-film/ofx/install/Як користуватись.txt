@@ -52,6 +52,10 @@ FILM GRAIN (2.1)
 Size, Amount, Film Resolution, Shadows/Midtones/Highlights, Chroma, Film Type, Mode.
 
 SVIT LOOK (2.2) — 30 готових образів
+УЛЮБЛЕНІ (з 3.5): обери образ → натисни «★ Add / Remove Favourite». Після перезапуску DaVinci
+він з'явиться в меню «★ Favourites» (вибір звідти одразу ставить образ) і з зірочкою в списку Look.
+Список зберігається в ~/Library/Application Support/Svit Film/favorites.txt і спільний для всіх проєктів.
+
 Група «Svit Look» угорі. Щойно накладений плагін нічого не змінює (картинка 1:1, DaVinci її просто пропускає).
 «None (clean)» повертає все в чистий стан.
 Галочка «Apply All Settings»:
@@ -102,4 +106,6 @@ Tilt-Shift (мініатюра), Old Cine Prime. Обираєш — повзун
 • Chromatic Aberration — червоно-сині обідки до країв. Edge Softness — м'які кути. Swirl — кути «закручуються».
 • Tilt-Shift — розмиття згори і знизу. Lens Vignette — природне затемнення об'єктива.
 • Black Frame: Round (Fisheye), Film Gate (заокруглене вікно), 4:3 Gate; Frame Size і Softness.
-Розмиття — найважча частина: на відеокарті ок, на CPU помітно повільніше.
+• Glow — м'яке сяйво старого непросвітленого скла.
+З 3.5 розмиття рахується як справжня оптика: плавно наростає від центру до країв у лінійному світлі
+(яскраві точки розпливаються яскравими плямами), Swirl витягує боке по колу навколо центру («котяче око»).

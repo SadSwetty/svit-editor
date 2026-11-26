@@ -83,9 +83,9 @@ struct Pool {   // autorelease pool: командні буфери й помил
 };
 
 // ---- скомпільовані ядра для одного пристрою
-enum { K_STAGE1, K_FINAL, K_BLURH, K_BLURV, K_DOWN, K_DOWN2, K_ZERO, K_ACCUM, K_HALAPPLY, K_BLOOMMIX, K_N };
+enum { K_STAGE1, K_FINAL, K_BLURH, K_BLURV, K_DOWN, K_DOWN2, K_ZERO, K_ACCUM, K_HALAPPLY, K_BLOOMMIX, K_LENSMIX, K_N };
 static const char* kKernelNames[K_N] = {"k_stage1", "k_final", "k_blurH", "k_blurV", "k_down", "k_down2",
-                                        "k_zero", "k_accum", "k_halApply", "k_bloomMix"};
+                                        "k_zero", "k_accum", "k_halApply", "k_bloomMix", "k_lensMix"};
 struct Pipelines {
     bool ok = false; std::string error;
     void* pso[K_N] = {};
@@ -204,6 +204,20 @@ inline bool render(void* queue, void* srcBuf, void* dstBuf, svitfilm::FramePlan 
     if (k.needFrame) {
         lin = F.buf((size_t)w * h * 12);
         F.setBuf(srcBuf, 0); F.setBuf(lin, 1); F.setBuf(luts, 2); F.setBytes(&k, sizeof k, 3); F.run(K_STAGE1, w, h);
+        if (fp.lens.on) {
+            const LensP& lp = fp.lens.p;
+            void* lb[3]; const int ds[3] = {lp.d1, lp.d2, lp.d3}, lw[3] = {lp.w1, lp.w2, lp.w3}, lh[3] = {lp.h1, lp.h2, lp.h3};
+            const float sg[3] = {lp.s1, lp.s2, lp.s3};
+            void* tmp = F.buf((size_t)lw[0] * lh[0] * 12);   // рівень 1 — найбільший
+            for (int i = 0; i < 3; ++i) {
+                lb[i] = F.buf((size_t)lw[i] * lh[i] * 12);
+                DownP dp{w, h, ds[i], lw[i], lh[i], 0, 0, 0, 0.0f, 0, 0, 0};
+                F.setBuf(lin, 0); F.setBuf(lb[i], 1); F.setBytes(&dp, sizeof dp, 2); F.run(K_DOWN, lw[i], lh[i]);
+                F.blur(lb[i], lw[i], lh[i], sg[i] / ds[i], tmp);
+            }
+            F.setBuf(lin, 0); F.setBuf(lb[0], 1); F.setBuf(lb[1], 2); F.setBuf(lb[2], 3); F.setBytes(&lp, sizeof lp, 4);
+            F.run(K_LENSMIX, w, h);
+        }
         if (fp.filmResPx >= 0.3f) { void* tmp = F.buf((size_t)w * h * 12); F.blur(lin, w, h, fp.filmResPx, tmp); }
         if (fp.halOn) {
             struct Lv { int ds, w, h; void* b; };
