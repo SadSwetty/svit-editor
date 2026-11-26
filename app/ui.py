@@ -31,6 +31,22 @@ SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
 
 
+def clear_webkit_cache():
+    """Після оновлення чистимо кеш вбудованого браузера macOS (лише кеш сторінок Python-вікон;
+    налаштування Svit лежать у ~/.svit-editor і не зачіпаються)."""
+    import shutil
+    lib = Path.home() / "Library"
+    for base in (lib / "Caches", lib / "WebKit"):
+        try:
+            for d in base.iterdir():
+                n = d.name.lower()
+                if d.is_dir() and ("python" in n or n.startswith("org.python")):
+                    shutil.rmtree(d, ignore_errors=True)
+                    svlog.log(f"webui: очищено кеш {d}")
+        except Exception:
+            pass
+
+
 def web_root():
     """Інтерфейс відкриваємо з окремої теки для кожної версії: вбудований браузер macOS кешує сторінку
     за адресою, і після оновлення інакше показував би старий інтерфейс (без нових вкладок)."""
@@ -43,6 +59,7 @@ def web_root():
         if not (dst / "index.html").exists():
             shutil.rmtree(HOME / "webui", ignore_errors=True)
             shutil.copytree(src, dst)
+            clear_webkit_cache()
         return dst
     except Exception as e:
         svlog.log(f"webui: {e!r} — відкриваю інтерфейс напряму")
