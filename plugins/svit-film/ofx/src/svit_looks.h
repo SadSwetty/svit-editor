@@ -138,6 +138,7 @@ inline bool applyLook(Params& P, int i) {
     if (i <= 0 || i > (int)looks().size()) return false;
     Params D;
     for (auto& f : lookFields()) setField(P, f, getField(D, f));
+    P.halOn = true; P.grainOn = true;   // образи — це повна плівка: зерно і halation увімкнені
     for (auto& kv : looks()[i - 1].kv) {
         const Field* f = findField(kv.k);
         if (!f) return false;

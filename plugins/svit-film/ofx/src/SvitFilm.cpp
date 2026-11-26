@@ -219,7 +219,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineDouble(ps, "blueComp", "Blue Comp.", 100.0, 0.0, 100.0, "gHal", "Keeps halos visible over blue backgrounds.", 1, 1);
     defineDouble(ps, "halImpact", "Impact", 70.0, 0.0, 100.0, "gHal", "Opacity of the effect.", 1, 1);
     defineBool(ps, "maskMode", "Mask Mode", 0, "gHal", "Show the halation alone.");
-    defineBool(ps, "halOn", "Enabled", 1, "gHal", "Turn halation on.");
+    defineBool(ps, "halOn", "Enabled", 0, "gHal", "Turn halation on.");
 
     defineGroup(ps, "gBloom", "Bloom", false);
     defineDouble(ps, "bloom", "Bloom", 0.0, 0.0, 2.0, "gBloom", "Lens diffusion of bright areas.");
@@ -237,7 +237,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineChoice(ps, "filmType", "Film Type", kFilmTypeNames, 2, 0, "gGrain", "Grain in the negative (printed) or in the positive.");
     defineChoice(ps, "grainMode", "Mode", kGrainModeNames, 2, 0, "gGrain", "Analogue = clumped grain, Digital = clean noise.");
     defineBool(ps, "freezeGrain", "Freeze Grain", 0, "gGrain", "Keep the same grain on every frame.");
-    defineBool(ps, "grainOn", "Enabled", 1, "gGrain", "Turn grain on.");
+    defineBool(ps, "grainOn", "Enabled", 0, "gGrain", "Turn grain on.");
 
     defineGroup(ps, "gExpired", "Expired Film", false);
     defineDouble(ps, "age", "Age (years)", 0.0, 0.0, 30.0, "gExpired", "How long past its date: fog, colour shift, lost contrast, more grain.", 0.5, 1);

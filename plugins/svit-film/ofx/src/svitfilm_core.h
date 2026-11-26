@@ -10,6 +10,7 @@
 // а не оцифровані дані виробника. Плагін показує це в полі «Profile Status».
 #pragma once
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -74,14 +75,14 @@ struct Params {
     // Print
     bool printOn = true; int print = 0; double printExposure = 0, lightR = 0, lightG = 0, lightB = 0;
     // Halation (як у Dehancer: профіль формату/remjet + повзунки)
-    bool halOn = true; int halProfile = 0;
+    bool halOn = false; int halProfile = 0;
     double srcLimiter = 15, bgGain = 80, smoothness = 50, localDiff = 15, globalDiff = 25, amplify = 70, hue = 50,
            blueComp = 100, halImpact = 70;
     bool maskMode = false;
     // Bloom (розсіювання в об'єктиві)
     double bloom = 0;
     // Film Grain
-    bool grainOn = true; int grainProfile = 0;
+    bool grainOn = false; int grainProfile = 0;
     double grainSize = 12, grainAmount = 35, filmRes = 75, gShadows = 30, gMid = 55, gHigh = 65, chroma = 65;
     int filmType = 0, grainMode = 0; bool freezeGrain = false;
     // Camera
@@ -196,8 +197,15 @@ struct Lut {
     }
 };
 
+// DaVinci може рахувати кілька кадрів одночасно: ділимо ядра між ними, щоб не створювати сотні потоків
+inline std::atomic<int>& activeRenders() { static std::atomic<int> a{0}; return a; }
+struct RenderScope {
+    RenderScope() { ++activeRenders(); }
+    ~RenderScope() { --activeRenders(); }
+};
 template <class F> void parallelRows(int h, F f) {
-    int n = (int)std::max(1u, std::min(32u, std::thread::hardware_concurrency()));
+    int hw = (int)std::max(1u, std::min(32u, std::thread::hardware_concurrency()));
+    int n = std::max(1, hw / std::max(1, activeRenders().load()));
     if (h < 64) n = 1;
     std::vector<std::thread> th;
     for (int t = 0; t < n; ++t) th.emplace_back([=, &f] { for (int y = t; y < h; y += n) f(y); });
@@ -778,6 +786,7 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
 
 inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst, std::ptrdiff_t dstRowFloats,
                        int w, int h, const Params& P) {
+    RenderScope scope;
     const StockDef& sd = stockFor(P);
     const bool scan = P.printOn && P.print >= kNumPrints;
     const PrintDef& pd = (!P.printOn || scan) ? kReferencePrint : kPrints[std::clamp(P.print, 0, kNumPrints - 1)];
@@ -828,11 +837,11 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
 
     // 1) вхід → сцена-лінійне (робочий простір), експозиція, баланс, вінетка
     Lut dec; dec.build(-0.1f, 1.1f, 8192, [&](float v) { return decodeTF(v, P.input); });
-    std::vector<float> lin((size_t)w * h * 3);
-    parallelRows(h, [&](int y) {
-        int yy = std::clamp(y + dy, 0, h - 1);
-        const float* row = src + (std::ptrdiff_t)yy * srcRowFloats;
-        for (int x = 0; x < w; ++x) {
+    // піксель (x, y) → сцена-лінійна експозиція o[3]
+    auto stage1 = [&](int x, int y, float* o) {
+        {
+            int yy = std::clamp(y + dy, 0, h - 1);
+            const float* row = src + (std::ptrdiff_t)yy * srcRowFloats;
             int xx = std::clamp(x + dx, 0, w - 1);
             float a[3], L[3];
             for (int c = 0; c < 3; ++c) {
@@ -851,7 +860,6 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
                 float t = std::clamp((r - 0.45f) / 0.8f, 0.0f, 1.0f);
                 vig = 1.0f - (float)P.vignette * 0.85f * t * t * (3 - 2 * t);
             }
-            float* o = &lin[((size_t)y * w + x) * 3];
             for (int c = 0; c < 3; ++c) o[c] = std::max(L[c], 0.0f) * ev * wb[c] * vig;
             if (P.leak > 0) {   // додаткова експозиція від краю кадру (до проявлення — тож вона і halation дає)
                 float u = leakPos == 0 ? (float)x / w : leakPos == 1 ? 1.0f - (float)x / w
@@ -868,14 +876,21 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
                 o[0] = o[1] = o[2] = m;
             }
         }
-    });
+    };
+    // просторові ефекти (halation, bloom, MTF, маска) потребують кадру в пам'яті; без них — один прохід
+    const float filmResPx = (100.0f - (float)P.filmRes) / 25.0f * 3.7f / pixUM;
+    const bool needFrame = (P.halOn && P.halImpact > 0 && P.amplify > 0) || P.bloom > 0 ||
+                           (P.grainOn && filmResPx >= 0.3f);
+    std::vector<float> lin;
+    if (needFrame) {
+        lin.resize((size_t)w * h * 3);
+        parallelRows(h, [&](int y) { for (int x = 0; x < w; ++x) stage1(x, y, &lin[((size_t)y * w + x) * 3]); });
+    }
 
     // 1б) роздільна здатність плівки (MTF емульсії): гаусове розмиття ~3.7 мкм при 75
     //     (гаусова MTF з 50% на ~50 цикл/мм — оцінка порядку величини для 500T, не з тех. листа)
     {
-        float sUM = (100.0f - (float)P.filmRes) / 25.0f * 3.7f;
-        float sPx = sUM / pixUM;
-        if (P.grainOn && sPx >= 0.3f) gaussBlur(lin, w, h, 3, sPx);
+        if (needFrame && P.grainOn && filmResPx >= 0.3f) gaussBlur(lin, w, h, 3, filmResPx);
     }
 
     // 2) halation: додаткова експозиція червоного (і трохи зеленого) шару світлом, відбитим від основи.
@@ -1002,50 +1017,63 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
     const float grainBlur = 0.5f * sizeUM / pixUM;
     const float rho = mono ? 1.0f : 1.0f - 0.85f * (float)P.chroma / 100.0f;   // спільна частина між шарами
     const bool analogue = P.grainMode == 0;
+    const float sRho = std::sqrt(rho), sRho1 = std::sqrt(1.0f - rho);
     const bool positive = P.filmType == 1 && film.cls != CL_REV;
     auto toneW = [&](float r) {   // r: 0 — тіні, 1 — середні, 2 — світлі (у термінах сцени)
         float a = (float)P.gShadows, b = (float)P.gMid, c = (float)P.gHigh;
         float v = r <= 1.0f ? a + (b - a) * std::clamp(r, 0.0f, 1.0f) : b + (c - b) * std::clamp(r - 1.0f, 0.0f, 1.0f);
         return v / 55.0f;
     };
-    std::vector<float> nz, nz2;
-    float nzNorm = 1.0f, nz2Norm = 1.0f;
+    // Шум зерна на ґратці з кроком ≈ розмір зерна (а не повнокадрові буфери): значення у вузлах —
+    // незалежні гаусівські, між вузлами — гладка інтерполяція (smoothstep), нормована до σ = 1.
     const int nf = grainOn ? (mono ? 1 : 4) : 0;
-    int w2 = (w + 1) / 2, h2 = (h + 1) / 2;
-    // якщо кореляція зерна менша за ~0.6 пікселя, розмиття нічого не дає: шум рахуємо на льоту
-    const bool nzInline = grainBlur < 0.6f;
-    if (nf && !nzInline) {
-        nz.resize((size_t)w * h * nf);
-        parallelRows(h, [&](int y) {
-            for (int x = 0; x < w; ++x)
+    struct Lattice { float sp = 1; int gw = 0, gh = 0, ox = 0, oy = 0; std::vector<float> v; };
+    auto makeLattice = [&](float spacing, uint32_t sd0) {
+        Lattice L; L.sp = std::max(1.0f, spacing);
+        L.ox = (int)std::floor(P.originX / L.sp); L.oy = (int)std::floor(P.originY / L.sp);
+        L.gw = (int)std::ceil(w / L.sp) + 2; L.gh = (int)std::ceil(h / L.sp) + 2;
+        L.v.resize((size_t)L.gw * L.gh * nf);
+        parallelRows(L.gh, [&](int gy) {
+            for (int gx = 0; gx < L.gw; ++gx)
                 for (int k = 0; k < nf; ++k)
-                    nz[((size_t)y * w + x) * nf + k] = gaussFast(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k);
+                    L.v[((size_t)gy * L.gw + gx) * nf + k] = gaussFast(gx + L.ox, gy + L.oy, sd0 + (uint32_t)k);
         });
-        float q = gaussBlur(nz, w, h, nf, grainBlur);
-        nzNorm = 1.0f / (q * q);   // std розмитого білого шуму = Σk² (2D)
-    }
+        return L;
+    };
+    Lattice lat1, lat2;
+    const bool perPixel = grainBlur < 0.6f;   // зерно дрібніше за піксель — білий шум прямо в пікселі
     if (nf) {
-        if (analogue) {   // скупчення зерен: друга октава в 2.5 раза більша (на половинній роздільності)
-            nz2.resize((size_t)w2 * h2 * nf);
-            parallelRows(h2, [&](int y) {
-                for (int x = 0; x < w2; ++x)
-                    for (int k = 0; k < nf; ++k)
-                        nz2[((size_t)y * w2 + x) * nf + k] =
-                            gaussFast(x + P.originX / 2, y + P.originY / 2, seed * 8u + 4u + (uint32_t)k);
-            });
-            float q2 = gaussBlur(nz2, w2, h2, nf, grainBlur * 2.5f / 2.0f);
-            nz2Norm = 1.0f / (q2 * q2);
-        }
+        if (!perPixel) lat1 = makeLattice(2.0f * grainBlur, seed * 8u);
+        if (analogue) lat2 = makeLattice(std::max(2.0f, 5.0f * grainBlur), seed * 8u + 4u);
     }
-    auto grainAt = [&](int x, int y, int k) {
-        float g = nzInline ? gaussFast(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k)
-                           : nz[((size_t)y * w + x) * nf + k] * nzNorm;
-        if (analogue) {
-            int x2 = std::min(x / 2, w2 - 1), y2 = std::min(y / 2, h2 - 1);
-            g = (g + 0.35f * nz2[((size_t)y2 * w2 + x2) * nf + k] * nz2Norm) / 1.06f;
-            g += 0.12f * (g * g - 1.0f);   // асиметрія булевої моделі: рідкісні темні скупчення
+    // усі канали шуму одразу: ваги інтерполяції рахуються один раз на піксель
+    auto latAll = [&](const Lattice& L, int x, int y, float* out) {
+        float fx = (x + P.originX) / L.sp - L.ox, fy = (y + P.originY) / L.sp - L.oy;
+        int x0 = std::clamp((int)fx, 0, L.gw - 2), y0 = std::clamp((int)fy, 0, L.gh - 2);
+        float u = std::clamp(fx - x0, 0.0f, 1.0f), v = std::clamp(fy - y0, 0.0f, 1.0f);
+        u = u * u * (3 - 2 * u); v = v * v * (3 - 2 * v);
+        float w00 = (1 - u) * (1 - v) * 1.346f, w10 = u * (1 - v) * 1.346f, w01 = (1 - u) * v * 1.346f, w11 = u * v * 1.346f;
+        const float* a = &L.v[((size_t)y0 * L.gw + x0) * nf];
+        const float* b = a + nf;
+        const float* c = a + (size_t)L.gw * nf;
+        const float* d = c + nf;
+        for (int k = 0; k < nf; ++k) out[k] = w00 * a[k] + w10 * b[k] + w01 * c[k] + w11 * d[k];
+    };
+    auto grainAll = [&](int x, int y, float* g) {   // g[nf]
+        if (perPixel) {
+            uint32_t base = seed * 8u;
+            for (int k = 0; k < nf; ++k) g[k] = gaussFast(x + P.originX, y + P.originY, base + (uint32_t)k);
+        } else {
+            latAll(lat1, x, y, g);
         }
-        return g;
+        if (analogue) {
+            float g2[4];
+            latAll(lat2, x, y, g2);
+            for (int k = 0; k < nf; ++k) {
+                float t = (g[k] + 0.35f * g2[k]) * (1.0f / 1.06f);
+                g[k] = t + 0.12f * (t * t - 1.0f);   // асиметрія булевої моделі: рідкісні темні скупчення
+            }
+        }
     };
 
     // таблиці для пікселя: shapeX (blacks/whites/компресія), крива плівки, друк/скан, дисплей
@@ -1059,16 +1087,18 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
         const float* srow = src + (std::ptrdiff_t)y * srcRowFloats;
         float* drow = dst + (std::ptrdiff_t)y * dstRowFloats;
         for (int x = 0; x < w; ++x) {
-            const float* L = &lin[((size_t)y * w + x) * 3];
+            float Lb[3];
+            const float* L = Lb;
+            if (needFrame) L = &lin[((size_t)y * w + x) * 3]; else stage1(x, y, Lb);
             float xs[3], D[3], Y[3], o[3];
             for (int c = 0; c < 3; ++c) xs[c] = fastLog10(std::max(L[c], 1e-7f) * (1.0f / kMidGray));
             if (shapeOn) for (int c = 0; c < 3; ++c) xs[c] = shapeLut(xs[c]);
             fx.develop(xs, D);
             float gn[3] = {0, 0, 0};
             if (nf) {
-                float g0 = grainAt(x, y, 0);
-                for (int c = 0; c < 3; ++c)
-                    gn[c] = mono ? g0 : std::sqrt(rho) * g0 + std::sqrt(1.0f - rho) * grainAt(x, y, 1 + c);
+                float g[4];
+                grainAll(x, y, g);
+                for (int c = 0; c < 3; ++c) gn[c] = mono ? g[0] : sRho * g[0] + sRho1 * g[1 + c];
             }
             if (nf && !positive) {   // зерно в щільності плівки (негатив або слайд)
                 for (int c = 0; c < 3; ++c) {
