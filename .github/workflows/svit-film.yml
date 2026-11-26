@@ -1,4 +1,5 @@
-# Збирає OFX-плагін Svit Film на Мак-машині GitHub і публікує архів у реліз svit-film-<версія>.
+# Збирає OFX-плагін Svit Film для Мака (Apple Silicon + Intel) і публікує архів у реліз svit-film-<версія>.
+# Мак-машини GitHub часто стоять у черзі, тож збираємо на Linux компілятором Zig (він уміє робити Mach-O).
 name: svit-film
 on:
   push:
@@ -9,12 +10,30 @@ permissions:
   contents: write
 jobs:
   build:
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Tools
+        run: |
+          pip install ziglang
+          sudo apt-get update -qq && sudo apt-get install -y -qq llvm >/dev/null
+          ls /usr/bin/llvm-lipo* /usr/bin/llvm-otool* 2>/dev/null || true
       - name: Build
-        run: bash plugins/svit-film/ofx/build_mac.sh
+        run: bash plugins/svit-film/ofx/build_cross.sh
+      - name: Inspect
+        run: |
+          F=plugins/svit-film/ofx/build/SvitFilm.ofx.bundle/Contents/MacOS/SvitFilm.ofx
+          file "$F"
+          OT=$(ls /usr/bin/llvm-otool* | head -1); NM=$(ls /usr/bin/llvm-nm* | grep -v ld | head -1)
+          for A in arm64 x86_64; do
+            echo "== $A"; "$NM" --arch=$A -gU "$F" | grep -i ofx
+            "$OT" -arch $A -l "$F" | grep -E "LC_CODE_SIGNATURE|LC_ID_DYLIB|minos|LC_BUILD_VERSION" -A2 | head -12
+            "$OT" -arch $A -L "$F"
+          done
       - name: Package
         run: |
           cd plugins/svit-film/ofx
@@ -23,8 +42,8 @@ jobs:
           cp -R build/SvitFilm.ofx.bundle "pkg/Svit Film/"
           cp install/* "pkg/Svit Film/"
           chmod +x "pkg/Svit Film/"*.command
-          (cd pkg && ditto -c -k --sequesterRsrc --keepParent "Svit Film" "../Svit.Film.$VER.zip")
-          ls -la "Svit.Film.$VER.zip"
+          (cd pkg && zip -qry "../Svit.Film.$VER.zip" "Svit Film")
+          unzip -l "Svit.Film.$VER.zip"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
