@@ -47,6 +47,13 @@ jobs:
             "$OT" -arch $A -l "$F" | grep -q LC_CODE_SIGNATURE || { echo "::error::$A slice is not signed"; exit 1; }
             "$OT" -arch $A -L "$F"
           done
+      - name: Installer (.pkg)
+        # Звичайний macOS-інсталятор: подвійний клік → «Встановити». Bom робить mkbom з bomutils.
+        run: |
+          git clone -q --depth 1 https://github.com/hogliux/bomutils /tmp/bomutils && make -s -C /tmp/bomutils
+          cd plugins/svit-film/ofx
+          VER="$(tr -d '[:space:]' < VERSION)"
+          python3 mkpkg.py build/SvitFilm.ofx.bundle "$VER" "Svit.Film.$VER.pkg" --mkbom /tmp/bomutils/build/bin/mkbom
       - name: Package
         run: |
           cd plugins/svit-film/ofx
@@ -67,6 +74,6 @@ jobs:
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
               --title "Svit Film $VER (плагін для DaVinci)" \
-              --notes "Плагін плівки для DaVinci Resolve: Effects → OpenFX → Svit → Svit Film. Розпакуй і запусти «Встановити Svit Film.command»."
+              --notes "Плагін плівки для DaVinci Resolve. Завантаж **Svit.Film.$VER.pkg**, двічі клікни і натисни «Встановити». Потім у DaVinci: Preferences → System → Video Plugins → галочка біля SvitFilm, і Effects → OpenFX → Svit → Svit Film. (Svit.Film.$VER.zip потрібен для кнопки оновлення в самому плагіні.)"
           fi
-          gh release upload "$TAG" "Svit.Film.$VER.zip" --clobber
+          gh release upload "$TAG" "Svit.Film.$VER.pkg" "Svit.Film.$VER.zip" --clobber
