@@ -114,6 +114,17 @@ def thumb_of(path):
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def vlabel(v):
+    """Номер, який бачить людина. Технічна нумерація (для оновлень) пішла з 3.0, а для людей
+    це перший реліз — 1.0: 3.0 → 1.0, 3.0.1 → 1.0.1, 3.1 → 1.1. Старі 2.x показуються як є."""
+    import re
+    v = str(v)
+    m = re.match(r"^(\d+)(.*)$", v)
+    if m and int(m.group(1)) >= 3:
+        return f"{int(m.group(1)) - 2}{m.group(2)}"
+    return v
+
+
 def vtuple(v):
     """'2.4-alpha1' < '2.4-alpha2' < '2.4' < '2.4.1': тестові версії йдуть перед релізом з тим самим номером,
     а між собою — за номером alpha/beta/rc."""
@@ -176,7 +187,7 @@ class Api:
             except Exception:
                 pass
         return {"settings": cfg.get("settings", {}), "has_key": bool(key), "key_tail": key[-4:] if key else "",
-                "spend": cfg.get("spend", {}).get(time.strftime("%Y-%m"), 0.0), "version": VERSION,
+                "spend": cfg.get("spend", {}).get(time.strftime("%Y-%m"), 0.0), "version": vlabel(VERSION),
                 "bridge": self.bridge.ok, "sources": self.bridge.sources() if self.bridge.ok else {},
                 "shots": shots, "on_top": cfg.get("on_top", True), "rate": engine.TOKENS_PER_USD,
                 "refs": self.list_refs(), "whatsnew": self._whatsnew(cfg)}
@@ -504,7 +515,7 @@ class Api:
                 rels = json.loads(r.read().decode("utf-8"))
         except Exception as e:
             if getattr(e, "code", None) == 404:
-                return {"available": False, "current": VERSION}
+                return {"available": False, "current": vlabel(VERSION)}
             return {"available": False, "error": "Не вдалося перевірити оновлення. Перевір інтернет."}
         best = None
         for rel in rels if isinstance(rels, list) else []:
@@ -526,10 +537,10 @@ class Api:
             if best is None or vtuple(ver) > vtuple(best[0]):
                 best = (ver, rel, asset)
         if not best:
-            return {"available": False, "current": VERSION}
+            return {"available": False, "current": vlabel(VERSION)}
         latest, rel, asset = best
         self._upd_offer = {"url": asset["browser_download_url"], "version": latest}
-        return {"available": vtuple(latest) > vtuple(VERSION), "version": latest, "current": VERSION,
+        return {"available": vtuple(latest) > vtuple(VERSION), "version": vlabel(latest), "current": vlabel(VERSION),
                 "prerelease": bool(rel.get("prerelease")),
                 "notes": (rel.get("body") or "").strip()[:2500], "url": asset["browser_download_url"],
                 "size": asset.get("size", 0)}
@@ -601,7 +612,7 @@ class Api:
                 time.sleep(0.3)
             if not result or result[0] == "E":
                 raise RuntimeError(result[2] if result and len(result) > 2 else "Оновлення не встановилось.")
-            self._js("updDone", version)
+            self._js("updDone", vlabel(version))
         except Exception as e:
             self._js("updFail", friendly_error(e))
 

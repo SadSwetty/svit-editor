@@ -23,6 +23,17 @@ PF = HOME / "install-progress.txt"
 LOG = HOME / "install.log"
 
 
+def vlabel(v):
+    """Номер, який бачить людина. Технічна нумерація (для оновлень) пішла з 3.0, а для людей
+    це перший реліз — 1.0: 3.0 → 1.0, 3.0.1 → 1.0.1, 3.1 → 1.1. Старі 2.x показуються як є."""
+    import re
+    v = str(v)
+    m = re.match(r"^(\d+)(.*)$", v)
+    if m and int(m.group(1)) >= 3:
+        return f"{int(m.group(1)) - 2}{m.group(2)}"
+    return v
+
+
 def installed_version():
     v = HOME / "VERSION"
     return v.read_text().strip() if v.exists() and (HOME / "app" / "ui.py").exists() else None
@@ -89,7 +100,9 @@ class Api:
         self.proc = None
 
     def ready(self):
-        return {"version": (RES / "payload" / "VERSION").read_text().strip(), "installed": installed_version(),
+        inst = installed_version()
+        return {"version": vlabel((RES / "payload" / "VERSION").read_text().strip()),
+                "installed": vlabel(inst) if inst else None,
                 "davinci": davinci_installed(), "davinci_version": DAVINCI_VERSION}
 
     def has_key(self):
@@ -174,7 +187,7 @@ class Api:
         if not result:
             self._js("error", "Встановлення зупинилось неочікувано.", log_tail())
         elif result[0] == "D":
-            self._js("done", result[1], result[2])
+            self._js("done", vlabel(result[1]), result[2])
         elif result[1] == "nopython":
             self._js("needPython")
         else:

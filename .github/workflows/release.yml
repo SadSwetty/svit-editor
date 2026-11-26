@@ -59,15 +59,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           VER="$(tr -d '[:space:]' < VERSION)"
-          cp "dist/Svit Editor $VER update.zip" "Svit.Editor.$VER.update.zip"
-          cp "dist/Svit Editor $VER.zip" "Svit.Editor.$VER.zip"
+          # технічний номер (для оновлень) 3.x показуємо людям як 1.x: 3.0 → 1.0
+          MAJ="${VER%%.*}"; LABEL="$VER"
+          if [ "$MAJ" -ge 3 ] 2>/dev/null; then LABEL="$(( MAJ - 2 )).${VER#*.}"; fi
+          cp "dist/Svit Editor $VER update.zip" "Svit.Editor.$LABEL.update.zip"
+          cp "dist/Svit Editor $VER.zip" "Svit.Editor.$LABEL.zip"
           case "$VER" in *alpha*|*beta*|*rc*) PRE="--prerelease";; *) PRE="--latest";; esac
           if gh release view "v$VER" >/dev/null 2>&1; then
-            gh release upload "v$VER" "Svit.Editor.$VER.update.zip" --clobber
-            gh release upload "v$VER" "Svit.Editor.$VER.zip" --clobber
+            gh release upload "v$VER" "Svit.Editor.$LABEL.update.zip" --clobber
+            gh release upload "v$VER" "Svit.Editor.$LABEL.zip" --clobber
             gh release edit "v$VER" --notes-file release/notes.md
           else
-            gh release create "v$VER" "Svit.Editor.$VER.update.zip" --target "$GITHUB_SHA" \
-              --title "Svit Editor $VER" --notes-file release/notes.md $PRE
-            gh release upload "v$VER" "Svit.Editor.$VER.zip"
+            gh release create "v$VER" "Svit.Editor.$LABEL.update.zip" --target "$GITHUB_SHA" \
+              --title "Svit Editor $LABEL" --notes-file release/notes.md $PRE
+            gh release upload "v$VER" "Svit.Editor.$LABEL.zip"
           fi
