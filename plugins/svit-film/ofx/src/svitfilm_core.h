@@ -101,6 +101,9 @@ struct Params {
     int filmType = 0, grainMode = 0; bool freezeGrain = false;
     // Camera
     double vignette = 0, weave = 0;
+    // Lens: оптика перед плівкою
+    bool lensOn = false; double distortion = 0, lensZoom = 100, chromAb = 0, edgeBlur = 0, swirl = 0, tiltShift = 0, lensVig = 0;
+    int frameMode = 0; double frameSize = 100, frameSoft = 20;
     // Expired Film (унікальне Svit): вік плівки і умови зберігання
     double age = 0; int storage = 1;
     // Light Leak (унікальне Svit): засвітка крізь щілину касети/дверцят камери
@@ -427,6 +430,99 @@ inline void gamutCompress(float* o) {
         o[c] = ach - cd * ach;
     }
 }
+// ---- Lens: дисторсія (Brown, нормована так, щоб край кадру лишався в межах джерела), поперечна хроматична
+// аберація (різний масштаб R/G/B), падіння різкості до країв (поле кривизни) з «закрученим» боке як у Helios/Петцваля,
+// tilt-shift смуга, оптична вінетка (≈cos^4) і механічна рамка (коло fisheye, кадрове вікно, 4:3).
+struct LensK {
+    int on = 0, frameMode = 0;
+    float cx = 0, cy = 0, Rn = 1, Rs = 1, K = 0, S = 1, CA = 0, blur = 0, swirl = 0, tilt = 0, vig = 0;
+    float fHalfW = 0, fHalfH = 0, fRc = 0, fSoft = 1, halfH = 1;
+};
+inline LensK makeLens(const Params& P, int w, int h) {
+    LensK L;
+    if (!P.lensOn) return L;
+    L.on = 1;
+    L.cx = w * 0.5f; L.cy = h * 0.5f; L.halfH = h * 0.5f;
+    const float hd = 0.5f * std::sqrt((float)w * w + (float)h * h);
+    const float d = (float)std::clamp(P.distortion, -100.0, 100.0) / 100.0f;
+    L.K = d > 0 ? d * 1.6f : d * 0.3f;
+    L.CA = (float)std::clamp(P.chromAb, 0.0, 100.0) / 100.0f * 0.006f;
+    L.frameMode = std::clamp(P.frameMode, 0, 3);
+    const float fs = (float)std::clamp(P.frameSize, 30.0, 150.0) / 100.0f;
+    float S;
+    if (L.frameMode == 1) {   // коло fisheye: усе зображення вписане в коло
+        L.Rn = fs * h * 0.5f; L.Rs = h * 0.5f;
+        S = std::min(1.0f, 1.0f / (1.0f + L.K));
+    } else {
+        L.Rn = hd; L.Rs = hd;
+        const float ax = w * 0.5f / hd, ay = h * 0.5f / hd;
+        S = std::min({1.0f / (1.0f + L.K), 1.0f / (1.0f + L.K * ax * ax), 1.0f / (1.0f + L.K * ay * ay)});
+    }
+    L.S = S / (1.0f + L.CA) / ((float)std::clamp(P.lensZoom, 50.0, 200.0) / 100.0f);
+    L.blur = (float)std::clamp(P.edgeBlur, 0.0, 100.0) / 100.0f * 0.020f * hd;
+    L.tilt = (float)std::clamp(P.tiltShift, 0.0, 100.0) / 100.0f * 0.010f * hd;
+    L.swirl = (float)std::clamp(P.swirl, 0.0, 100.0) / 100.0f * 0.85f;
+    L.vig = (float)std::clamp(P.lensVig, 0.0, 100.0) / 100.0f * 0.9f;
+    if (L.frameMode == 1) { L.fHalfH = fs * h * 0.5f; }
+    else if (L.frameMode == 2) { L.fHalfW = fs * w * 0.5f; L.fHalfH = fs * h * 0.5f; L.fRc = 0.07f * h; }
+    else if (L.frameMode == 3) { L.fHalfW = fs * std::min(w * 0.5f, h * 2.0f / 3.0f); L.fHalfH = fs * h * 0.5f; L.fRc = 0.05f * h; }
+    L.fSoft = (float)std::clamp(P.frameSoft, 0.0, 100.0) / 100.0f * 0.06f * h + 1.0f;
+    return L;
+}
+inline bool lensActive(const Params& P) {
+    return P.lensOn && (P.distortion != 0 || P.lensZoom != 100 || P.chromAb > 0 || P.edgeBlur > 0 || P.tiltShift > 0 ||
+                        P.lensVig > 0 || P.frameMode > 0);
+}
+// множник світла: оптична вінетка × рамка
+inline float lensMask(const LensK& L, int x, int y) {
+    float px = x + 0.5f - L.cx, py = y + 0.5f - L.cy, m = 1.0f;
+    if (L.vig > 0) {
+        float nx = px / L.Rn, ny = py / L.Rn, q = 1.0f / (1.0f + 1.4f * (nx * nx + ny * ny));
+        m *= 1.0f - L.vig * (1.0f - q * q);
+    }
+    if (L.frameMode > 0) {
+        float dd;
+        if (L.frameMode == 1) dd = std::sqrt(px * px + py * py) - L.fHalfH;
+        else {
+            float qx = std::fabs(px) - (L.fHalfW - L.fRc), qy = std::fabs(py) - (L.fHalfH - L.fRc);
+            float mx = std::max(qx, 0.0f), my = std::max(qy, 0.0f);
+            dd = std::sqrt(mx * mx + my * my) + std::min(std::max(qx, qy), 0.0f) - L.fRc;
+        }
+        float t = std::clamp((dd + L.fSoft) / L.fSoft, 0.0f, 1.0f);
+        m *= 1.0f - t * t * (3.0f - 2.0f * t);
+    }
+    return m;
+}
+
+// вибірка через об'єктив: для кожного каналу — своя точка (дисторсія + аберація), розмиття — 12 променів
+// (спіраль Фогеля), еліпс витягнутий по дотичній (swirl). sample(sx, sy, c) повертає декодоване значення.
+template <class F>
+inline void lensSample(const LensK& L, int x, int y, int dx, int dy, float* a, F sample) {
+    float px = x + 0.5f - L.cx, py = y + 0.5f - L.cy;
+    float nx = px / L.Rn, ny = py / L.Rn, r2 = nx * nx + ny * ny, r = std::sqrt(r2);
+    float f = L.S * (1.0f + L.K * r2) * L.Rs / L.Rn;
+    float e = std::clamp((r - 0.25f) / 0.75f, 0.0f, 1.0f); e = e * e * (3.0f - 2.0f * e);
+    float be = L.blur * e * e;
+    float at = std::clamp((std::fabs(py) / L.halfH - 0.15f) / 0.75f, 0.0f, 1.0f); at = at * at * (3.0f - 2.0f * at);
+    float bt = L.tilt * at;
+    float b = std::sqrt(be * be + bt * bt);
+    float sw = b > 0 ? L.swirl * be / b : 0.0f;
+    float tx = 1, ty = 0; if (r > 1e-6f) { tx = -ny / r; ty = nx / r; }
+    int n = b < 0.6f ? 1 : std::min(24, std::max(10, (int)(b * 0.7f)));
+    float rot = (hash3((uint32_t)x, (uint32_t)y, 991u) >> 8) * (6.2831853f / 16777216.0f);   // поворот візерунка: шум замість «двійників»
+    float acc[3] = {0, 0, 0};
+    for (int i = 0; i < n; ++i) {
+        float ux = 0, uy = 0;
+        if (n > 1) { float ang = i * 2.39996323f + rot, rad = std::sqrt((i + 0.5f) / n); ux = std::cos(ang) * rad; uy = std::sin(ang) * rad; }
+        float ox = tx * ux * b + ty * uy * b * (1.0f - sw), oy = ty * ux * b - tx * uy * b * (1.0f - sw);
+        for (int c = 0; c < 3; ++c) {
+            float fc = f * (c == 0 ? 1.0f + L.CA : c == 2 ? 1.0f - L.CA : 1.0f);
+            acc[c] += sample(L.cx + (px + ox) * fc + dx, L.cy + (py + oy) * fc + dy, c);
+        }
+    }
+    for (int c = 0; c < 3; ++c) a[c] = acc[c] / n;
+}
+
 inline double smoothstepD(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
 // засвітка з одного краю (без множника Amount)
 inline float leakAt(int pos, uint32_t rs, int x, int y, int w, int h, float t) {
@@ -964,16 +1060,35 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
     // 1) вхід → сцена-лінійне (робочий простір), експозиція, баланс, вінетка
     Lut dec; dec.build(-0.1f, 1.1f, 8192, [&](float v) { return decodeTF(v, P.input); });
     // піксель (x, y) → сцена-лінійна експозиція o[3]
+    const LensK lens = makeLens(P, w, h);
+    const bool lensOn = lensActive(P);
+    auto decAt = [&](int xx, int yy, int c) {
+        float v = src[(std::ptrdiff_t)std::clamp(yy, 0, h - 1) * srcRowFloats + std::clamp(xx, 0, w - 1) * 4 + c];
+        if (!std::isfinite(v)) v = 0;
+        return v;
+    };
     auto stage1 = [&](int x, int y, float* o) {
         {
+            float a[3], L[3];
+            if (lensOn) {
+                lensSample(lens, x, y, dx, dy, a, [&](float sx, float sy, int c) {
+                    sx -= 0.5f; sy -= 0.5f;
+                    float fx = std::floor(sx), fy = std::floor(sy);
+                    int x0 = (int)fx, y0 = (int)fy; float ux = sx - fx, uy = sy - fy;
+                    float v0 = decAt(x0, y0, c) + (decAt(x0 + 1, y0, c) - decAt(x0, y0, c)) * ux;
+                    float v1 = decAt(x0, y0 + 1, c) + (decAt(x0 + 1, y0 + 1, c) - decAt(x0, y0 + 1, c)) * ux;
+                    float v = v0 + (v1 - v0) * uy;
+                    return (v >= -0.1f && v <= 1.1f) ? dec(v) : decodeTF(v, P.input);
+                });
+            } else {
             int yy = std::clamp(y + dy, 0, h - 1);
             const float* row = src + (std::ptrdiff_t)yy * srcRowFloats;
             int xx = std::clamp(x + dx, 0, w - 1);
-            float a[3], L[3];
             for (int c = 0; c < 3; ++c) {
                 float v = row[xx * 4 + c];
                 if (!std::isfinite(v)) v = 0;
                 a[c] = (v >= -0.1f && v <= 1.1f) ? dec(v) : decodeTF(v, P.input);
+            }
             }
             mul(Min, a, L);
             if (dispIn)
@@ -986,6 +1101,7 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
                 float t = std::clamp((r - 0.45f) / 0.8f, 0.0f, 1.0f);
                 vig = 1.0f - (float)P.vignette * 0.85f * t * t * (3 - 2 * t);
             }
+            if (lensOn) vig *= lensMask(lens, x, y);
             for (int c = 0; c < 3; ++c) o[c] = std::max(L[c], 0.0f) * ev * wb[c] * vig;
             if (P.leak > 0) {   // додаткова експозиція від краю кадру (до проявлення — тож вона і halation дає)
                 float I = leakAt(leakPos, roll, x, y, w, h, leakT);

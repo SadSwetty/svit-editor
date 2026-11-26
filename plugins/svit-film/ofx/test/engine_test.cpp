@@ -233,6 +233,29 @@ int main() {
         CHECK(Hh.mix == 50 && Hh.grainAmount < B.grainAmount, "half look mixes and halves grain");
     }
 
+    // Lens: увімкнений без змін = те саме; дисторсія не зсуває центр; коло fisheye чорнить кути
+    {
+        const int LW = 96, LH = 64;
+        std::vector<float> img((size_t)LW * LH * 4);
+        for (int y = 0; y < LH; ++y) for (int x = 0; x < LW; ++x) {
+            float* q = &img[((size_t)y * LW + x) * 4];
+            q[0] = (x % 8 < 4) ? 0.8f : 0.2f; q[1] = (y % 8 < 4) ? 0.7f : 0.3f; q[2] = 0.5f; q[3] = 1;
+        }
+        Params A = plain(); Params B = A; B.lensOn = true;
+        auto a = run(img, LW, LH, A), b = run(img, LW, LH, B);
+        float e = 0; for (size_t i = 0; i < a.size(); ++i) e = std::max(e, std::fabs(a[i] - b[i]));
+        CHECK(e < 1e-6f, "lens on with zero sliders changes the image (%.5f)", e);
+        Params D = B; D.distortion = 80;
+        auto d = run(img, LW, LH, D);
+        float diff = 0; for (size_t i = 0; i < a.size(); ++i) diff += std::fabs(d[i] - a[i]);
+        CHECK(diff / a.size() > 0.01f, "distortion did nothing");
+        Params R = B; R.frameMode = 1; R.frameSoft = 0;
+        auto r = run(img, LW, LH, R);
+        CHECK(r[0] < 0.03f && r[1] < 0.03f && r[2] < 0.03f, "round frame corner not black (%.3f)", r[0]);
+        CHECK(!isIdentity([&] { Params N = neutralParams(); N.lensOn = true; N.edgeBlur = 30; return N; }()), "lens must not be identity");
+        printf("lens ok\n");
+    }
+
     // чистий стан: плагін нічого не робить (DaVinci пропускає кадр)
     {
         Params N = neutralParams();

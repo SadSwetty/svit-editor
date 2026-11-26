@@ -128,6 +128,7 @@ int main() {
     P = svitfilm::Params(); P.input = svitfilm::IN_LOGC3; P.grainOn = true; cmp("logc3 grain", P);
     P = svitfilm::Params(); P.grainOn = true; P.grainProfile = 3; P.filmRes = 20; cmp("8mm grain + filmres", P);
     P = svitfilm::Params(); P.halOn = true; P.stock = 13; cmp("halation", P);
+    P = svitfilm::Params(); P.lensOn = true; P.distortion = 55; P.chromAb = 40; P.edgeBlur = 50; P.swirl = 80; P.frameMode = 1; cmp("lens fisheye", P);
     P = svitfilm::Params(); P.halOn = true; P.maskMode = true; P.globalDiff = 90; cmp("halation mask", P);
     P = svitfilm::Params(); P.bloom = 1.5; cmp("bloom", P);
     P = svitfilm::Params(); P.mix = 30; P.leak = 1; P.frame = 9; cmp("mix leak", P);

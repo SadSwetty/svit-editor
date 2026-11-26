@@ -20,6 +20,9 @@ inline float f_floor(float x) { return floor(x); }
 inline float f_exp(float x) { return exp(x); }
 inline bool f_finite(float x) { return isfinite(x); }
 inline float f_ceil(float x) { return ceil(x); }
+inline float f_sin(float x) { return sin(x); }
+inline float f_cos(float x) { return cos(x); }
+inline float f_abs(float x) { return fabs(x); }
 #else
 #include <cmath>
 #include <cstdint>
@@ -37,6 +40,9 @@ inline float f_floor(float x) { return std::floor(x); }
 inline float f_exp(float x) { return std::exp(x); }
 inline bool f_finite(float x) { return std::isfinite(x); }
 inline float f_ceil(float x) { return std::ceil(x); }
+inline float f_sin(float x) { return std::sin(x); }
+inline float f_cos(float x) { return std::cos(x); }
+inline float f_abs(float x) { return std::fabs(x); }
 #endif
 
 inline float fmn(float a, float b) { return a < b ? a : b; }
@@ -67,6 +73,9 @@ struct KParams {
     float sigmaPix, sRho, sRho1, toneS, toneM, toneH;
     float lat1sp, lat2sp; int lat1ox, lat1oy, lat2ox, lat2oy;
     float mix, bp, wp;
+    // lens
+    int lensOn, frameMode, pad5, pad6;
+    float lcx, lcy, lRn, lRs, lK, lS, lCA, lBlur, lSwirl, lTilt, lVig, fHalfW, fHalfH, fRc, fSoft, lHalfH;
     // halation
     float bgTh, strength, blueComp, halT;
     float wc[3];
@@ -196,15 +205,78 @@ inline int srcIndex(CONSTP KParams& k, int x, int y) {   // піксель ка�
     return sy * k.srcRow + sx * 4;
 }
 
+// ---- Lens (як lensSample/lensMask у svitfilm_core.h)
+inline float srcAtG(DEVC float* src, CONSTP KParams& k, int x, int y, int c) {
+    float v = src[srcIndex(k, icl(x, 0, k.w - 1), icl(y, 0, k.h - 1)) + c];
+    return f_finite(v) ? v : 0.0f;
+}
+inline float lensTapG(DEVC float* src, DEVC float* T, CONSTP KParams& k, float sx, float sy, int c) {
+    sx -= 0.5f; sy -= 0.5f;
+    float fx = f_floor(sx), fy = f_floor(sy);
+    int x0 = (int)fx, y0 = (int)fy; float ux = sx - fx, uy = sy - fy;
+    float a = srcAtG(src, k, x0, y0, c), b = srcAtG(src, k, x0 + 1, y0, c);
+    float cc = srcAtG(src, k, x0, y0 + 1, c), d = srcAtG(src, k, x0 + 1, y0 + 1, c);
+    float v0 = a + (b - a) * ux, v1 = cc + (d - cc) * ux;
+    float v = v0 + (v1 - v0) * uy;
+    return (v >= -0.1f && v <= 1.1f) ? lutAt(T, k, G_DEC, v) : decodeTFG(v, k.input);
+}
+inline void lensSampleG(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, int y, THR float* a) {
+    float px = (float)x + 0.5f - k.lcx, py = (float)y + 0.5f - k.lcy;
+    float nx = px / k.lRn, ny = py / k.lRn, r2 = nx * nx + ny * ny, r = f_sqrt(r2);
+    float f = k.lS * (1.0f + k.lK * r2) * k.lRs / k.lRn;
+    float e = fcl((r - 0.25f) / 0.75f, 0.0f, 1.0f); e = e * e * (3.0f - 2.0f * e);
+    float be = k.lBlur * e * e;
+    float at = fcl((f_abs(py) / k.lHalfH - 0.15f) / 0.75f, 0.0f, 1.0f); at = at * at * (3.0f - 2.0f * at);
+    float bt = k.lTilt * at;
+    float b = f_sqrt(be * be + bt * bt);
+    float sw = b > 0.0f ? k.lSwirl * be / b : 0.0f;
+    float tx = 1.0f, ty = 0.0f; if (r > 1e-6f) { tx = -ny / r; ty = nx / r; }
+    int n = b < 0.6f ? 1 : imn(24, imx(10, (int)(b * 0.7f)));
+    float rot = (float)(hash3((uint)x, (uint)y, 991u) >> 8) * (6.2831853f / 16777216.0f);
+    float acc[3] = {0.0f, 0.0f, 0.0f};
+    for (int i = 0; i < n; ++i) {
+        float ux = 0.0f, uy = 0.0f;
+        if (n > 1) { float ang = (float)i * 2.39996323f + rot, rad = f_sqrt(((float)i + 0.5f) / (float)n); ux = f_cos(ang) * rad; uy = f_sin(ang) * rad; }
+        float ox = tx * ux * b + ty * uy * b * (1.0f - sw), oy = ty * ux * b - tx * uy * b * (1.0f - sw);
+        for (int c = 0; c < 3; ++c) {
+            float fc = f * (c == 0 ? 1.0f + k.lCA : (c == 2 ? 1.0f - k.lCA : 1.0f));
+            acc[c] += lensTapG(src, T, k, k.lcx + (px + ox) * fc + (float)k.dx, k.lcy + (py + oy) * fc + (float)k.dy, c);
+        }
+    }
+    for (int c = 0; c < 3; ++c) a[c] = acc[c] / (float)n;
+}
+inline float lensMaskG(CONSTP KParams& k, int x, int y) {
+    float px = (float)x + 0.5f - k.lcx, py = (float)y + 0.5f - k.lcy, m = 1.0f;
+    if (k.lVig > 0.0f) {
+        float nx = px / k.lRn, ny = py / k.lRn, q = 1.0f / (1.0f + 1.4f * (nx * nx + ny * ny));
+        m *= 1.0f - k.lVig * (1.0f - q * q);
+    }
+    if (k.frameMode > 0) {
+        float dd;
+        if (k.frameMode == 1) dd = f_sqrt(px * px + py * py) - k.fHalfH;
+        else {
+            float qx = f_abs(px) - (k.fHalfW - k.fRc), qy = f_abs(py) - (k.fHalfH - k.fRc);
+            float mx = fmx(qx, 0.0f), my = fmx(qy, 0.0f);
+            dd = f_sqrt(mx * mx + my * my) + fmn(fmx(qx, qy), 0.0f) - k.fRc;
+        }
+        float t = fcl((dd + k.fSoft) / k.fSoft, 0.0f, 1.0f);
+        m *= 1.0f - t * t * (3.0f - 2.0f * t);
+    }
+    return m;
+}
+
 // вхід → сцена-лінійна експозиція (як stage1 у svitfilm_core.h)
 inline void stage1G(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, int y, THR float* o) {
+    float a[3], L[3];
+    if (k.lensOn != 0) lensSampleG(src, T, k, x, y, a);
+    else {
     int yy = icl(y + k.dy, 0, k.h - 1), xx = icl(x + k.dx, 0, k.w - 1);
     int si = srcIndex(k, xx, yy);
-    float a[3], L[3];
     for (int c = 0; c < 3; ++c) {
         float v = src[si + c];
         if (!f_finite(v)) v = 0.0f;
         a[c] = (v >= -0.1f && v <= 1.1f) ? lutAt(T, k, G_DEC, v) : decodeTFG(v, k.input);
+    }
     }
     mul9(k.Min, a, L);
     if (k.dispIn != 0)
@@ -216,6 +288,7 @@ inline void stage1G(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, in
         float t = fcl((r - 0.45f) / 0.8f, 0.0f, 1.0f);
         vig = 1.0f - k.vignette * 0.85f * t * t * (3.0f - 2.0f * t);
     }
+    if (k.lensOn != 0) vig *= lensMaskG(k, x, y);
     for (int c = 0; c < 3; ++c) o[c] = fmx(L[c], 0.0f) * k.ev * k.wb[c] * vig;
     if (k.leakOn != 0) {
         float I = leakAtG(k.leakPos, k.roll, x, y, k.w, k.h, k.leakT);

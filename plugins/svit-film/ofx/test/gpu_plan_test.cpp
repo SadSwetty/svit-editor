@@ -49,6 +49,12 @@ int main() {
     P = Params(); P.leak = 1; P.frame = 7; P.vignette = 0.5; P.weave = 1; cmp("leak vignette weave", P);
     P = Params(); P.age = 15; P.storage = 2; P.cross = 70; cmp("expired cross", P);
     P = Params(); P.grainOn = true; P.originX = 37; P.originY = 11; cmp("grain origin", P);
+    for (int i = 0; i < (int)lensPresets().size(); ++i) {
+        const auto& L = lensPresets()[i]; Params Q; Q.lensOn = true; Q.distortion = L.dist; Q.lensZoom = L.zoom; Q.chromAb = L.ca;
+        Q.edgeBlur = L.blur; Q.swirl = L.swirl; Q.tiltShift = L.tilt; Q.lensVig = L.vig; Q.frameMode = L.frame; Q.frameSize = L.fsize;
+        Q.frameSoft = L.fsoft; Q.weave = 0.5; Q.frame = 3; cmp(L.name, Q);
+    }
+    { Params Q; Q.lensOn = true; Q.distortion = 60; Q.halOn = true; Q.bloom = 0.5; Q.grainOn = true; cmp("lens + spatial", Q); }
     for (int i = 1; i <= (int)looks().size(); ++i) { Params Q; Q.frame = 5; applyLook(Q, i); cmp(looks()[i - 1].name, Q); }
     Params Q; applyLook(Q, 3); cmp("Neon Rain 1280x720", Q, 1280, 720);
     printf(fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);

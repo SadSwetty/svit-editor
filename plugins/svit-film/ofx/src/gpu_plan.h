@@ -71,6 +71,13 @@ inline FramePlan buildPlan(const Params& P, int w, int h) {
     k.dx = (int)std::lround(((hash3(seed, 1, 3) >> 8) / 16777216.0f - 0.5f) * 2.0f * P.weave * 3.0f * sc);
     k.dy = (int)std::lround(((hash3(seed, 2, 5) >> 8) / 16777216.0f - 0.5f) * 2.0f * P.weave * 2.0f * sc);
     k.vignette = (float)P.vignette;
+    {
+        const LensK L = makeLens(P, w, h);
+        k.lensOn = lensActive(P) ? 1 : 0; k.frameMode = L.frameMode;
+        k.lcx = L.cx; k.lcy = L.cy; k.lRn = L.Rn; k.lRs = L.Rs; k.lK = L.K; k.lS = L.S; k.lCA = L.CA; k.lBlur = L.blur;
+        k.lSwirl = L.swirl; k.lTilt = L.tilt; k.lVig = L.vig; k.fHalfW = L.fHalfW; k.fHalfH = L.fHalfH; k.fRc = L.fRc;
+        k.fSoft = L.fSoft; k.lHalfH = L.halfH;
+    }
     for (int c = 0; c < 3; ++c) k.monoW[c] = sd.mono[c];
 
     // таблиці входу

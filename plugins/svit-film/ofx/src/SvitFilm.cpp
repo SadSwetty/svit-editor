@@ -198,6 +198,29 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineDouble(ps, "temp", "Temperature", 0.0, -1.0, 1.0, "gExposure", "Warmer / cooler light on the film.");
     defineDouble(ps, "tint", "Tint", 0.0, -1.0, 1.0, "gExposure", "Greener / more magenta light on the film.");
 
+    defineGroup(ps, "gLens", "Lens");
+    defineBool(ps, "lensOn", "Enabled", 0, "gLens", "Vintage lens: distortion, fringes, soft swirly edges, black frames.");
+    {
+        static std::vector<std::string> st = {"Custom"};
+        static std::vector<const char*> nm;
+        if (nm.empty()) { for (auto& l : svitfilm::lensPresets()) st.push_back(l.name); for (auto& x : st) nm.push_back(x.c_str()); }
+        defineChoice(ps, "lensProfile", "Lens", nm.data(), (int)nm.size(), 0, "gLens", "Pick a lens - the sliders below are set, then tweak.");
+    }
+    defineDouble(ps, "distortion", "Distortion", 0.0, -100.0, 100.0, "gLens", "+ barrel / fisheye bulge, - pincushion.");
+    defineDouble(ps, "lensZoom", "Zoom", 100.0, 50.0, 200.0, "gLens", "Scale the picture inside the lens (crop in / out).");
+    defineDouble(ps, "chromAb", "Chromatic Aberration", 0.0, 0.0, 100.0, "gLens", "Red/blue colour fringes toward the edges.");
+    defineDouble(ps, "edgeBlur", "Edge Softness", 0.0, 0.0, 100.0, "gLens", "Corners go soft like old glass.");
+    defineDouble(ps, "swirl", "Swirl", 0.0, 0.0, 100.0, "gLens", "Edge blur spins around the centre (Helios / Petzval).");
+    defineDouble(ps, "tiltShift", "Tilt-Shift", 0.0, 0.0, 100.0, "gLens", "Blur top and bottom, sharp band in the middle.");
+    defineDouble(ps, "lensVig", "Lens Vignette", 0.0, 0.0, 100.0, "gLens", "Natural light falloff of the lens.");
+    {
+        static const char* fr[] = {"None", "Round (Fisheye)", "Film Gate (rounded)", "4:3 Gate"};
+        defineChoice(ps, "frameMode", "Black Frame", fr, 4, 0, "gLens", "Black mask like a real lens or camera gate.");
+    }
+    defineDouble(ps, "frameSize", "Frame Size", 100.0, 30.0, 150.0, "gLens", "Size of the black frame opening.");
+    defineDouble(ps, "frameSoft", "Frame Softness", 20.0, 0.0, 100.0, "gLens", "Soft or hard edge of the frame.");
+    defineLabel(ps, "lensInfo", "About", "Pick a lens or set the sliders.", "gLens");
+
     defineGroup(ps, "gFilm", "Film");
     defineChoice(ps, "stock", "Profile", stockNames.data(), kNumStocks, 1, "gFilm", "Camera film stock.");
     defineDouble(ps, "pushPull", "Push/Pull (Ev)", 0.0, -2.0, 3.0, "gFilm",
@@ -347,12 +370,28 @@ void applyLookParams(OfxImageEffectHandle inst) {
     updateStatus(inst);
 }
 
+void applyLensPreset(OfxImageEffectHandle inst) {
+    if (!gParam->paramSetValue) return;
+    int i = getI(inst, "lensProfile", 0);
+    if (i <= 0 || i > (int)svitfilm::lensPresets().size()) return;
+    const auto& L = svitfilm::lensPresets()[i - 1];
+    OfxParamSetHandle ps; OfxParamHandle h;
+    gEffect->getParamSet(inst, &ps);
+    auto setD = [&](const char* n, double v) { if (gParam->paramGetHandle(ps, n, &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, v); };
+    auto setI = [&](const char* n, int v) { if (gParam->paramGetHandle(ps, n, &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, v); };
+    setI("lensOn", 1);
+    setD("distortion", L.dist); setD("lensZoom", L.zoom); setD("chromAb", L.ca); setD("edgeBlur", L.blur); setD("swirl", L.swirl);
+    setD("tiltShift", L.tilt); setD("lensVig", L.vig); setI("frameMode", L.frame); setD("frameSize", L.fsize); setD("frameSoft", L.fsoft);
+    if (gParam->paramGetHandle(ps, "lensInfo", &h, nullptr) == kOfxStatOK) gParam->paramSetValue(h, L.info);
+}
+
 OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     char* type = nullptr; char* name = nullptr; char* reason = nullptr;
     gProp->propGetString(inArgs, kOfxPropType, 0, &type);
     gProp->propGetString(inArgs, kOfxPropName, 0, &name);
     gProp->propGetString(inArgs, kOfxPropChangeReason, 0, &reason);
     if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
+    if (!std::strcmp(name, "lensProfile") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) applyLensPreset(inst);
     if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
     if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
     if ((!std::strcmp(name, "look") || !std::strcmp(name, "lookAmount") || !std::strcmp(name, "lookApplyAll")) && (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
@@ -450,6 +489,10 @@ svitfilm::Params readParams(OfxImageEffectHandle inst, OfxTime t) {
     p.leak = getD(inst, "leak", t); p.leakHue = getD(inst, "leakHue", t); p.leakSpeed = getD(inst, "leakSpeed", t);
     p.leakPos = getI(inst, "leakPos", t); p.cross = getD(inst, "cross", t); p.flicker = getD(inst, "flicker", t);
     p.mix = getD(inst, "mix", t);
+    p.lensOn = getI(inst, "lensOn", t) != 0; p.distortion = getD(inst, "distortion", t); p.lensZoom = getD(inst, "lensZoom", t);
+    p.chromAb = getD(inst, "chromAb", t); p.edgeBlur = getD(inst, "edgeBlur", t); p.swirl = getD(inst, "swirl", t);
+    p.tiltShift = getD(inst, "tiltShift", t); p.lensVig = getD(inst, "lensVig", t); p.frameMode = getI(inst, "frameMode", t);
+    p.frameSize = getD(inst, "frameSize", t); p.frameSoft = getD(inst, "frameSoft", t);
     p.fastPreview = getI(inst, "fastPreview", t) != 0;
     int look = getI(inst, "look", t);
     if (look > 0 && !getI(inst, "lookApplyAll", t)) p = svitfilm::lookPlusOffsets(p, look, getD(inst, "lookAmount", t) / 100.0);
