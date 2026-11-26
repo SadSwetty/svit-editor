@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "note": "Leads only. Not inspected, not verified, no data taken from them. Check license before use.",
+  "sources": [
+    {
+      "id": "kodak_motion_stocks",
+      "url": "https://www.kodak.com/en/motion/products/camera-films/",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "kodak_500t_techdata",
+      "url": "https://www.kodak.com/content/products-brochures/Film/VISION3-500T-Color-Negative-Film-7219-TECHNICAL-DATA.pdf",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "fujifilm_pro_data_guide",
+      "url": "https://asset.fujifilm.com/www/us/files/2020-03/d52487c5c6f84e7f935c299491c5c1ff/ProfessionalFilmDataGuide.pdf",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "dehancer_methodology",
+      "url": "https://www.dehancer.com/learn/articles/how-we-build-film-profiles",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "spektrafilm",
+      "url": "https://github.com/andreavolpato/spektrafilm",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "darktable_spektrafilm",
+      "url": "https://github.com/darktable-org/darktable-spektrafilm",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "film_scan_calibration",
+      "url": "https://github.com/OwlMightyCh/film-scan-calibration/blob/main/DATASHEETS.md",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "openfilm",
+      "url": "https://github.com/xanderlzy/OpenFilm",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "spektrafilm_medium_editor",
+      "url": "https://github.com/alchemy-color/spektrafilm-medium-editor",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    },
+    {
+      "id": "opticslab_datasheets",
+      "url": "https://www.theopticslab.com/datasheets",
+      "status": "unverified_lead",
+      "license": null,
+      "retrieved": null,
+      "checksum": null
+    }
+  ]
+}

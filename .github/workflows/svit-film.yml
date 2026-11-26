@@ -4,7 +4,7 @@ name: svit-film
 on:
   push:
     branches: [main]
-    paths: ["plugins/svit-film/ofx/**"]
+    paths: ["plugins/svit-film/**"]
   workflow_dispatch:
 permissions:
   contents: write
@@ -22,6 +22,12 @@ jobs:
           pip install ziglang
           sudo apt-get update -qq && sudo apt-get install -y -qq llvm >/dev/null
           ls /usr/bin/llvm-lipo* /usr/bin/llvm-otool* 2>/dev/null || true
+      - name: Profiles and engine tests
+        run: |
+          cd plugins/svit-film
+          python3 tools/gen_profiles.py --check
+          g++ -std=c++17 -O2 -Iofx/src ofx/test/engine_test.cpp -o /tmp/engine_test -lpthread
+          /tmp/engine_test
       - name: Build
         run: bash plugins/svit-film/ofx/build_cross.sh
       - name: Sign (ad-hoc)

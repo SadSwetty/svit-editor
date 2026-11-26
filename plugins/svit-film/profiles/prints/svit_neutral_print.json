@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "id": "svit_neutral_print",
+  "name": "Svit Neutral Print (reference)",
+  "kind": "print_stock",
+  "stock_codes": [],
+  "class": "color_print",
+  "process": "none",
+  "status": "reference",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "rms_granularity": null,
+  "mtf": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "synthetic reference print",
+    "gamma": [
+      2.7,
+      2.7,
+      2.7
+    ],
+    "base_fog_density": [
+      0.06,
+      0.06,
+      0.06
+    ],
+    "dmax_density": 4.0,
+    "toe_width": 0.2,
+    "shoulder_width": 0.25
+  }
+}

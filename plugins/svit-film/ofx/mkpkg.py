@@ -121,6 +121,7 @@ def xar(files, out_path):
 def main():
     args = sys.argv[1:]
     mkbom = "mkbom"
+    logo = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "logo", "svit-film-installer-150.png")
     if "--mkbom" in args:
         i = args.index("--mkbom"); mkbom = args[i + 1]; del args[i:i + 2]
     bundle, version, out = args
@@ -153,6 +154,8 @@ def main():
         dist = ('<?xml version="1.0" encoding="utf-8"?>\n'
                 '<installer-gui-script minSpecVersion="2">\n'
                 '  <title>Svit Film %s</title>\n'
+                '  <background file="logo.png" alignment="bottomleft" scaling="none"/>\n'
+                '  <background-darkAqua file="logo.png" alignment="bottomleft" scaling="none"/>\n'
                 '  <welcome file="welcome.html" mime-type="text/html"/>\n'
                 '  <conclusion file="conclusion.html" mime-type="text/html"/>\n'
                 '  <options customize="never" require-scripts="false" hostArchitectures="arm64,x86_64"/>\n'
@@ -167,8 +170,9 @@ def main():
         style = ("<style>body{font-family:-apple-system,Helvetica;font-size:13px;line-height:1.5}"
                  "h2{font-size:17px;margin:0 0 8px}code{font-size:12px}</style>")
         welcome = ("<html><head><meta charset='utf-8'>%s</head><body><h2>Svit Film %s</h2>"
-                   "<p>Плагін плівки для DaVinci Resolve: 8 плівок, halation, bloom, зерно, віньєтка, "
-                   "дрижання кадру.</p><p>Перед встановленням закрий DaVinci Resolve.</p>"
+                   "<p>Плагін плівки для DaVinci Resolve: 20 плівок зйомки, друк на 2383 / 2393 / 3513DI, "
+                   "halation, bloom, зерно в щільності.</p>"
+                   "<p><i>Профілі плівок поки експериментальні: криві оцінені, а не виміряні.</i></p><p>Перед встановленням закрий DaVinci Resolve.</p>"
                    "<p>Плагін ляже в <code>/Library/OFX/Plugins</code>.</p></body></html>" % (style, version))
         concl = ("<html><head><meta charset='utf-8'>%s</head><body><h2>Готово</h2>"
                  "<p>1. Відкрий DaVinci Resolve.</p>"
@@ -178,9 +182,10 @@ def main():
                  "<p>Нові версії: кнопка <b>Update Svit Film</b> внизу налаштувань плагіна.</p>"
                  "</body></html>" % style)
 
+        logo_b = open(logo, "rb").read()
         xar([
             ("Distribution", dist),
-            ("Resources", [("uk.lproj", [("welcome.html", welcome.encode()), ("conclusion.html", concl.encode())]),
+            ("Resources", [("logo.png", logo_b),("uk.lproj", [("welcome.html", welcome.encode()), ("conclusion.html", concl.encode())]),
                            ("en.lproj", [("welcome.html", welcome.encode()), ("conclusion.html", concl.encode())])]),
             ("svitfilm.pkg", [("PackageInfo", pkginfo), ("Bom", bom), ("Payload", payload), ("Scripts", scripts)]),
         ], out)

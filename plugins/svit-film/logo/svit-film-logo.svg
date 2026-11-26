@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- Svit Film — логотип у стилі іконки Svit Editor: сіра картка, товстий контур, синя тінь, мітка SVIT/… -->
+  <defs>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FF7A1A" stop-opacity="0.85"/>
+      <stop offset="0.45" stop-color="#FF5A1F" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FF3D1F" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card"><rect x="86" y="86" width="820" height="820" rx="160"/></clipPath>
+  </defs>
+
+  <!-- тінь і картка -->
+  <rect x="118" y="118" width="820" height="820" rx="160" fill="#2F3CFF"/>
+  <rect x="86" y="86" width="820" height="820" rx="160" fill="#D5D3CD"/>
+
+  <g clip-path="url(#card)">
+    <!-- лампа і сяйво (halation) -->
+    <circle cx="760" cy="300" r="190" fill="url(#glow)"/>
+    <g stroke="#141414" stroke-width="12" stroke-linecap="round">
+      <line x1="760" y1="196" x2="760" y2="222"/>
+      <line x1="842" y1="230" x2="824" y2="248"/>
+      <line x1="866" y1="300" x2="840" y2="300"/>
+      <line x1="678" y1="230" x2="696" y2="248"/>
+    </g>
+    <circle cx="760" cy="300" r="46" fill="#FFC24A" stroke="#141414" stroke-width="13"/>
+
+    <!-- плівка, яку тримають проти світла -->
+    <g transform="rotate(-16 600 520)">
+      <rect x="420" y="452" width="390" height="146" rx="6" fill="#FBFAF6" stroke="#141414" stroke-width="13"/>
+      <g fill="#141414">
+        <rect x="440" y="466" width="22" height="16"/><rect x="490" y="466" width="22" height="16"/>
+        <rect x="540" y="466" width="22" height="16"/><rect x="590" y="466" width="22" height="16"/>
+        <rect x="640" y="466" width="22" height="16"/><rect x="690" y="466" width="22" height="16"/>
+        <rect x="740" y="466" width="22" height="16"/>
+        <rect x="440" y="568" width="22" height="16"/><rect x="490" y="568" width="22" height="16"/>
+        <rect x="540" y="568" width="22" height="16"/><rect x="590" y="568" width="22" height="16"/>
+        <rect x="640" y="568" width="22" height="16"/><rect x="690" y="568" width="22" height="16"/>
+        <rect x="740" y="568" width="22" height="16"/>
+      </g>
+      <rect x="446" y="496" width="100" height="58" fill="#E2F55C" stroke="#141414" stroke-width="10"/>
+      <rect x="562" y="496" width="100" height="58" fill="#FF9A3D" stroke="#141414" stroke-width="10"/>
+      <rect x="678" y="496" width="100" height="58" fill="#CFC6F5" stroke="#141414" stroke-width="10"/>
+    </g>
+
+    <!-- чоловічок -->
+    <g fill="none" stroke="#141414" stroke-width="13" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="300" cy="372" r="56" fill="#FBFAF6"/>
+      <path d="M248 352 Q262 300 312 310 Q352 316 356 356" fill="#141414"/>
+      <path d="M282 392 Q300 408 320 392"/>
+      <line x1="300" y1="428" x2="300" y2="630"/>
+      <path d="M300 470 L382 462 L446 540"/>
+      <path d="M300 482 L236 540 L270 596"/>
+      <path d="M300 630 L250 744"/>
+      <path d="M300 630 L360 744"/>
+      <path d="M232 744 L262 744"/>
+      <path d="M350 744 L384 744"/>
+    </g>
+    <circle cx="284" cy="370" r="7" fill="#141414"/>
+    <circle cx="318" cy="370" r="7" fill="#141414"/>
+
+    <!-- іскри -->
+    <g fill="#141414">
+      <path d="M560 210 l10 32 l32 10 l-32 10 l-10 32 l-10 -32 l-32 -10 l32 -10 z"/>
+      <path d="M640 690 l7 22 l22 7 l-22 7 l-7 22 l-7 -22 l-22 -7 l22 -7 z"/>
+      <path d="M860 470 l7 22 l22 7 l-22 7 l-7 22 l-7 -22 l-22 -7 l22 -7 z"/>
+    </g>
+
+    <!-- лінійка -->
+    <g stroke="#141414" stroke-width="7" stroke-linecap="round">
+      <line x1="170" y1="790" x2="820" y2="790"/>
+      <line x1="180" y1="772" x2="180" y2="790"/><line x1="220" y1="778" x2="220" y2="790"/>
+      <line x1="260" y1="778" x2="260" y2="790"/><line x1="300" y1="772" x2="300" y2="790"/>
+      <line x1="340" y1="778" x2="340" y2="790"/><line x1="380" y1="778" x2="380" y2="790"/>
+      <line x1="420" y1="772" x2="420" y2="790"/><line x1="460" y1="778" x2="460" y2="790"/>
+      <line x1="500" y1="778" x2="500" y2="790"/><line x1="540" y1="772" x2="540" y2="790"/>
+      <line x1="580" y1="778" x2="580" y2="790"/><line x1="620" y1="778" x2="620" y2="790"/>
+      <line x1="660" y1="772" x2="660" y2="790"/><line x1="700" y1="778" x2="700" y2="790"/>
+      <line x1="740" y1="778" x2="740" y2="790"/><line x1="780" y1="772" x2="780" y2="790"/>
+    </g>
+
+    <!-- мітка -->
+    <rect x="176" y="176" width="300" height="74" fill="#141414"/>
+    <text x="326" y="229" text-anchor="middle" font-family="DejaVu Sans Mono, Menlo, monospace" font-weight="bold"
+          font-size="46" letter-spacing="2" fill="#FBFAF6">SVIT/FILM</text>
+  </g>
+
+  <!-- контур картки -->
+  <rect x="86" y="86" width="820" height="820" rx="160" fill="none" stroke="#141414" stroke-width="16"/>
+</svg>

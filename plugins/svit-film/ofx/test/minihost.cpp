@@ -77,6 +77,11 @@ static OfxStatus paramGetValueAtTime(OfxParamHandle h, OfxTime, ...) {
         if (ov != gOverride.end()) i = (int)ov->second; *va_arg(ap, int*) = i;
     } else { va_end(ap); return kOfxStatErrBadHandle; }
     va_end(ap); return kOfxStatOK; }
+static std::map<std::string, std::string> gStrings;
+static OfxStatus paramSetValue(OfxParamHandle h, ...) {
+    Param* p = (Param*)h; va_list ap; va_start(ap, h);
+    if (p->type == kOfxParamTypeString) gStrings[p->name] = va_arg(ap, const char*);
+    va_end(ap); return kOfxStatOK; }
 static OfxParameterSuiteV1 gParamSuite;
 
 // ---- ефект і кліпи
@@ -122,6 +127,7 @@ int main(int argc, char** argv) {
     FILE* f = fopen(argv[4], "rb"); if (fread(gSrc.data(), 4, gSrc.size(), f) != gSrc.size()) return 3; fclose(f);
     memset(&gParamSuite, 0, sizeof gParamSuite); gParamSuite.paramDefine = paramDefine;
     gParamSuite.paramGetHandle = paramGetHandle; gParamSuite.paramGetValueAtTime = paramGetValueAtTime;
+    gParamSuite.paramSetValue = paramSetValue;
     memset(&gEffSuite, 0, sizeof gEffSuite); gEffSuite.getPropertySet = getPropertySet; gEffSuite.getParamSet = getParamSet;
     gEffSuite.clipDefine = clipDefine; gEffSuite.clipGetHandle = clipGetHandle; gEffSuite.clipGetImage = clipGetImage;
     gEffSuite.clipReleaseImage = clipReleaseImage;
@@ -151,6 +157,7 @@ int main(int argc, char** argv) {
     PropSet ra; setD((OfxPropertySetHandle)&ra, kOfxPropTime, 0, 12.0);
     int win[4] = {0, 0, W, H}; setIN((OfxPropertySetHandle)&ra, kOfxImageEffectPropRenderWindow, 4, win);
     if (run(kOfxImageEffectActionRender, inst, (OfxPropertySetHandle)&ra)) return 10;
+    for (auto& kv : gStrings) printf("string %s = %s\n", kv.first.c_str(), kv.second.c_str());
     run(kOfxActionDestroyInstance, inst, nullptr); run(kOfxActionUnload, nullptr, nullptr);
     f = fopen(argv[5], "wb"); fwrite(gDst.data(), 4, gDst.size(), f); fclose(f);
     return 0;

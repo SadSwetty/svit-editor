@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "kodak_2383",
+  "name": "Kodak VISION Color Print 2383",
+  "kind": "print_stock",
+  "stock_codes": [
+    "2383"
+  ],
+  "class": "color_print",
+  "process": "ECP-2",
+  "status": "experimental",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "rms_granularity": null,
+  "mtf": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "print gamma/Dmax are engineering seeds, not digitized curves",
+    "gamma": [
+      2.75,
+      2.7,
+      2.6
+    ],
+    "base_fog_density": [
+      0.06,
+      0.06,
+      0.08
+    ],
+    "dmax_density": 4.0,
+    "toe_width": 0.2,
+    "shoulder_width": 0.25
+  }
+}

@@ -7,10 +7,11 @@ VER="$(tr -d '[:space:]' < VERSION)"
 [ -d openfx/include ] || git clone -q --depth 1 https://github.com/AcademySoftwareFoundation/openfx openfx
 B="build/SvitFilm.ofx.bundle"
 rm -rf build && mkdir -p "$B/Contents/MacOS" "$B/Contents/Resources"
-clang++ -std=c++17 -O3 -ffast-math -fvisibility=hidden -bundle \
+clang++ -std=c++17 -O3 -ffast-math -fno-finite-math-only -fvisibility=hidden -bundle \
   -arch arm64 -arch x86_64 -mmacosx-version-min=11.0 \
   -DSVIT_VERSION="\"$VER\"" -Iopenfx/include -Isrc src/SvitFilm.cpp -o "$B/Contents/MacOS/SvitFilm.ofx"
 cp res/update.sh "$B/Contents/Resources/" && chmod +x "$B/Contents/Resources/update.sh"
+cp ../logo/svit-film-icon-256.png "$B/Contents/Resources/com.sadsvit.SvitFilm.png"
 cat > "$B/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

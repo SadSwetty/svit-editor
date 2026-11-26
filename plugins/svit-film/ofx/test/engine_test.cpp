@@ -1,0 +1,173 @@
+// Тести ядра Svit Film 2 (без DaVinci): g++ -std=c++17 -O2 -Isrc test/engine_test.cpp && ./a.out
+#include <cmath>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+#include "svitfilm_core.h"
+
+using namespace svitfilm;
+static int fails = 0;
+#define CHECK(c, ...) do { if (!(c)) { ++fails; printf("FAIL %s:%d: ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
+
+static std::vector<float> run(const std::vector<float>& src, int w, int h, const Params& P) {
+    std::vector<float> dst(src.size(), -1.0f);
+    render(src.data(), w * 4, dst.data(), w * 4, w, h, P);
+    return dst;
+}
+static std::vector<float> ramp(int w, int h, float lo = 0, float hi = 1) {   // по x — рівень, по y — колір
+    std::vector<float> s((size_t)w * h * 4);
+    for (int y = 0; y < h; ++y)
+        for (int x = 0; x < w; ++x) {
+            float v = lo + (hi - lo) * x / (w - 1);
+            float* p = &s[((size_t)y * w + x) * 4];
+            int k = y % 4;
+            p[0] = k == 1 ? v * 0.3f : v; p[1] = k == 2 ? v * 0.4f : v; p[2] = k == 3 ? v * 0.5f : v; p[3] = 1;
+        }
+    return s;
+}
+static Params plain() {   // без ефектів, що додають просторові зміни
+    Params P; P.grainOn = false; P.halation = 0; P.bloom = 0; P.vignette = 0; P.weave = 0; return P;
+}
+
+int main() {
+    const int W = 256, H = 8;
+    auto src = ramp(W, H);
+
+    // 1) нейтральний обхід: дисплейний вхід, плівка і друк вимкнені → тотожність
+    for (int in : {IN_REC709, IN_REC2020, IN_APPLE20}) {
+        Params P = plain(); P.input = in; P.filmOn = false; P.printOn = false;
+        P.output = in == IN_REC2020 ? OUT_REC2020 : in == IN_APPLE20 ? OUT_APPLE20 : OUT_REC709;
+        auto d = run(src, W, H, P);
+        float err = 0;
+        for (size_t i = 0; i < d.size(); ++i) if (i % 4 != 3) err = std::max(err, std::fabs(d[i] - src[i]));
+        CHECK(err < 0.01f, "identity input %d: max error %.4f", in, err);
+        printf("identity %-16s max err %.5f\n", kInputNames[in], err);
+    }
+
+    // 2) монотонність сірої шкали для кожної плівки і кожного друку
+    for (int s = 0; s < kNumStocks; ++s)
+        for (int pr = 0; pr <= kNumPrints; ++pr) {
+            Params P = plain(); P.input = IN_ACESCCT; P.stock = s; P.print = pr;
+            auto g = ramp(W, 1, 0.0f, 1.0f);
+            auto d = run(g, W, 1, P);
+            float prev = -1; bool ok = true;
+            for (int x = 0; x < W; ++x) {
+                float Y = 0.2126f * d[x * 4] + 0.7152f * d[x * 4 + 1] + 0.0722f * d[x * 4 + 2];
+                if (Y < prev - 1e-4f) ok = false;
+                prev = Y;
+            }
+            CHECK(ok, "non-monotonic grey ramp: %s / print %d", kStocks[s].name, pr);
+        }
+
+    // 3) 18% сірий (ACEScct) → калібрований сірий для нейтральної плівки
+    {
+        float cct = (std::log2(0.18f) + 9.72f) / 17.52f;
+        std::vector<float> g(16 * 4, cct); for (int i = 3; i < 64; i += 4) g[i] = 1;
+        Params P = plain(); P.input = IN_ACESCCT; P.filmOn = false; P.printOn = false;
+        auto d = run(g, 16, 1, P);
+        float want = encodeTF(kTargetY, OUT_REC709);
+        CHECK(std::fabs(d[0] - want) < 0.01f && std::fabs(d[1] - want) < 0.01f && std::fabs(d[2] - want) < 0.01f,
+              "mid grey %.3f %.3f %.3f vs %.3f", d[0], d[1], d[2], want);
+        for (int s = 0; s < 4; ++s) {   // VISION3 без балансу: сірий має лишатися майже нейтральним
+            P.filmOn = true; P.printOn = true; P.stock = s; P.print = 0;
+            auto e = run(g, 16, 1, P);
+            float spread = std::max({e[0], e[1], e[2]}) - std::min({e[0], e[1], e[2]});
+            CHECK(spread < 0.02f, "%s grey spread %.3f", kStocks[s].name, spread);
+        }
+    }
+
+    // 4) скінченні значення на екстремальних входах з усіма ефектами
+    {
+        std::vector<float> x((size_t)64 * 32 * 4);
+        const float vals[] = {NAN, INFINITY, -INFINITY, -1.0f, 0.0f, 1e6f, 2.0f, 0.5f};
+        for (size_t i = 0; i < x.size(); ++i) x[i] = vals[(i * 7 + i / 13) % 8];
+        for (int in = 0; in < kNumInputs; ++in)
+            for (int s : {0, 13, 14, 18}) {
+                Params P; P.input = in; P.stock = s; P.bloom = 1; P.halation = 3; P.vignette = 1; P.weave = 1;
+                P.devOn = P.compOn = true; P.contrastBoost = 100; P.colorBoost = 100; P.pushPull = 3;
+                P.blacks = 1; P.whites = -1; P.blackPoint = 20; P.whitePoint = 50; P.colorMode = 1;
+                auto d = run(x, 64, 32, P);
+                bool ok = true;
+                for (size_t i = 0; i < d.size(); ++i) if (i % 4 != 3 && !(d[i] >= 0 && d[i] <= 1)) ok = false;
+                CHECK(ok, "non-finite output: input %d stock %d", in, s);
+            }
+    }
+
+    // 5) детермінованість зерна
+    {
+        auto g = ramp(96, 64, 0.2f, 0.8f);
+        Params P = plain(); P.grainOn = true; P.frame = 5;
+        auto a = run(g, 96, 64, P), b = run(g, 96, 64, P);
+        CHECK(a == b, "same frame gives different grain");
+        P.frame = 6; auto c = run(g, 96, 64, P);
+        CHECK(a != c, "grain does not change between frames");
+        P.freezeGrain = true; P.frame = 5; auto e = run(g, 96, 64, P); P.frame = 9; auto f = run(g, 96, 64, P);
+        CHECK(e == f, "frozen grain changes");
+        // зерно не зсуває середнє
+        Params Q = plain(); auto n = run(g, 96, 64, Q);
+        double sa = 0, sn = 0; for (size_t i = 0; i < a.size(); i += 4) { sa += a[i + 1]; sn += n[i + 1]; }
+        double diff = std::fabs(sa - sn) / (a.size() / 4);
+        CHECK(diff < 0.01, "grain shifts mean by %.4f", diff);
+        printf("grain mean shift %.5f\n", diff);
+    }
+
+    // 6) halation/bloom зберігають рівне поле (енергія не з'являється нізвідки)
+    {
+        std::vector<float> g((size_t)128 * 64 * 4, 0.45f);
+        Params P = plain(); auto a = run(g, 128, 64, P);
+        P.halation = 3; P.bloom = 2; auto b = run(g, 128, 64, P);
+        float err = 0; for (size_t i = 0; i < a.size(); ++i) err = std::max(err, std::fabs(a[i] - b[i]));
+        CHECK(err < 0.003f, "halation changes a flat field by %.4f", err);
+        // яскрава точка на темному: halation світить довкола, червоне сильніше
+        std::vector<float> s((size_t)128 * 64 * 4, 0.05f);
+        for (int y = 30; y < 34; ++y) for (int x = 62; x < 66; ++x) for (int c = 0; c < 3; ++c) s[((size_t)y * 128 + x) * 4 + c] = 1.0f;
+        Params Q = plain(); Q.input = IN_ACESCCT; Q.stock = 13; Q.halation = 2;   // CineStill
+        for (size_t i = 0; i < s.size(); i += 4) for (int c = 0; c < 3; ++c) if (s[i + c] == 1.0f) s[i + c] = 0.9f;
+        auto h0 = run(s, 128, 64, plain()), h1 = run(s, 128, 64, Q);
+        Params Q0 = Q; Q0.halation = 0; auto h2 = run(s, 128, 64, Q0);
+        size_t at = ((size_t)32 * 128 + 69) * 4;
+        CHECK(h1[at] > h2[at] + 0.005f && (h1[at] - h2[at]) > (h1[at + 2] - h2[at + 2]),
+              "halation glow missing/red not dominant: R %.3f->%.3f B %.3f->%.3f", h2[at], h1[at], h2[at + 2], h1[at + 2]);
+        (void)h0;
+    }
+
+    // 7) ч/б плівки дають R=G=B; оборотна плівка — щільність падає з експозицією
+    {
+        for (int s : {18, 19}) {
+            Params P = plain(); P.stock = s;
+            auto d = run(src, W, H, P);
+            float e = 0; for (size_t i = 0; i < d.size(); i += 4) e = std::max({e, std::fabs(d[i] - d[i + 1]), std::fabs(d[i + 2] - d[i + 1])});
+            CHECK(e < 1e-5f, "B&W stock %s not neutral (%.5f)", kStocks[s].name, e);
+        }
+        Params P = plain(); Film f = makeFilm(kStocks[14], P, false);
+        CHECK(f.density(1, -0.5f) > f.density(1, 0.5f), "reversal density should fall with exposure");
+        Film n = makeFilm(kStocks[0], P, false);
+        CHECK(n.density(1, -0.5f) < n.density(1, 0.5f), "negative density should rise with exposure");
+    }
+
+    // 8) push: середній сірий після таймінгу друку майже на місці, контраст вищий
+    {
+        float cct0 = (std::log2(0.18f) + 9.72f) / 17.52f, cct1 = (std::log2(0.72f) + 9.72f) / 17.52f;
+        std::vector<float> g = {cct0, cct0, cct0, 1, cct1, cct1, cct1, 1};
+        Params P = plain(); P.input = IN_ACESCCT; P.stock = 0;
+        auto a = run(g, 2, 1, P); P.pushPull = 2; auto b = run(g, 2, 1, P);
+        CHECK(std::fabs(a[1] - b[1]) < 0.02f, "push moves mid grey %.3f -> %.3f", a[1], b[1]);
+        CHECK((b[5] - b[1]) > (a[5] - a[1]), "push should raise contrast");
+    }
+
+    // 9) експозиція: + світліше; blacks/whites діють у своїх зонах
+    {
+        Params P = plain(); P.input = IN_ACESCCT;
+        auto g = ramp(W, 1, 0.2f, 0.7f);
+        auto a = run(g, W, 1, P); P.exposure = 1; auto b = run(g, W, 1, P);
+        CHECK(b[(W / 2) * 4 + 1] > a[(W / 2) * 4 + 1], "exposure + should brighten");
+        Params B = plain(); B.input = IN_ACESCCT; B.blacks = 1; auto c = run(g, W, 1, B);
+        CHECK(c[4 * 4 + 1] > a[4 * 4 + 1] + 0.01f, "blacks + should lift shadows");
+        Params Wt = plain(); Wt.input = IN_ACESCCT; Wt.whites = -1; auto d = run(g, W, 1, Wt);
+        CHECK(d[(W - 2) * 4 + 1] < a[(W - 2) * 4 + 1] - 0.01f, "whites - should darken highlights");
+    }
+
+    printf(fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);
+    return fails ? 1 : 0;
+}

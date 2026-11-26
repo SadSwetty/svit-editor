@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "id": "kodak_2393",
+  "name": "Kodak VISION Premier Color Print 2393",
+  "kind": "print_stock",
+  "stock_codes": [
+    "2393"
+  ],
+  "class": "color_print",
+  "process": "ECP-2",
+  "status": "experimental",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "rms_granularity": null,
+  "mtf": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "print gamma/Dmax are engineering seeds, not digitized curves",
+    "gamma": [
+      2.95,
+      2.9,
+      2.8
+    ],
+    "base_fog_density": [
+      0.06,
+      0.06,
+      0.08
+    ],
+    "dmax_density": 4.2,
+    "toe_width": 0.2,
+    "shoulder_width": 0.25
+  }
+}

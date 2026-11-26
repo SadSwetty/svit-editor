@@ -51,8 +51,8 @@ OfxStatus describe(OfxImageEffectHandle effect) {
     gProp->propSetString(p, kOfxPropShortLabel, 0, "Svit Film");
     gProp->propSetString(p, kOfxPropLongLabel, 0, "Svit Film — film emulation");
     gProp->propSetString(p, kOfxPropPluginDescription, 0,
-                         "Film emulation by SadSvit / Svit Editor: film looks, exposure, halation, bloom, grain, "
-                         "vignette and gate weave.");
+                         "Film emulation by SadSvit: negative -> print density pipeline, 20 camera stocks, 3 print stocks, "
+                         "halation, bloom, density grain. Stock data are experimental estimates, not measurements.");
     gProp->propSetString(p, kOfxImageEffectPluginPropGrouping, 0, "Svit");
     gProp->propSetString(p, kOfxImageEffectPropSupportedContexts, 0, kOfxImageEffectContextFilter);
     gProp->propSetString(p, kOfxImageEffectPropSupportedContexts, 1, kOfxImageEffectContextGeneral);
@@ -75,7 +75,7 @@ OfxPropertySetHandle defineGroup(OfxParamSetHandle ps, const char* name, const c
 }
 
 void defineDouble(OfxParamSetHandle ps, const char* name, const char* label, double def, double mn, double mx,
-                  const char* parent, const char* hint) {
+                  const char* parent, const char* hint, double incr = 0.01, int digits = 2) {
     OfxPropertySetHandle pp;
     gParam->paramDefine(ps, kOfxParamTypeDouble, name, &pp);
     gProp->propSetString(pp, kOfxPropLabel, 0, label);
@@ -86,9 +86,21 @@ void defineDouble(OfxParamSetHandle ps, const char* name, const char* label, dou
     gProp->propSetDouble(pp, kOfxParamPropMax, 0, mx);
     gProp->propSetDouble(pp, kOfxParamPropDisplayMin, 0, mn);
     gProp->propSetDouble(pp, kOfxParamPropDisplayMax, 0, mx);
-    gProp->propSetDouble(pp, kOfxParamPropIncrement, 0, 0.01);
-    gProp->propSetInt(pp, kOfxParamPropDigits, 0, 2);
+    gProp->propSetDouble(pp, kOfxParamPropIncrement, 0, incr);
+    gProp->propSetInt(pp, kOfxParamPropDigits, 0, digits);
     gProp->propSetInt(pp, kOfxParamPropAnimates, 0, 1);
+    if (parent) gProp->propSetString(pp, kOfxParamPropParent, 0, parent);
+}
+
+void defineLabel(OfxParamSetHandle ps, const char* name, const char* label, const char* def, const char* parent) {
+    OfxPropertySetHandle pp;
+    gParam->paramDefine(ps, kOfxParamTypeString, name, &pp);
+    gProp->propSetString(pp, kOfxPropLabel, 0, label);
+    gProp->propSetString(pp, kOfxParamPropStringMode, 0, kOfxParamStringIsLabel);
+    gProp->propSetString(pp, kOfxParamPropDefault, 0, def);
+    gProp->propSetInt(pp, kOfxParamPropAnimates, 0, 0);
+    gProp->propSetInt(pp, kOfxParamPropEvaluateOnChange, 0, 0);
+    gProp->propSetInt(pp, kOfxParamPropPersistant, 0, 0);
     if (parent) gProp->propSetString(pp, kOfxParamPropParent, 0, parent);
 }
 
@@ -138,32 +150,77 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     gEffect->getParamSet(effect, &ps);
 
     using namespace svitfilm;
-    defineChoice(ps, "input", "Input", kInputNames, kNumInputs, IN_REC709, nullptr,
-                 "What comes into this node: normal video (Rec709) or camera log.");
-    defineChoice(ps, "look", "Film", kLookNames, kNumLooks, L_WARM, nullptr, "Film stock look.");
+    std::vector<const char*> stockNames, printNames;
+    for (int k = 0; k < kNumStocks; ++k) stockNames.push_back(kStocks[k].name);
+    for (int k = 0; k < kNumPrints; ++k) printNames.push_back(kPrints[k].name);
+    printNames.push_back("Film Scan (no print)");
 
-    defineGroup(ps, "gExposure", "Exposure & Colour");
+    defineGroup(ps, "gInput", "Input");
+    defineChoice(ps, "input", "Source", kInputNames, kNumInputs, IN_REC709, "gInput",
+                 "Colour space and gamma of what comes into this node.");
+
+    defineGroup(ps, "gExposure", "Exposure");
     defineDouble(ps, "exposure", "Exposure", 0.0, -4.0, 4.0, "gExposure", "Exposure in stops, before the film.");
-    defineDouble(ps, "contrast", "Film Contrast", 1.0, 0.5, 1.6, "gExposure", "Film contrast.");
-    defineDouble(ps, "saturation", "Saturation", 1.0, 0.0, 2.0, "gExposure", "Colour saturation.");
-    defineDouble(ps, "temp", "Temperature", 0.0, -1.0, 1.0, "gExposure", "Warmer / cooler.");
-    defineDouble(ps, "tint", "Tint", 0.0, -1.0, 1.0, "gExposure", "Greener / more magenta.");
-    defineDouble(ps, "fade", "Fade", 0.0, 0.0, 1.0, "gExposure", "Faded print: lifted blacks.");
+    defineDouble(ps, "blacks", "Blacks", 0.0, -1.0, 1.0, "gExposure", "Lift (+) or crush (-) the shadows before the film.");
+    defineDouble(ps, "whites", "Whites", 0.0, -1.0, 1.0, "gExposure", "Brighter (+) or darker (-) highlights before the film.");
+    defineDouble(ps, "temp", "Temperature", 0.0, -1.0, 1.0, "gExposure", "Warmer / cooler light on the film.");
+    defineDouble(ps, "tint", "Tint", 0.0, -1.0, 1.0, "gExposure", "Greener / more magenta light on the film.");
+
+    defineGroup(ps, "gFilm", "Film");
+    defineChoice(ps, "stock", "Profile", stockNames.data(), kNumStocks, 1, "gFilm", "Camera film stock.");
+    defineDouble(ps, "pushPull", "Push/Pull (Ev)", 0.0, -2.0, 3.0, "gFilm",
+                 "Push (+) / pull (-) processing: contrast, fog and grain change; the print is re-timed.", 0.1, 3);
+    defineBool(ps, "filmOn", "Enabled", 1, "gFilm", "Off = neutral reference negative.");
+    defineLabel(ps, "status", "Profile Status", kStocks[1].status, "gFilm");
+
+    defineGroup(ps, "gDev", "Film Developer", false);
+    defineDouble(ps, "contrastBoost", "Contrast Boost", 0.0, -100.0, 100.0, "gDev", "Development contrast (negative gamma).", 1, 1);
+    defineDouble(ps, "gammaCorr", "Gamma Correction", 0.0, -100.0, 100.0, "gDev", "Midtone density.", 1, 1);
+    defineDouble(ps, "colorSep", "Color Separation", 100.0, 0.0, 200.0, "gDev", "Interlayer (DIR) colour separation of the stock.", 1, 1);
+    defineDouble(ps, "colorBoost", "Color Boost", 0.0, -100.0, 100.0, "gDev", "Dye density saturation.", 1, 1);
+    defineBool(ps, "devOn", "Enabled", 0, "gDev", "Turn the developer controls on.");
+
+    defineGroup(ps, "gComp", "Film Compression", false);
+    defineDouble(ps, "impact", "Impact", 60.0, 0.0, 100.0, "gComp", "Highlight compression strength.", 1, 1);
+    defineDouble(ps, "compWhite", "White Point", 100.0, 0.0, 100.0, "gComp", "Where compression starts.", 1, 1);
+    defineDouble(ps, "tonalRange", "Tonal Range", 30.0, 0.0, 100.0, "gComp", "How soft the compression is.", 1, 1);
+    defineDouble(ps, "colorDensity", "Color Density", 50.0, 0.0, 100.0, "gComp", "Subtractive density: saturated colours get deeper.", 1, 1);
+    defineBool(ps, "compOn", "Enabled", 0, "gComp", "Turn film compression on.");
+
+    defineGroup(ps, "gPrint", "Print");
+    defineChoice(ps, "print", "Print Film", printNames.data(), (int)printNames.size(), 0, "gPrint",
+                 "Print stock the negative is printed on, or a flat film scan.");
+    defineDouble(ps, "printExposure", "Print Exposure", 0.0, -2.0, 2.0, "gPrint", "Brighter (+) / darker (-) print.", 0.01, 2);
+    defineDouble(ps, "lightR", "Printer Light R", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more red light = less red.", 0.5, 1);
+    defineDouble(ps, "lightG", "Printer Light G", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more green light = less green.", 0.5, 1);
+    defineDouble(ps, "lightB", "Printer Light B", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more blue light = less blue.", 0.5, 1);
+    defineBool(ps, "printOn", "Enabled", 1, "gPrint", "Off = neutral reference print.");
 
     defineGroup(ps, "gLight", "Halation & Bloom");
-    defineDouble(ps, "halation", "Halation", 0.5, 0.0, 2.0, "gLight", "Red glow around bright lights.");
+    defineDouble(ps, "halation", "Halation", 1.0, 0.0, 3.0, "gLight", "Red glow inside the emulsion (1 = stock default).");
     defineDouble(ps, "halSize", "Halation Size", 1.0, 0.3, 3.0, "gLight", "Width of the halation glow.");
-    defineDouble(ps, "bloom", "Bloom", 0.2, 0.0, 2.0, "gLight", "Soft glow of bright areas.");
+    defineDouble(ps, "bloom", "Bloom", 0.0, 0.0, 2.0, "gLight", "Lens diffusion of bright areas.");
 
     defineGroup(ps, "gGrain", "Grain");
-    defineDouble(ps, "grain", "Grain", 0.5, 0.0, 2.0, "gGrain", "Film grain, strongest in midtones.");
+    defineDouble(ps, "grain", "Grain Amount", 1.0, 0.0, 3.0, "gGrain", "Film grain in density (1 = stock default).");
     defineDouble(ps, "grainSize", "Grain Size", 1.0, 0.5, 3.0, "gGrain", "Size of the grain.");
-    defineDouble(ps, "grainColour", "Grain Colour", 0.3, 0.0, 1.0, "gGrain", "0 = luminance grain only.");
+    defineDouble(ps, "grainColour", "Grain Colour", 0.5, 0.0, 1.0, "gGrain", "0 = the same grain in all layers.");
+    defineChoice(ps, "gauge", "Gauge", kGaugeNames, kNumGauges, 2, "gGrain", "Film format: sets the physical scale of grain and halation.");
     defineBool(ps, "freezeGrain", "Freeze Grain", 0, "gGrain", "Keep the same grain on every frame.");
+    defineBool(ps, "grainOn", "Enabled", 1, "gGrain", "Turn grain on.");
 
-    defineGroup(ps, "gCamera", "Camera");
-    defineDouble(ps, "vignette", "Vignette", 0.25, 0.0, 1.0, "gCamera", "Darker corners.");
+    defineGroup(ps, "gCamera", "Camera", false);
+    defineDouble(ps, "vignette", "Vignette", 0.0, 0.0, 1.0, "gCamera", "Darker corners.");
     defineDouble(ps, "weave", "Gate Weave", 0.0, 0.0, 1.0, "gCamera", "Subtle frame jitter like a projector.");
+
+    defineGroup(ps, "gExpand", "Expand");
+    defineDouble(ps, "blackPoint", "Black Point", 0.0, -10.0, 20.0, "gExpand", "Output black point.");
+    defineDouble(ps, "whitePoint", "White Point", 100.0, 50.0, 150.0, "gExpand", "Output white point.", 0.1, 1);
+    defineChoice(ps, "colorMode", "Color Mode", kColorModeNames, kNumColorModes, 0, "gExpand", "Expand RGB or luminance only.");
+    defineBool(ps, "expandOn", "Enabled", 1, "gExpand", "Turn expand on.");
+
+    defineGroup(ps, "gOutput", "Output");
+    defineChoice(ps, "output", "Output", kOutputNames, kNumOutputs, OUT_REC709, "gOutput", "Display colour space of the result.");
 
     defineGroup(ps, "gAbout", "Svit Film v" SVIT_VERSION, false);
     defineButton(ps, "update", "Update Svit Film", "gAbout", "Check GitHub for a new Svit Film version and install it.");
@@ -188,14 +245,26 @@ void launchUpdate() {
 #endif
 }
 
-OfxStatus instanceChanged(OfxPropertySetHandle inArgs) {
+int getI(OfxImageEffectHandle inst, const char* name, OfxTime t);
+
+// поле «Profile Status»: показує, що профіль — оцінка, а не виміряні дані
+void updateStatus(OfxImageEffectHandle inst) {
+    OfxParamSetHandle ps; OfxParamHandle h;
+    gEffect->getParamSet(inst, &ps);
+    if (gParam->paramGetHandle(ps, "status", &h, nullptr) != kOfxStatOK) return;
+    svitfilm::Params p;
+    p.stock = getI(inst, "stock", 0); p.filmOn = getI(inst, "filmOn", 0) != 0;
+    if (gParam->paramSetValue) gParam->paramSetValue(h, svitfilm::statusText(p));
+}
+
+OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     char* type = nullptr; char* name = nullptr; char* reason = nullptr;
     gProp->propGetString(inArgs, kOfxPropType, 0, &type);
     gProp->propGetString(inArgs, kOfxPropName, 0, &name);
     gProp->propGetString(inArgs, kOfxPropChangeReason, 0, &reason);
-    if (type && name && !std::strcmp(type, kOfxTypeParameter) && !std::strcmp(name, "update") &&
-        (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
-        launchUpdate();
+    if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
+    if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
+    if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
     return kOfxStatOK;
 }
 
@@ -246,24 +315,24 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
         return kOfxStatErrImageFormat;
 
     svitfilm::Params p;
-    p.input = getI(inst, "input", t);
-    p.look = getI(inst, "look", t);
-    p.exposure = getD(inst, "exposure", t);
-    p.contrast = getD(inst, "contrast", t);
-    p.saturation = getD(inst, "saturation", t);
-    p.temp = getD(inst, "temp", t);
-    p.tint = getD(inst, "tint", t);
-    p.fade = getD(inst, "fade", t);
-    p.halation = getD(inst, "halation", t);
-    p.halSize = getD(inst, "halSize", t);
-    p.bloom = getD(inst, "bloom", t);
-    p.grain = getD(inst, "grain", t);
-    p.grainSize = getD(inst, "grainSize", t);
-    p.grainColour = getD(inst, "grainColour", t);
-    p.freezeGrain = getI(inst, "freezeGrain", t) != 0;
-    p.vignette = getD(inst, "vignette", t);
-    p.weave = getD(inst, "weave", t);
-    p.frame = t;
+    p.input = getI(inst, "input", t); p.output = getI(inst, "output", t);
+    p.exposure = getD(inst, "exposure", t); p.blacks = getD(inst, "blacks", t); p.whites = getD(inst, "whites", t);
+    p.temp = getD(inst, "temp", t); p.tint = getD(inst, "tint", t);
+    p.stock = getI(inst, "stock", t); p.pushPull = getD(inst, "pushPull", t); p.filmOn = getI(inst, "filmOn", t) != 0;
+    p.contrastBoost = getD(inst, "contrastBoost", t); p.gammaCorr = getD(inst, "gammaCorr", t);
+    p.colorSep = getD(inst, "colorSep", t); p.colorBoost = getD(inst, "colorBoost", t); p.devOn = getI(inst, "devOn", t) != 0;
+    p.impact = getD(inst, "impact", t); p.compWhite = getD(inst, "compWhite", t); p.tonalRange = getD(inst, "tonalRange", t);
+    p.colorDensity = getD(inst, "colorDensity", t); p.compOn = getI(inst, "compOn", t) != 0;
+    p.print = getI(inst, "print", t); p.printExposure = getD(inst, "printExposure", t);
+    p.lightR = getD(inst, "lightR", t); p.lightG = getD(inst, "lightG", t); p.lightB = getD(inst, "lightB", t);
+    p.printOn = getI(inst, "printOn", t) != 0;
+    p.halation = getD(inst, "halation", t); p.halSize = getD(inst, "halSize", t); p.bloom = getD(inst, "bloom", t);
+    p.grain = getD(inst, "grain", t); p.grainSize = getD(inst, "grainSize", t); p.grainColour = getD(inst, "grainColour", t);
+    p.gauge = getI(inst, "gauge", t); p.freezeGrain = getI(inst, "freezeGrain", t) != 0; p.grainOn = getI(inst, "grainOn", t) != 0;
+    p.vignette = getD(inst, "vignette", t); p.weave = getD(inst, "weave", t);
+    p.blackPoint = getD(inst, "blackPoint", t); p.whitePoint = getD(inst, "whitePoint", t);
+    p.colorMode = getI(inst, "colorMode", t); p.expandOn = getI(inst, "expandOn", t) != 0;
+    p.frame = t; p.originX = dst.b.x1; p.originY = dst.b.y1;
 
     const int w = dst.b.x2 - dst.b.x1, h = dst.b.y2 - dst.b.y1;
     if (w <= 0 || h <= 0) return kOfxStatOK;
@@ -296,9 +365,9 @@ OfxStatus mainEntry(const char* action, const void* handle, OfxPropertySetHandle
         if (!std::strcmp(action, kOfxActionDescribe)) return describe(eff);
         if (!std::strcmp(action, kOfxImageEffectActionDescribeInContext)) return describeInContext(eff, inArgs);
         if (!std::strcmp(action, kOfxImageEffectActionRender)) return render(eff, inArgs);
-        if (!std::strcmp(action, kOfxActionInstanceChanged)) return instanceChanged(inArgs);
-        if (!std::strcmp(action, kOfxActionUnload) || !std::strcmp(action, kOfxActionCreateInstance) ||
-            !std::strcmp(action, kOfxActionDestroyInstance))
+        if (!std::strcmp(action, kOfxActionInstanceChanged)) return instanceChanged(eff, inArgs);
+        if (!std::strcmp(action, kOfxActionCreateInstance)) { updateStatus(eff); return kOfxStatOK; }
+        if (!std::strcmp(action, kOfxActionUnload) || !std::strcmp(action, kOfxActionDestroyInstance))
             return kOfxStatOK;
     } catch (...) {
         return kOfxStatFailed;
@@ -306,7 +375,7 @@ OfxStatus mainEntry(const char* action, const void* handle, OfxPropertySetHandle
     return kOfxStatReplyDefault;
 }
 
-OfxPlugin gPlugin = {kOfxImageEffectPluginApi, 1, "com.sadsvit.SvitFilm", 1, 0, setHost, mainEntry};
+OfxPlugin gPlugin = {kOfxImageEffectPluginApi, 1, "com.sadsvit.SvitFilm", 2, 0, setHost, mainEntry};
 
 }  // namespace
 

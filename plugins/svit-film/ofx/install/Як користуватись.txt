@@ -1,35 +1,35 @@
-SVIT FILM — плівка для DaVinci Resolve (OFX-плагін)
+SVIT FILM 2 — емуляція плівки для DaVinci Resolve
 
 ВСТАНОВЛЕННЯ
-1. Двічі клікни «Встановити Svit Film.command» і введи пароль Мака.
-   Якщо macOS не дасть відкрити: правою кнопкою → Відкрити → Відкрити.
-2. Перезапусти DaVinci Resolve.
+Двічі клікни Svit.Film.<версія>.pkg → «Продовжити» → «Встановити».
+(Якщо macOS не відкриває: Системні параметри → Приватність і безпека → «Усе одно відкрити».)
+Потім у DaVinci: Preferences → System → Video Plugins → галочка біля SvitFilm → перезапуск.
 
-ДЕ ЗНАЙТИ
-• Edit: Effects → OpenFX → Svit → Svit Film → перетягни на кліп.
-• Color: Effects (праворуч угорі) → Svit → Svit Film → перетягни на ноду.
-  Найкраще на ОСТАННЮ ноду, після основної корекції.
+ДЕ ШУКАТИ
+Effects → OpenFX → Svit → Svit Film. На кліп (Edit) або на ноду (Color, краще остання).
 
-НАЛАШТУВАННЯ
-Input   — що на вході: Rec709 (звичайне відео), DaVinci Intermediate, Sony S-Log3, ARRI LogC3.
-Film    — плівка: Neutral Negative, Warm Day 250, Tungsten Night 500, Pastel Portrait 160,
-          Vivid Slide 100, Faded 70s, BW 400, Bleach Bypass.
-Exposure & Colour — експозиція (стопи), контраст плівки, насиченість, температура, відтінок, вицвітання.
-Halation & Bloom  — червонувате сяйво навколо яскравого, його розмір, м'яке світіння.
-Grain   — зерно, розмір, кольоровість, «заморозити» (за замовчуванням живе щокадру).
-Camera  — віньєтка, дрижання кадру (gate weave).
-Усі повзунки анімуються ключовими кадрами.
+ЯК ЦЕ ПРАЦЮЄ
+Світло сцени → негатив (крива щільності плівки) → зерно в щільності → друк на позитивну
+плівку (2383 / 2393 / 3513DI) або скан → дисплей. Halation і bloom рахуються в світлі
+до проявлення, зерно і halation масштабуються за форматом плівки (Gauge).
+
+ГРУПИ
+Input      Source — що на вході: Rec.709, Rec.2020, Apple Gamma 2.0, ACEScct, DVR WG/Rec709,
+           DVR WG/Intermediate, Cineon, Sony S-Log3, ARRI LogC3.
+Exposure   Exposure (стопи), Blacks, Whites, Temperature, Tint.
+Film       Profile (20 плівок), Push/Pull, Enabled, Profile Status.
+Film Developer   Contrast Boost, Gamma Correction, Color Separation, Color Boost (Enabled).
+Film Compression Impact, White Point, Tonal Range, Color Density (Enabled).
+Print      Print Film (Kodak 2383, Kodak 2393, Fuji 3513DI, Film Scan), Print Exposure,
+           Printer Lights R/G/B (у пунктах друку).
+Halation & Bloom, Grain (Amount, Size, Colour, Gauge, Freeze), Camera (Vignette, Gate Weave).
+Expand     Black Point, White Point, Color Mode — розтягує чорне і біле плівки на весь діапазон.
+Output     Rec.709 Gamma 2.4, Rec.2020, P3-D65, Apple Gamma 2.0, sRGB.
+
+ВАЖЛИВО ПРО ПРОФІЛІ
+Усі 20 профілів зараз ЕКСПЕРИМЕНТАЛЬНІ: криві й параметри — інженерні оцінки, а не
+оцифровані дані виробника. Це видно в полі Profile Status. Щойно з'являться справжні
+технічні листи (Kodak 5219, 2383 …), профілі стануть точнішими без зміни плагіна.
 
 ОНОВЛЕННЯ
-У самому плагіні, внизу повзунків: група «Svit Film v…» → кнопка «Update Svit Film».
-Svit Film перевірить GitHub і, якщо є нова версія, запропонує її поставити
-(попросить пароль Мака). Потім перезапусти DaVinci Resolve.
-
-ПОРАДИ
-• Кліп: Warm Day 250, Halation 0.6, Grain 0.6, Gate Weave 0.2.
-• Нічний концерт: Tungsten Night 500, Exposure +0.3, Halation 1.0, Bloom 0.4.
-
-ВИДАЛИТИ
-Видали папку /Library/OFX/Plugins/SvitFilm.ofx.bundle і перезапусти DaVinci.
-
-Кольори плівок — власні Svit, не копії профілів інших плагінів.
+Внизу налаштувань: група «Svit Film v…» → «Update Svit Film».

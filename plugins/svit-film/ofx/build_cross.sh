@@ -10,12 +10,13 @@ LIPO="${LIPO:-$(ls /usr/bin/llvm-lipo* 2>/dev/null | head -1)}"
 B="build/SvitFilm.ofx.bundle"
 rm -rf build && mkdir -p "$B/Contents/MacOS" "$B/Contents/Resources" build/obj
 for T in aarch64 x86_64; do
-  $ZIG c++ -target $T-macos.11.0 -std=c++17 -O3 -ffast-math -fvisibility=hidden -shared \
+  $ZIG c++ -target $T-macos.11.0 -std=c++17 -O3 -ffast-math -fno-finite-math-only -fvisibility=hidden -shared \
     -DSVIT_VERSION="\"$VER\"" -Iopenfx/include -Isrc src/SvitFilm.cpp -Wl,-install_name,@rpath/SvitFilm.ofx -o build/obj/SvitFilm-$T.ofx
 done
 "$LIPO" -create build/obj/SvitFilm-aarch64.ofx build/obj/SvitFilm-x86_64.ofx -output "$B/Contents/MacOS/SvitFilm.ofx"
 "$LIPO" -info "$B/Contents/MacOS/SvitFilm.ofx"
 cp res/update.sh "$B/Contents/Resources/" && chmod +x "$B/Contents/Resources/update.sh"
+cp ../logo/svit-film-icon-256.png "$B/Contents/Resources/com.sadsvit.SvitFilm.png"
 cat > "$B/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

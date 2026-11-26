@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "kodak_kodachrome_64",
+  "name": "Kodak Kodachrome 64",
+  "kind": "camera_stock",
+  "stock_codes": [],
+  "class": "color_reversal",
+  "process": "K-14",
+  "exposure_index": 64,
+  "nominal_balance_kelvin": 5500,
+  "status": "experimental",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "exposure_latitude": null,
+  "rms_granularity": null,
+  "grain_distribution": null,
+  "mtf": null,
+  "halation": null,
+  "interlayer_effects": null,
+  "push_pull_response": null,
+  "reciprocity_failure": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "own K-14 assumptions needed; seed unverified 1.5–2.0",
+    "gamma": [
+      1.75,
+      1.7,
+      1.7
+    ],
+    "toe_log_exposure": -0.9,
+    "shoulder_log_exposure": 0.6,
+    "toe_width": 0.18,
+    "shoulder_width": 0.2,
+    "base_fog_density": [
+      0.15,
+      0.15,
+      0.18
+    ],
+    "color_separation": 0.35,
+    "balance_log_exposure": [
+      0.02,
+      0,
+      -0.02
+    ],
+    "grain_rel": 0.3,
+    "halation_rel": 0.3,
+    "dmax_density": 3.4
+  }
+}

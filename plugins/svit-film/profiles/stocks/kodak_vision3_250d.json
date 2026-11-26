@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "kodak_vision3_250d",
+  "name": "Kodak VISION3 250D",
+  "kind": "camera_stock",
+  "stock_codes": [
+    "5207",
+    "7207"
+  ],
+  "class": "color_negative",
+  "process": "ECN-2",
+  "exposure_index": 250,
+  "nominal_balance_kelvin": 5500,
+  "status": "experimental",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "exposure_latitude": null,
+  "rms_granularity": null,
+  "grain_distribution": null,
+  "mtf": null,
+  "halation": null,
+  "interlayer_effects": null,
+  "push_pull_response": null,
+  "reciprocity_failure": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "gamma_rgb from quarantined secondary estimate (spec §4)",
+    "gamma": [
+      0.475,
+      0.557,
+      0.547
+    ],
+    "toe_log_exposure": -1.8,
+    "shoulder_log_exposure": 2.1,
+    "toe_width": 0.22,
+    "shoulder_width": 0.45,
+    "base_fog_density": [
+      0.2,
+      0.6,
+      0.85
+    ],
+    "color_separation": 0.15,
+    "balance_log_exposure": [
+      0,
+      0,
+      0
+    ],
+    "grain_rel": 0.7,
+    "halation_rel": 0.25
+  }
+}

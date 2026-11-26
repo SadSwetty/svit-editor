@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "fuji_pro_400h",
+  "name": "Fujicolor Pro 400H",
+  "kind": "camera_stock",
+  "stock_codes": [],
+  "class": "color_negative",
+  "process": "C-41",
+  "exposure_index": 400,
+  "nominal_balance_kelvin": 5500,
+  "status": "experimental",
+  "characteristic_curves": null,
+  "spectral_sensitivity": null,
+  "dye_density": null,
+  "base_fog": null,
+  "exposure_latitude": null,
+  "rms_granularity": null,
+  "grain_distribution": null,
+  "mtf": null,
+  "halation": null,
+  "interlayer_effects": null,
+  "push_pull_response": null,
+  "reciprocity_failure": null,
+  "sources": [],
+  "experimental_seeds": {
+    "status": "unverified_estimate",
+    "classification": "estimated",
+    "production_enabled": false,
+    "note": "seed from unverified range 0.45–0.65",
+    "gamma": [
+      0.52,
+      0.55,
+      0.56
+    ],
+    "toe_log_exposure": -1.8,
+    "shoulder_log_exposure": 2.1,
+    "toe_width": 0.22,
+    "shoulder_width": 0.45,
+    "base_fog_density": [
+      0.2,
+      0.6,
+      0.85
+    ],
+    "color_separation": 0.05,
+    "balance_log_exposure": [
+      -0.01,
+      0.01,
+      0.01
+    ],
+    "grain_rel": 0.6,
+    "halation_rel": 0.5
+  }
+}
