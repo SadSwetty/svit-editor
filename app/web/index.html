@@ -515,6 +515,8 @@ const SV = {
     this.bind(); this.paint(); this.renderShots(); this.renderSources();
     $("#nobridge").style.display = this.bridge ? "none" : "block";
     this.show(s.has_key ? "main" : "activate");
+    // тихо перевіряємо оновлення при запуску — якщо є, зверху з'явиться смужка з кнопкою «Оновити»
+    setTimeout(()=>this.checkUpdate(false).catch(()=>{}), 1500);
     if(this.st.music && this.st.music.path){ this.api("set_music", this.st.music.path).then(r=>{ if(r && !r.error){ this.mPeaks=r.peaks; this.renderMusic() } }) }
     window.addEventListener("resize",()=>this.drawWave());
     window.addEventListener("keydown",e=>this.musicKey(e));

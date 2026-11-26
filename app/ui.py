@@ -494,7 +494,7 @@ class Api:
 
     # ---- оновлення
     def check_update(self, beta=False):
-        """Перевірка лише за кнопкою в налаштуваннях. beta — показувати й тестові версії (alpha/beta)."""
+        """Перевірка при запуску і за кнопкою в налаштуваннях. beta — показувати й тестові версії (alpha/beta)."""
         import urllib.request
         repo = engine.load_cfg().get("update_repo") or UPDATE_REPO
         try:
