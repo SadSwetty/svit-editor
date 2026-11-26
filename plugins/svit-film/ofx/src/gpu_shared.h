@@ -58,6 +58,7 @@ struct KParams {
     int merged, nf, perPixel, analogue, positive, maskOn, leakOn, leakPos;
     int expandUser, colorMode, mixOn, dx, dy, originX, originY, bgAll;
     uint roll, seed, pad0, pad1;
+    int leakPos1, pad3; float leakS, pad4;
     float Min[9], Mout[9];
     float ev, vignette, leakAmt, leakT;
     float wb[3], leakCol[3], monoW[3];
@@ -107,6 +108,14 @@ inline float vnoiseG(float x, float y, uint s) {
     float d = (float)(hash3(ix + 1u, iy + 1u, s) >> 8) * (1.0f / 16777216.0f);
     float ab = a + (b - a) * ux, cd = c + (d - c) * ux;
     return ab + (cd - ab) * uy;
+}
+
+inline float leakAtG(int pos, uint rs, int x, int y, int w, int h, float t) {
+    float u = pos == 0 ? (float)x / w : pos == 1 ? 1.0f - (float)x / w : pos == 2 ? (float)y / h : 1.0f - (float)y / h;
+    float along = (pos <= 1 ? (float)y / h : (float)x / w);
+    float n = vnoiseG(along * 3.0f + t, t * 0.7f + 5.0f, rs) * 0.7f + vnoiseG(along * 7.0f - t * 1.3f, t + 9.0f, rs + 1u) * 0.3f;
+    float reach = 0.05f + 0.16f * n;
+    return 1.6f * f_exp2(-1.442695f * u / reach) * (0.25f + 1.5f * n * n);
 }
 
 inline float spowG(float v, float g) { return v > 0.0f ? f_pow(v, g) : 0.0f; }
@@ -171,13 +180,9 @@ inline void stage1G(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, in
     }
     for (int c = 0; c < 3; ++c) o[c] = fmx(L[c], 0.0f) * k.ev * k.wb[c] * vig;
     if (k.leakOn != 0) {
-        float u = k.leakPos == 0 ? (float)x / k.w : k.leakPos == 1 ? 1.0f - (float)x / k.w
-                : k.leakPos == 2 ? (float)y / k.h : 1.0f - (float)y / k.h;
-        float along = (k.leakPos <= 1 ? (float)y / k.h : (float)x / k.w);
-        float n = vnoiseG(along * 3.0f + k.leakT, k.leakT * 0.7f + 5.0f, k.roll) * 0.7f +
-                  vnoiseG(along * 7.0f - k.leakT * 1.3f, k.leakT + 9.0f, k.roll + 1u) * 0.3f;
-        float reach = 0.05f + 0.16f * n;
-        float I = k.leakAmt * 1.6f * f_exp2(-1.442695f * u / reach) * (0.25f + 1.5f * n * n);
+        float I = leakAtG(k.leakPos, k.roll, x, y, k.w, k.h, k.leakT);
+        if (k.leakS > 0.0f) I = I * (1.0f - k.leakS) + leakAtG(k.leakPos1, k.roll + 1u, x, y, k.w, k.h, k.leakT) * k.leakS;
+        I *= k.leakAmt;
         for (int c = 0; c < 3; ++c) o[c] += I * k.leakCol[c];
     }
     if (k.mono != 0) {
@@ -354,7 +359,10 @@ inline void downG(DEVC float* lin, DEVW float* out, CONSTP DownP& p, int sx, int
         float L0 = lin[q], L1 = lin[q + 1], L2 = lin[q + 2];
         float g = 1.0f;
         if (p.T > 0.0f) { float Y = 0.26270021f * L0 + 0.67799807f * L1 + 0.05930172f * L2; g = Y / (Y + p.T); }
-        if (p.clampSrc != 0) { L0 = fmn(L0, 4000.0f); L1 = fmn(L1, 4000.0f); L2 = fmn(L2, 4000.0f); }
+        if (p.clampSrc != 0) {
+            float K = p.clampSrc == 1 ? 64.0f : 24.0f;   // 1 — halation, 2 — bloom
+            L0 = L0 * K / (K + L0); L1 = L1 * K / (K + L1); L2 = L2 * K / (K + L2);
+        }
         b0 += L0 * g; b1 += L1 * g; b2 += L2 * g; ++n;
     }
     float inv = 1.0f / (float)imx(n, 1);

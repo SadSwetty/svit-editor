@@ -70,3 +70,14 @@ Output → Mix — змішування з нейтральним відтвор
 Svit Film рахує на відеокарті Мака (Metal), коли DaVinci це дозволяє (Preferences → Memory and GPU →
 GPU Processing Mode: Metal). Якщо шейдери не скомпілювалися, плагін сам повертається на процесор.
 Журнал: ~/Library/Logs/Svit Film.log — рядки [metal] показують, чи працює відеокарта і скільки мс на кадр.
+
+3.1
+• Ще 30 образів (усього 60): насичені, мрійливі, чорно-білі — Ivana Kupala Fire, Odesa Sunburn '03,
+  Lviv Candy Shop, Disco Polo '97, Hutsul Embroidery, Kyiv Neon '04, Black Sea Pop, Cherry Garden,
+  Acid Summer Fest, Technicolor Babusya, Polonyna Dream, Cotton Candy Sky, Lullaby Super 8, Lilac Hour,
+  Grandma's Slides, Honey Haze, Sleepy Tram 5am, Snow in Vorokhta, Silver Frankivsk, Kyiv Noir,
+  Soft Silver Portrait, Carpathian Charcoal, Old Newsreel '41, Pearl Fog, Super 8 B&W Diary,
+  Hard Light Steel, Karpaty '98 Roll, Marshrutka Window, Wedding Tape '95, Last Roll of Summer.
+• Look Amount (0–200%): сила образу. 0 — без образу, 100 — як задумано, 200 — подвійно.
+• Засвітки рухаються плавно: край і візерунок перетікають, а не перемикаються раз на кілька секунд.
+• Bloom і halation не роздувають кліпнуте небо в білу пляму.

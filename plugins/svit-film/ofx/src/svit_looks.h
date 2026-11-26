@@ -1,6 +1,7 @@
 // Svit Looks — 30 готових образів. Кожен образ: спершу всі «образні» параметри скидаються до
 // значень за замовчуванням, потім застосовуються його власні. Після вибору все можна докрутити вручну.
 #pragma once
+#include <algorithm>
 #include <cstring>
 #include <vector>
 
@@ -10,6 +11,23 @@ namespace svitfilm {
 
 // таблиця полів: ім'я параметра OFX → поле Params (для образів і тестів)
 struct Field { const char* name; double Params::*d; int Params::*i; bool Params::*b; };
+// межі повзунків (як в OFX) — щоб «Look Amount» не виводив значення за них
+inline void fieldRange(const char* n, double& lo, double& hi) {
+    struct R { const char* n; double lo, hi; };
+    static const R r[] = {
+        {"exposure", -4, 4}, {"blacks", -1, 1}, {"whites", -1, 1}, {"temp", -1, 1}, {"tint", -1, 1}, {"pushPull", -2, 3},
+        {"contrastBoost", -100, 100}, {"gammaCorr", -100, 100}, {"colorSep", 0, 200}, {"colorBoost", -100, 100},
+        {"impact", 0, 100}, {"compWhite", 0, 100}, {"tonalRange", 0, 100}, {"colorDensity", 0, 100},
+        {"printExposure", -2, 2}, {"lightR", -12, 12}, {"lightG", -12, 12}, {"lightB", -12, 12},
+        {"srcLimiter", 0, 100}, {"bgGain", 0, 100}, {"smoothness", 0, 100}, {"localDiff", 0, 100}, {"globalDiff", 0, 100},
+        {"amplify", 0, 100}, {"hue", 0, 100}, {"halImpact", 0, 100}, {"bloom", 0, 2},
+        {"grainSize", 1, 40}, {"grainAmount", 0, 100}, {"filmRes", 0, 100}, {"gShadows", 0, 100}, {"gMid", 0, 100},
+        {"gHigh", 0, 100}, {"chroma", 0, 100}, {"vignette", 0, 1}, {"weave", 0, 1}, {"flicker", 0, 1}, {"age", 0, 30},
+        {"leak", 0, 2}, {"leakHue", 0, 100}, {"leakSpeed", 0, 1}, {"cross", 0, 100}, {"blackPoint", -10, 20},
+        {"whitePoint", 50, 150}, {"mix", 0, 100}};
+    lo = -1e9; hi = 1e9;
+    for (auto& x : r) if (!std::strcmp(x.n, n)) { lo = x.lo; hi = x.hi; return; }
+}
 inline const std::vector<Field>& lookFields() {
     static const std::vector<Field> f = {
         {"exposure", &Params::exposure, nullptr, nullptr}, {"blacks", &Params::blacks, nullptr, nullptr},
@@ -46,6 +64,7 @@ inline const std::vector<Field>& lookFields() {
         {"cross", &Params::cross, nullptr, nullptr},
         {"expandOn", nullptr, nullptr, &Params::expandOn}, {"blackPoint", &Params::blackPoint, nullptr, nullptr},
         {"whitePoint", &Params::whitePoint, nullptr, nullptr},
+        {"mix", &Params::mix, nullptr, nullptr},
     };
     return f;
 }
@@ -129,21 +148,99 @@ inline const std::vector<Look>& looks() {
          {{"stock", 10}, {"print", 3}, {"grainProfile", 8}, {"vignette", 0.2}, {"age", 1}}},
         {"Flat Scan", "250D film scan: flat, for your own grade.",
          {{"stock", 1}, {"print", 3}, {"grainProfile", 8}}},
+        // ---- 2.6: насичені
+        {"Ivana Kupala Fire", "Velvia by the bonfire: burning reds, glowing sparks.",
+         {{"stock", 16}, {"devOn", 1}, {"colorBoost", 30}, {"temp", 0.2}, {"bloom", 0.5}, {"halProfile", 6}, {"amplify", 80}, {"grainProfile", 8}}},
+        {"Odesa Sunburn '03", "Ektar on the beach at noon: hot, saturated, bright.",
+         {{"stock", 9}, {"temp", 0.3}, {"lightB", 3}, {"devOn", 1}, {"colorBoost", 35}, {"compOn", 1}, {"impact", 50}, {"grainProfile", 8}}},
+        {"Lviv Candy Shop", "Ektar on 2393: sweets-shop colour, glossy and dense.",
+         {{"stock", 9}, {"print", 1}, {"devOn", 1}, {"colorBoost", 45}, {"gammaCorr", 15}, {"compOn", 1}, {"colorDensity", 70}}},
+        {"Disco Polo '97", "Superia cross-processed under coloured lights.",
+         {{"stock", 12}, {"cross", 40}, {"devOn", 1}, {"colorBoost", 30}, {"bloom", 0.5}, {"leak", 0.2}, {"grainProfile", 9}}},
+        {"Hutsul Embroidery", "Kodachrome with extra layer separation: reds and blacks like vyshyvanka thread.",
+         {{"stock", 15}, {"devOn", 1}, {"colorSep", 160}, {"colorBoost", 30}, {"contrastBoost", 15}, {"grainProfile", 7}}},
+        {"Kyiv Neon '04", "CineStill at night: teal shadows, red halos on signs.",
+         {{"stock", 13}, {"devOn", 1}, {"colorBoost", 35}, {"lightR", 3}, {"lightB", -3}, {"amplify", 90}, {"grainProfile", 9}}},
+        {"Black Sea Pop", "Velvia blues: deep sea, bright skin of summer.",
+         {{"stock", 16}, {"temp", -0.1}, {"devOn", 1}, {"colorBoost", 40}, {"whites", 0.2}, {"grainProfile", 7}}},
+        {"Cherry Garden", "Portra 800 pushed toward cherry and magenta.",
+         {{"stock", 6}, {"devOn", 1}, {"colorBoost", 30}, {"gammaCorr", 10}, {"tint", 0.15}, {"grainProfile", 8}}},
+        {"Acid Summer Fest", "Provia fully cross-processed: festival chaos.",
+         {{"stock", 17}, {"cross", 100}, {"devOn", 1}, {"colorBoost", 40}, {"flicker", 0.2}, {"grainProfile", 9}}},
+        {"Technicolor Babusya", "Ektar on 2393 with three-strip-like separation.",
+         {{"stock", 9}, {"print", 1}, {"devOn", 1}, {"colorSep", 180}, {"colorBoost", 25}, {"contrastBoost", 20}, {"lightG", 1.5}}},
+        // ---- мрійливі
+        {"Polonyna Dream", "Pro 400H in mountain haze: soft highlights, airy shadows.",
+         {{"stock", 11}, {"blacks", 0.4}, {"compOn", 1}, {"impact", 70}, {"bloom", 0.8}, {"devOn", 1}, {"colorBoost", -15}, {"temp", 0.1}}},
+        {"Cotton Candy Sky", "Portra 160 in pink and powder blue.",
+         {{"stock", 7}, {"tint", 0.2}, {"blacks", 0.3}, {"bloom", 0.6}, {"devOn", 1}, {"gammaCorr", 25}}},
+        {"Lullaby Super 8", "Super 8 memory: soft glow, gentle weave, honey leak.",
+         {{"stock", 1}, {"grainProfile", 2}, {"halProfile", 1}, {"weave", 0.4}, {"bloom", 0.7}, {"blacks", 0.3}, {"leak", 0.3}, {"leakHue", 70}}},
+        {"Lilac Hour", "Pro 400H at dusk: lilac shadows, quiet colour.",
+         {{"stock", 11}, {"tint", 0.25}, {"temp", -0.05}, {"bloom", 0.5}, {"devOn", 1}, {"colorBoost", -10}}},
+        {"Grandma's Slides", "Ektachrome from a shoebox, twelve years later.",
+         {{"stock", 14}, {"age", 12}, {"storage", 1}, {"blacks", 0.25}, {"vignette", 0.4}}},
+        {"Honey Haze", "Gold 200 dipped in honey: warm bloom everywhere.",
+         {{"stock", 8}, {"temp", 0.35}, {"bloom", 1.0}, {"blacks", 0.3}, {"halProfile", 6}, {"amplify", 60}}},
+        {"Sleepy Tram 5am", "Eterna before sunrise: cool, faded, half-asleep.",
+         {{"stock", 4}, {"temp", -0.2}, {"blacks", 0.3}, {"devOn", 1}, {"colorBoost", -30}, {"bloom", 0.4}}},
+        {"Snow in Vorokhta", "50D in fresh snow: bright, cool, soft.",
+         {{"stock", 3}, {"whites", 0.3}, {"temp", -0.15}, {"bloom", 0.6}, {"devOn", 1}, {"colorBoost", -20}, {"blacks", 0.2}}},
+        // ---- чорно-білі
+        {"Silver Frankivsk", "Tri-X with snap: classic street black and white.",
+         {{"stock", 18}, {"devOn", 1}, {"contrastBoost", 20}, {"grainProfile", 9}, {"grainAmount", 45}}},
+        {"Kyiv Noir", "HP5 pushed two stops: deep blacks, night streets.",
+         {{"stock", 19}, {"pushPull", 2}, {"devOn", 1}, {"contrastBoost", 40}, {"vignette", 0.5}, {"bloom", 0.3}, {"grainProfile", 9}}},
+        {"Soft Silver Portrait", "HP5 for faces: gentle midtones, fine glow.",
+         {{"stock", 19}, {"devOn", 1}, {"gammaCorr", 15}, {"blacks", 0.2}, {"grainProfile", 8}, {"bloom", 0.4}}},
+        {"Carpathian Charcoal", "Tri-X on 16 mm, pushed: heavy, graphic mountains.",
+         {{"stock", 18}, {"pushPull", 1}, {"devOn", 1}, {"contrastBoost", 30}, {"grainProfile", 6}, {"halProfile", 3}}},
+        {"Old Newsreel '41", "Worn 16 mm newsreel: flicker, weave, dark corners.",
+         {{"stock", 18}, {"grainProfile", 6}, {"weave", 0.6}, {"flicker", 0.5}, {"vignette", 0.6}, {"age", 15}}},
+        {"Pearl Fog", "HP5 in milky light: lifted blacks, soft whites.",
+         {{"stock", 19}, {"blacks", 0.4}, {"whites", -0.2}, {"bloom", 0.8}, {"devOn", 1}, {"contrastBoost", -20}}},
+        {"Super 8 B&W Diary", "Tri-X on Super 8: a home diary in grain.",
+         {{"stock", 18}, {"grainProfile", 3}, {"halProfile", 1}, {"weave", 0.5}, {"flicker", 0.35}, {"vignette", 0.4}}},
+        {"Hard Light Steel", "Tri-X at full contrast: graphic, steel-like.",
+         {{"stock", 18}, {"devOn", 1}, {"contrastBoost", 60}, {"blackPoint", 4}, {"grainProfile", 7}}},
+        // ---- настрій
+        {"Karpaty '98 Roll", "A forgotten Gold roll from a 1998 hike: warm leak, faded, alive.",
+         {{"stock", 8}, {"age", 9}, {"leak", 0.35}, {"leakHue", 30}, {"grainProfile", 8}, {"vignette", 0.25}, {"temp", 0.1}, {"weave", 0.2}}},
+        {"Marshrutka Window", "Expired Superia through a dirty bus window.",
+         {{"stock", 12}, {"age", 6}, {"storage", 2}, {"cross", 20}, {"flicker", 0.15}, {"grainProfile", 6}}},
+        {"Wedding Tape '95", "ColorPlus scanned at a mini-lab: soft, slightly sleepy.",
+         {{"stock", 10}, {"print", 3}, {"age", 8}, {"devOn", 1}, {"colorBoost", -10}, {"blacks", 0.25}, {"bloom", 0.4}, {"weave", 0.3}}},
+        {"Last Roll of Summer", "Portra 400 with the end-of-roll leak and warm glow.",
+         {{"stock", 5}, {"leak", 0.5}, {"leakHue", 50}, {"age", 3}, {"bloom", 0.4}, {"temp", 0.15}, {"grainProfile", 8}}},
     };
     return L;
 }
 
-// застосувати образ i (0 — нічого) до Params: скинути образні поля до типових, потім значення образу
-inline bool applyLook(Params& P, int i) {
+// застосувати образ i (0 — нічого) з силою amount (1 = як задумано, 0 = без образу, 2 = подвійно):
+// плавні повзунки рухаються від типових значень до значень образу пропорційно amount; сила ефектів
+// (зерно, halation) росте від нуля; при amount < 1 результат ще й змішується з нейтральним (Mix).
+// Перемикачі й вибори (плівка, друк, формат) не мають «половини» — вони вмикаються, щойно amount > 0.
+inline bool applyLook(Params& P, int i, double amount = 1.0) {
     if (i <= 0 || i > (int)looks().size()) return false;
     Params D;
     for (auto& f : lookFields()) setField(P, f, getField(D, f));
+    if (amount <= 0) return true;
     P.halOn = true; P.grainOn = true;   // образи — це повна плівка: зерно і halation увімкнені
+    Params L = P;
     for (auto& kv : looks()[i - 1].kv) {
         const Field* f = findField(kv.k);
         if (!f) return false;
-        setField(P, *f, kv.v);
+        setField(L, *f, kv.v);
     }
+    static const char* fromZero[] = {"grainAmount", "halImpact"};
+    for (auto& f : lookFields()) {
+        double d = getField(D, f), v = getField(L, f);
+        if (!f.d) { setField(P, f, v); continue; }
+        for (auto z : fromZero) if (!std::strcmp(z, f.name)) d = 0;
+        double lo, hi; fieldRange(f.name, lo, hi);
+        setField(P, f, std::clamp(d + (v - d) * amount, lo, hi));
+    }
+    if (amount < 1.0) P.mix = 100.0 * amount;
     return true;
 }
 

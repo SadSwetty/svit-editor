@@ -180,6 +180,8 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineGroup(ps, "gLook", "Svit Look");
     defineChoice(ps, "look", "Look", lookNames.data(), (int)lookNames.size(), 0, "gLook",
                  "30 ready looks. Picking one sets the controls below; then tweak anything.");
+    defineDouble(ps, "lookAmount", "Look Amount", 100.0, 0.0, 200.0, "gLook",
+                 "Strength of the look: 0 = no look, 100 = as designed, 200 = double. Re-applies the look.", 1, 1);
     defineLabel(ps, "lookInfo", "About", "Pick a look or set everything by hand.", "gLook");
 
     defineGroup(ps, "gInput", "Input");
@@ -310,6 +312,7 @@ void launchUpdate() {
 }
 
 int getI(OfxImageEffectHandle inst, const char* name, OfxTime t);
+double getD(OfxImageEffectHandle inst, const char* name, OfxTime t);
 
 // поле «Profile Status»: показує, що профіль — оцінка, а не виміряні дані
 void updateStatus(OfxImageEffectHandle inst) {
@@ -326,7 +329,7 @@ void applyLookParams(OfxImageEffectHandle inst) {
     if (!gParam->paramSetValue) return;
     int i = getI(inst, "look", 0);
     svitfilm::Params P;
-    if (!svitfilm::applyLook(P, i)) return;
+    if (!svitfilm::applyLook(P, i, getD(inst, "lookAmount", 0) / 100.0)) return;
     OfxParamSetHandle ps; OfxParamHandle h;
     gEffect->getParamSet(inst, &ps);
     for (auto& f : svitfilm::lookFields()) {
@@ -347,7 +350,8 @@ OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs
     if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
     if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
     if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
-    if (!std::strcmp(name, "look") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) applyLookParams(inst);
+    if ((!std::strcmp(name, "look") || !std::strcmp(name, "lookAmount")) && (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
+        applyLookParams(inst);
     return kOfxStatOK;
 }
 

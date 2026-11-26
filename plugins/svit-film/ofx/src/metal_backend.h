@@ -246,7 +246,7 @@ inline bool render(void* queue, void* srcBuf, void* dstBuf, svitfilm::FramePlan 
         if (fp.bloomOn) {
             void* b = F.buf((size_t)k.bloomW * k.bloomH * 12);
             void* tmp = F.buf((size_t)k.bloomW * k.bloomH * 12);
-            DownP dp{w, h, k.bloomDs, k.bloomW, k.bloomH, 0, 0, 0, 0.0f, 0, 0, 0};
+            DownP dp{w, h, k.bloomDs, k.bloomW, k.bloomH, 2, 0, 0, 0.0f, 0, 0, 0};
             F.setBuf(lin, 0); F.setBuf(b, 1); F.setBytes(&dp, sizeof dp, 2); F.run(K_DOWN, k.bloomW, k.bloomH);
             F.blur(b, k.bloomW, k.bloomH, fp.bloomSigma / k.bloomDs, tmp);
             F.setBuf(lin, 0); F.setBuf(b, 1); F.setBytes(&k, sizeof k, 2); F.run(K_BLOOMMIX, w, h);

@@ -177,7 +177,7 @@ int main() {
 
     // 10) 30 образів: усі ключі відомі, результат скінченний і відрізняється від нейтрального
     {
-        CHECK(looks().size() == 30, "expected 30 looks, got %zu", looks().size());
+        CHECK(looks().size() == 60, "expected 60 looks, got %zu", looks().size());
         auto g = ramp(96, 48, 0.0f, 1.0f);
         Params N = plain(); N.filmOn = false; N.printOn = false; auto n = run(g, 96, 48, N);
         for (int i = 1; i <= (int)looks().size(); ++i) {
@@ -206,6 +206,31 @@ int main() {
         Params Nn = plain(); Nn.filmOn = false; Nn.printOn = false; auto nn = run(g, 64, 4, Nn);
         float err = 0; for (size_t k = 0; k < m.size(); ++k) err = std::max(err, std::fabs(m[k] - nn[k]));
         CHECK(err < 0.01f, "mix 0 should equal neutral (%.4f)", err);
+    }
+
+    // 12) засвітка рухається плавно: між сусідніми кадрами немає стрибків
+    {
+        const int W3 = 64, H3 = 36;
+        std::vector<float> g((size_t)W3 * H3 * 4, 0.2f);
+        float worst = 0;
+        std::vector<float> prev;
+        for (int f = 0; f < 300; ++f) {
+            Params L = plain(); L.leak = 1; L.leakPos = 4; L.leakSpeed = 0.3; L.frame = f;
+            auto d = run(g, W3, H3, L);
+            if (!prev.empty()) for (size_t i = 0; i < d.size(); ++i) worst = std::max(worst, std::fabs(d[i] - prev[i]));
+            prev = d;
+        }
+        printf("leak max frame-to-frame change %.4f\n", worst);
+        CHECK(worst < 0.06f, "light leak jumps between frames (%.3f)", worst);
+    }
+
+    // 13) Look Amount: 0 — без образу, 1 — образ, 2 — сильніше, у межах повзунків
+    {
+        Params A; applyLook(A, 33, 0.0); Params D;
+        CHECK(A.stock == D.stock && !A.grainOn && !A.halOn && A.mix == 100, "amount 0 should be neutral");
+        Params B; applyLook(B, 33, 1.0); Params C; applyLook(C, 33, 2.0); Params Hh; applyLook(Hh, 33, 0.5);
+        CHECK(C.colorBoost > B.colorBoost && B.colorBoost > Hh.colorBoost && C.colorBoost <= 100, "amount scaling");
+        CHECK(Hh.mix == 50 && Hh.grainAmount < B.grainAmount, "half look mixes and halves grain");
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);

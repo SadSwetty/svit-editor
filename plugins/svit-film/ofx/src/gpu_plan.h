@@ -57,10 +57,12 @@ inline FramePlan buildPlan(const Params& P, int w, int h) {
         float hcol = (float)P.leakHue / 100.0f;
         k.leakCol[0] = 1.0f; k.leakCol[1] = 0.10f + 0.75f * hcol; k.leakCol[2] = 0.02f + 0.25f * hcol * hcol;
     }
-    int leakPos = std::clamp(P.leakPos, 0, 4);
-    const uint32_t roll = (uint32_t)(int64_t)std::floor(P.frame / 48.0);
-    if (leakPos == 4) leakPos = (int)(hash3(roll, 5, 11) % 4u);
-    k.leakOn = P.leak > 0; k.leakPos = leakPos; k.leakAmt = (float)P.leak; k.roll = roll;
+    const double rollF = P.frame / 120.0;
+    const uint32_t roll = (uint32_t)(int64_t)std::floor(rollF);
+    int leakPos = std::clamp(P.leakPos, 0, 4), leakPos1 = leakPos;
+    if (leakPos == 4) { leakPos = (int)(hash3(roll, 5, 11) % 4u); leakPos1 = (int)(hash3(roll + 1u, 5, 11) % 4u); }
+    k.leakOn = P.leak > 0; k.leakPos = leakPos; k.leakPos1 = leakPos1; k.leakAmt = (float)P.leak; k.roll = roll;
+    k.leakS = (float)smoothstepD(0.65, 1.0, rollF - std::floor(rollF));
     k.leakT = (float)P.frame * (float)P.leakSpeed * 0.03f;
     k.wb[0] = std::exp2((float)P.temp * 0.30f); k.wb[1] = std::exp2(-(float)P.tint * 0.20f); k.wb[2] = std::exp2(-(float)P.temp * 0.30f);
     const uint32_t seed = P.freezeGrain ? 1u : (uint32_t)(int64_t)std::floor(P.frame) * 2654435761u + 7u;
@@ -235,7 +237,7 @@ inline void runPlanCPU(const float* src, int srcRowFloats, float* dst, int dstRo
         }
         if (fp.bloomOn) {
             std::vector<float> b((size_t)k.bloomW * k.bloomH * 3);
-            DownP dp{w, h, k.bloomDs, k.bloomW, k.bloomH, 0, 0, 0, 0.0f, 0, 0, 0};
+            DownP dp{w, h, k.bloomDs, k.bloomW, k.bloomH, 2, 0, 0, 0.0f, 0, 0, 0};
             for (int y = 0; y < k.bloomH; ++y) for (int x = 0; x < k.bloomW; ++x) downG(lin.data(), b.data(), dp, x, y);
             cpuBlur(b, k.bloomW, k.bloomH, fp.bloomSigma / k.bloomDs);
             for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) bloomMixG(lin.data(), b.data(), k, x, y);

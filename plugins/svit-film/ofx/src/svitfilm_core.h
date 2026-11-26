@@ -321,6 +321,16 @@ inline float vnoise(float x, float y, uint32_t s) {   // гладкий value-no
     return ab + (cd - ab) * uy;
 }
 
+inline double smoothstepD(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
+// засвітка з одного краю (без множника Amount)
+inline float leakAt(int pos, uint32_t rs, int x, int y, int w, int h, float t) {
+    float u = pos == 0 ? (float)x / w : pos == 1 ? 1.0f - (float)x / w : pos == 2 ? (float)y / h : 1.0f - (float)y / h;
+    float along = (pos <= 1 ? (float)y / h : (float)x / w);
+    float n = vnoise(along * 3.0f + t, t * 0.7f + 5.0f, rs) * 0.7f + vnoise(along * 7.0f - t * 1.3f, t + 9.0f, rs + 1u) * 0.3f;
+    float reach = 0.05f + 0.16f * n;
+    return 1.6f * std::exp2(-1.442695f * u / reach) * (0.25f + 1.5f * n * n);
+}
+
 inline float softplus(float z) { return z > 20 ? z : (z < -20 ? 0.0f : std::log1p(std::exp(z))); }
 // «рампа» від 0 до (sh − toe) з м'якою п'ятою і плечем; монотонна
 inline float ramp(float x, float toe, float sh, float tw, float sw) {
@@ -654,6 +664,10 @@ inline const HalKernel& halKernel(bool remjet) {
 }
 
 // розмиття великим σ через зменшену копію (піраміда): повертає буфер і крок ds
+// м'яке обмеження джерела сяйва/bloom: кліпнуте небо з дисплейного відео інакше стає «сонцем» у 100+ разів
+// яскравішим за сірий і заливає кадр. Асимптота: bloom 24, halation 64 (× рівень 1.0 у сцені).
+inline float softSrc(float v, float K = 24.0f) { return v * K / (K + v); }
+
 inline std::vector<float> blurPyr(const std::vector<float>& full, int w, int h, float sigmaPx, int dsMin, int& dsOut,
                                   int& sw, int& sh) {
     int ds = dsMin;
@@ -666,7 +680,7 @@ inline std::vector<float> blurPyr(const std::vector<float>& full, int w, int h, 
             for (int j = 0; j < ds; ++j) for (int i = 0; i < ds; ++i) {
                 int x = sx * ds + i, y = sy * ds + j;
                 if (x >= w || y >= h) continue;
-                for (int c = 0; c < 3; ++c) b[c] += full[((size_t)y * w + x) * 3 + c];
+                for (int c = 0; c < 3; ++c) b[c] += softSrc(full[((size_t)y * w + x) * 3 + c]);
                 ++n;
             }
             for (int c = 0; c < 3; ++c) sm[((size_t)sy * sw + sx) * 3 + c] = b[c] / std::max(n, 1);
@@ -825,9 +839,13 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
         float hcol = (float)P.leakHue / 100.0f;
         leakCol[0] = 1.0f; leakCol[1] = 0.10f + 0.75f * hcol; leakCol[2] = 0.02f + 0.25f * hcol * hcol;
     }
-    int leakPos = std::clamp(P.leakPos, 0, 4);
-    const uint32_t roll = (uint32_t)(int64_t)std::floor(P.frame / 48.0);   // «рулон» міняється раз на ~2 с
-    if (leakPos == 4) leakPos = (int)(hash3(roll, 5, 11) % 4u);
+    // засвітка «дихає» безперервно; у режимі Random край і візерунок плавно перетікають у наступні
+    // протягом останньої третини кожного ~5-секундного циклу (а не перемикаються стрибком)
+    const double rollF = P.frame / 120.0;
+    const uint32_t roll = (uint32_t)(int64_t)std::floor(rollF);
+    const float rollS = (float)smoothstepD(0.65, 1.0, rollF - std::floor(rollF));
+    int leakPos = std::clamp(P.leakPos, 0, 4), leakPos1 = leakPos;
+    if (leakPos == 4) { leakPos = (int)(hash3(roll, 5, 11) % 4u); leakPos1 = (int)(hash3(roll + 1u, 5, 11) % 4u); }
     const float leakT = (float)P.frame * (float)P.leakSpeed * 0.03f;
     const float wb[3] = {std::exp2((float)P.temp * 0.30f), std::exp2(-(float)P.tint * 0.20f), std::exp2(-(float)P.temp * 0.30f)};
     const uint32_t seed = P.freezeGrain ? 1u : (uint32_t)(int64_t)std::floor(P.frame) * 2654435761u + 7u;
@@ -862,13 +880,9 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
             }
             for (int c = 0; c < 3; ++c) o[c] = std::max(L[c], 0.0f) * ev * wb[c] * vig;
             if (P.leak > 0) {   // додаткова експозиція від краю кадру (до проявлення — тож вона і halation дає)
-                float u = leakPos == 0 ? (float)x / w : leakPos == 1 ? 1.0f - (float)x / w
-                        : leakPos == 2 ? (float)y / h : 1.0f - (float)y / h;
-                float along = (leakPos <= 1 ? (float)y / h : (float)x / w);
-                float n = vnoise(along * 3.0f + leakT, leakT * 0.7f + 5.0f, roll) * 0.7f +
-                          vnoise(along * 7.0f - leakT * 1.3f, leakT + 9.0f, roll + 1u) * 0.3f;
-                float reach = 0.05f + 0.16f * n;
-                float I = (float)P.leak * 1.6f * fastExp2(-1.442695f * u / reach) * (0.25f + 1.5f * n * n);
+                float I = leakAt(leakPos, roll, x, y, w, h, leakT);
+                if (rollS > 0) I = I * (1.0f - rollS) + leakAt(leakPos1, roll + 1u, x, y, w, h, leakT) * rollS;
+                I *= (float)P.leak;
                 for (int c = 0; c < 3; ++c) o[c] += I * leakCol[c];
             }
             if (mono) {   // панхроматичний шар: одне число
@@ -921,7 +935,7 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
                         const float* L = &lin[((size_t)y * w + x) * 3];
                         float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
                         float g = T > 0 ? Y / (Y + T) : 1.0f;
-                        for (int c = 0; c < 3; ++c) b[c] += std::min(L[c], 4000.0f) * g;
+                        for (int c = 0; c < 3; ++c) b[c] += softSrc(L[c], 64.0f) * g;   // halation: м'якше обмеження
                         ++n;
                     }
                     for (int c = 0; c < 3; ++c) l0.b[((size_t)sy * l0.w + sx) * 3 + c] = b[c] / std::max(n, 1);
