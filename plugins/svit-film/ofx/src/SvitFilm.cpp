@@ -196,16 +196,36 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineDouble(ps, "lightB", "Printer Light B", 0.0, -12.0, 12.0, "gPrint", "Printer points: + = more blue light = less blue.", 0.5, 1);
     defineBool(ps, "printOn", "Enabled", 1, "gPrint", "Off = neutral reference print.");
 
-    defineGroup(ps, "gLight", "Halation & Bloom");
-    defineDouble(ps, "halation", "Halation", 1.0, 0.0, 3.0, "gLight", "Red glow inside the emulsion (1 = stock default).");
-    defineDouble(ps, "halSize", "Halation Size", 1.0, 0.3, 3.0, "gLight", "Width of the halation glow.");
-    defineDouble(ps, "bloom", "Bloom", 0.0, 0.0, 2.0, "gLight", "Lens diffusion of bright areas.");
+    defineGroup(ps, "gHal", "Halation");
+    defineChoice(ps, "halProfile", "Profile", kHalProfileNames, kNumHalProfiles, 0, "gHal",
+                 "Film format and anti-halation backing. Custom = 35 mm and the backing of the chosen stock.");
+    defineDouble(ps, "srcLimiter", "Source Limiter", 15.0, 0.0, 100.0, "gHal", "How bright a source must be to halate.", 1, 1);
+    defineDouble(ps, "bgGain", "Background Gain", 80.0, 0.0, 100.0, "gHal", "Lower = halos only over darker backgrounds.", 1, 1);
+    defineDouble(ps, "smoothness", "Smoothness", 50.0, 0.0, 100.0, "gHal", "Scattering in the emulsion: softer halos.", 1, 1);
+    defineDouble(ps, "localDiff", "Local Diffusion", 15.0, 0.0, 100.0, "gHal", "Halo radius (effective base thickness).", 1, 1);
+    defineDouble(ps, "globalDiff", "Global Diffusion", 25.0, 0.0, 100.0, "gHal", "Wide secondary red glare.", 1, 1);
+    defineDouble(ps, "amplify", "Amplify", 70.0, 0.0, 100.0, "gHal", "Re-exposure strength of the red/green layers.", 1, 1);
+    defineDouble(ps, "hue", "Hue", 50.0, 0.0, 100.0, "gHal", "0 = pure red, 100 = orange (green layer).", 1, 1);
+    defineDouble(ps, "blueComp", "Blue Comp.", 100.0, 0.0, 100.0, "gHal", "Keeps halos visible over blue backgrounds.", 1, 1);
+    defineDouble(ps, "halImpact", "Impact", 70.0, 0.0, 100.0, "gHal", "Opacity of the effect.", 1, 1);
+    defineBool(ps, "maskMode", "Mask Mode", 0, "gHal", "Show the halation alone.");
+    defineBool(ps, "halOn", "Enabled", 1, "gHal", "Turn halation on.");
 
-    defineGroup(ps, "gGrain", "Grain");
-    defineDouble(ps, "grain", "Grain Amount", 1.0, 0.0, 3.0, "gGrain", "Film grain in density (1 = stock default).");
-    defineDouble(ps, "grainSize", "Grain Size", 1.0, 0.5, 3.0, "gGrain", "Size of the grain.");
-    defineDouble(ps, "grainColour", "Grain Colour", 0.5, 0.0, 1.0, "gGrain", "0 = the same grain in all layers.");
-    defineChoice(ps, "gauge", "Gauge", kGaugeNames, kNumGauges, 2, "gGrain", "Film format: sets the physical scale of grain and halation.");
+    defineGroup(ps, "gBloom", "Bloom", false);
+    defineDouble(ps, "bloom", "Bloom", 0.0, 0.0, 2.0, "gBloom", "Lens diffusion of bright areas.");
+
+    defineGroup(ps, "gGrain", "Film Grain");
+    defineChoice(ps, "grainProfile", "Profile", kGrainProfileNames, kNumGrainProfiles, 0, "gGrain",
+                 "Format and speed. Custom = 35 mm, grain of the chosen stock, Size in micrometres.");
+    defineDouble(ps, "grainSize", "Size", 12.0, 1.0, 40.0, "gGrain", "Dye cloud size, micrometres (presets: relative to 12).", 0.1, 2);
+    defineDouble(ps, "grainAmount", "Amount", 35.0, 0.0, 100.0, "gGrain", "RMS granularity (35 = stock / preset value).", 1, 1);
+    defineDouble(ps, "filmRes", "Film Resolution", 75.0, 0.0, 100.0, "gGrain", "Emulsion sharpness (MTF).", 1, 1);
+    defineDouble(ps, "gShadows", "Shadows", 30.0, 0.0, 100.0, "gGrain", "Grain in the shadows.", 1, 1);
+    defineDouble(ps, "gMid", "Midtones", 55.0, 0.0, 100.0, "gGrain", "Grain in the midtones.", 1, 1);
+    defineDouble(ps, "gHigh", "Highlights", 65.0, 0.0, 100.0, "gGrain", "Grain in the highlights.", 1, 1);
+    defineDouble(ps, "chroma", "Chroma", 65.0, 0.0, 100.0, "gGrain", "How independent the grain is in each colour layer.", 1, 1);
+    defineChoice(ps, "filmType", "Film Type", kFilmTypeNames, 2, 0, "gGrain", "Grain in the negative (printed) or in the positive.");
+    defineChoice(ps, "grainMode", "Mode", kGrainModeNames, 2, 0, "gGrain", "Analogue = clumped grain, Digital = clean noise.");
     defineBool(ps, "freezeGrain", "Freeze Grain", 0, "gGrain", "Keep the same grain on every frame.");
     defineBool(ps, "grainOn", "Enabled", 1, "gGrain", "Turn grain on.");
 
@@ -326,9 +346,16 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     p.print = getI(inst, "print", t); p.printExposure = getD(inst, "printExposure", t);
     p.lightR = getD(inst, "lightR", t); p.lightG = getD(inst, "lightG", t); p.lightB = getD(inst, "lightB", t);
     p.printOn = getI(inst, "printOn", t) != 0;
-    p.halation = getD(inst, "halation", t); p.halSize = getD(inst, "halSize", t); p.bloom = getD(inst, "bloom", t);
-    p.grain = getD(inst, "grain", t); p.grainSize = getD(inst, "grainSize", t); p.grainColour = getD(inst, "grainColour", t);
-    p.gauge = getI(inst, "gauge", t); p.freezeGrain = getI(inst, "freezeGrain", t) != 0; p.grainOn = getI(inst, "grainOn", t) != 0;
+    p.halProfile = getI(inst, "halProfile", t); p.srcLimiter = getD(inst, "srcLimiter", t); p.bgGain = getD(inst, "bgGain", t);
+    p.smoothness = getD(inst, "smoothness", t); p.localDiff = getD(inst, "localDiff", t); p.globalDiff = getD(inst, "globalDiff", t);
+    p.amplify = getD(inst, "amplify", t); p.hue = getD(inst, "hue", t); p.blueComp = getD(inst, "blueComp", t);
+    p.halImpact = getD(inst, "halImpact", t); p.maskMode = getI(inst, "maskMode", t) != 0; p.halOn = getI(inst, "halOn", t) != 0;
+    p.bloom = getD(inst, "bloom", t);
+    p.grainProfile = getI(inst, "grainProfile", t); p.grainSize = getD(inst, "grainSize", t);
+    p.grainAmount = getD(inst, "grainAmount", t); p.filmRes = getD(inst, "filmRes", t);
+    p.gShadows = getD(inst, "gShadows", t); p.gMid = getD(inst, "gMid", t); p.gHigh = getD(inst, "gHigh", t);
+    p.chroma = getD(inst, "chroma", t); p.filmType = getI(inst, "filmType", t); p.grainMode = getI(inst, "grainMode", t);
+    p.freezeGrain = getI(inst, "freezeGrain", t) != 0; p.grainOn = getI(inst, "grainOn", t) != 0;
     p.vignette = getD(inst, "vignette", t); p.weave = getD(inst, "weave", t);
     p.blackPoint = getD(inst, "blackPoint", t); p.whitePoint = getD(inst, "whitePoint", t);
     p.colorMode = getI(inst, "colorMode", t); p.expandOn = getI(inst, "expandOn", t) != 0;

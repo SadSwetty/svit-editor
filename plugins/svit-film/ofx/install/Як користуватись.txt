@@ -33,3 +33,14 @@ Output     Rec.709 Gamma 2.4, Rec.2020, P3-D65, Apple Gamma 2.0, sRGB.
 
 ОНОВЛЕННЯ
 Внизу налаштувань: група «Svit Film v…» → «Update Svit Film».
+
+HALATION (2.1)
+Профіль: формат (8/16/35/65 мм) і є remjet чи ні. Custom = 35 мм і основа обраної плівки
+(CineStill — без remjet). Фізика: світло відбивається від основи плівки і повертається в червоний
+шар кільцем. Повзунки: Source Limiter, Background Gain, Smoothness, Local Diffusion (радіус),
+Global Diffusion (вуаль), Amplify (сила), Hue (червоний → помаранчевий), Blue Comp., Impact,
+Mask Mode (показати лише сяйво).
+
+FILM GRAIN (2.1)
+Профіль: формат + ISO (8/16/35/65 мм × ISO 50/250/500) або Custom (зерно обраної плівки).
+Size, Amount, Film Resolution, Shadows/Midtones/Highlights, Chroma, Film Type, Mode.

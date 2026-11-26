@@ -1,8 +1,8 @@
 // Svit Film 2 — ядро емуляції плівки (без залежності від OpenFX, щоб його можна було тестувати окремо).
 //
 // Конвеєр (FILM_EMULATION_MASTER_SPEC.md §5), усе в лінійному робочому просторі Rec.2020 D65:
-//   вхід → сцена-лінійне світло → експозиція / баланс білого → вінетка → halation + bloom (у просторі
-//   експозиції, зі збереженням енергії) → log-експозиція (blacks / whites / компресія / міжшарові ефекти)
+//   вхід → сцена-лінійне світло → експозиція / баланс білого → вінетка → MTF емульсії → halation
+//   (фізичне ядро відбиття від основи) + bloom → log-експозиція (blacks / whites / компресія / міжшарові ефекти)
 //   → проявлення негативу (крива щільності) → зерно в щільності → друк (2383/2393/3513DI) або скан /
 //   пряме проєктування слайда → дисплей-лінійне світло → вихідний простір → Expand.
 //
@@ -32,10 +32,23 @@ static const char* kOutputNames[] = {"Rec.709 Gamma 2.4", "Rec.2020 Gamma 2.4", 
                                      "sRGB"};
 static const int kNumOutputs = 5;
 
-static const char* kGaugeNames[] = {"8 mm", "16 mm", "35 mm", "65 mm"};
-static const float kGaugeWidthMM[] = {5.79f, 12.52f, 24.89f, 52.48f};   // ширина кадрового вікна
-static const int kNumGauges = 4;
+static const float kGaugeWidthMM[] = {5.79f, 12.52f, 24.89f, 52.48f};   // ширина кадру: Super 8, Super 16, Super 35, 65 мм
 
+static const char* kGrainProfileNames[] = {"Custom", "8 mm ISO 50", "8 mm ISO 250", "8 mm ISO 500",
+    "16 mm ISO 50", "16 mm ISO 250", "16 mm ISO 500", "35 mm ISO 50", "35 mm ISO 250", "35 mm ISO 500",
+    "65 mm ISO 50", "65 mm ISO 250", "65 mm ISO 500"};
+static const int kNumGrainProfiles = 13;
+// RMS-гранулярність σ×1000 на апертурі 48 мкм (стандарт Kodak/ANSI, щільність 1.0 над основою) і розмір
+// хмарки барвника в мкм для ISO 50/250/500. ОЦІНКИ: кольорові негативи ISO 100–800 мають σ×1000 ≈ 4–5
+// (Fuji Super G, патент US6667815); точні значення — з кривих granularity у тех. листах.
+static const float kIsoSigma48[] = {0.0030f, 0.0045f, 0.0060f};
+static const float kIsoGrainUM[] = {6.0f, 9.0f, 12.0f};
+static const char* kHalProfileNames[] = {"Custom", "8 mm / Super 8", "8 mm / Super 8 No Remjet", "16 mm / Super 16",
+    "16 mm / Super 16 No Remjet", "35 mm / Super 35", "35 mm / Super 35 No Remjet", "65 mm / 70 mm",
+    "65 mm / 70 mm No Remjet"};
+static const int kNumHalProfiles = 9;
+static const char* kFilmTypeNames[] = {"Negative", "Positive"};
+static const char* kGrainModeNames[] = {"Analogue", "Digital"};
 static const char* kColorModeNames[] = {"Normal", "Luminance"};
 static const int kNumColorModes = 2;
 
@@ -56,10 +69,17 @@ struct Params {
     bool compOn = false; double impact = 60, compWhite = 100, tonalRange = 30, colorDensity = 50;
     // Print
     bool printOn = true; int print = 0; double printExposure = 0, lightR = 0, lightG = 0, lightB = 0;
-    // Halation & Bloom
-    double halation = 1, halSize = 1, bloom = 0;
-    // Grain
-    bool grainOn = true; double grain = 1, grainSize = 1, grainColour = 0.5; int gauge = 2; bool freezeGrain = false;
+    // Halation (як у Dehancer: профіль формату/remjet + повзунки)
+    bool halOn = true; int halProfile = 0;
+    double srcLimiter = 15, bgGain = 80, smoothness = 50, localDiff = 15, globalDiff = 25, amplify = 70, hue = 50,
+           blueComp = 100, halImpact = 70;
+    bool maskMode = false;
+    // Bloom (розсіювання в об'єктиві)
+    double bloom = 0;
+    // Film Grain
+    bool grainOn = true; int grainProfile = 0;
+    double grainSize = 12, grainAmount = 35, filmRes = 75, gShadows = 30, gMid = 55, gHigh = 65, chroma = 65;
+    int filmType = 0, grainMode = 0; bool freezeGrain = false;
     // Camera
     double vignette = 0, weave = 0;
     // Expand
@@ -447,6 +467,95 @@ inline const char* statusText(const Params& P) {
     return kStocks[std::clamp(P.stock, 0, kNumStocks - 1)].status;
 }
 
+// ---------------- halation: фізична модель відбиття від основи плівки
+// Світло, що пройшло емульсію, розсіюється в основу (розподіл (m+1)·cos^m θ·sinθ dθ, див. нижче), відбивається від її задньої
+// поверхні (Френель для неполяризованого світла; повне внутрішнє відбиття після θc = arcsin(1/n)) і
+// повертається в червоний шар на відстані r = 2·t·tanθ. Повторні проходи (light piping) — на 2r, 3r…
+// Дані: триацетатна основа n ≈ 1.48 (Kodak M-63 через NRAO VLA memo), товщина ≈ 5.5 mil ≈ 0.14 мм.
+// ОЦІНКИ: залишкове відбиття з remjet (0.05), пропускання емульсії для червоного (0.30), втрати між
+// проходами (0.35), форма розсіювання (m = 3), ваги шарів R:G:B = 1 : 0.28 : 0 (червоний шар лежить на основі, синій поглинає жовтий фільтр).
+static const float kBaseThicknessMM = 0.14f, kBaseIndex = 1.48f;
+static const float kRemjetReflect = 0.05f, kEmulsionT = 0.45f, kPassLoss = 0.35f;
+
+struct HalKernel { float s[6]; float a[6]; float total; };   // σ у товщинах основи t, a — частка енергії
+inline float fresnelR(float th, float n) {
+    float st = n * std::sin(th);
+    if (st >= 1.0f) return 1.0f;
+    float ci = std::cos(th), ct = std::sqrt(1.0f - st * st);
+    float rs = (n * ci - ct) / (n * ci + ct), rp = (ci - n * ct) / (ci + n * ct);
+    return 0.5f * (rs * rs + rp * rp);
+}
+inline HalKernel computeHalKernel(bool remjet) {
+    const int NB = 480; const float dr = 0.05f;          // радіус у одиницях t, до 24t
+    std::vector<double> e(NB, 0.0);
+    const int NT = 40000;
+    for (int i = 0; i < NT; ++i) {
+        float th = (i + 0.5f) / NT * 1.5533f, dth = 1.5533f / NT;   // до 89°
+        float R = remjet ? kRemjetReflect : fresnelR(th, kBaseIndex);
+        // розсіювання з емульсії вперед-витягнуте: (m+1)·cos^m θ·sinθ, m = 3 (m = 1 — Ламберт).
+        // m підібрано так, щоб кільце мало пік ~0.7% ширини 135-кадру і згасало до ~1–1.5%,
+        // як у виміряних профілях CineStill 800T/400D (farewell-ladmin/halation.py). ОЦІНКА.
+        float c = std::cos(th);
+        float lamb = 4.0f * c * c * c * std::sin(th) * dth;
+        float carry = R;
+        for (int k = 1; k <= 2; ++k) {
+            float r = 2.0f * k * std::tan(th);
+            int b = (int)(r / dr);
+            if (b < NB) e[b] += lamb * carry;
+            carry *= kPassLoss * R;
+        }
+    }
+    HalKernel K; const float sb[6] = {0.4f, 0.8f, 1.6f, 3.2f, 6.4f, 12.8f};
+    // невід'ємна апроксимація радіального розподілу енергії сумою 2D-гаусіан (розподіл Релея)
+    std::vector<std::vector<double>> B(6, std::vector<double>(NB));
+    for (int j = 0; j < 6; ++j)
+        for (int b = 0; b < NB; ++b) {
+            double r0 = b * dr, r1 = r0 + dr, s2 = 2.0 * sb[j] * sb[j];
+            B[j][b] = std::exp(-r0 * r0 / s2) - std::exp(-r1 * r1 / s2);
+        }
+    double a[6] = {0, 0, 0, 0, 0, 0};
+    for (int it = 0; it < 3000; ++it)
+        for (int j = 0; j < 6; ++j) {
+            double num = 0, den = 0;
+            for (int b = 0; b < NB; ++b) {
+                double res = e[b];
+                for (int k = 0; k < 6; ++k) if (k != j) res -= a[k] * B[k][b];
+                num += res * B[j][b]; den += B[j][b] * B[j][b];
+            }
+            a[j] = std::max(0.0, num / std::max(den, 1e-30));
+        }
+    K.total = 0;
+    for (int j = 0; j < 6; ++j) { K.s[j] = sb[j]; K.a[j] = (float)a[j]; K.total += (float)a[j]; }
+    return K;
+}
+inline const HalKernel& halKernel(bool remjet) {
+    static const HalKernel k0 = computeHalKernel(false), k1 = computeHalKernel(true);
+    return remjet ? k1 : k0;
+}
+
+// розмиття великим σ через зменшену копію (піраміда): повертає буфер і крок ds
+inline std::vector<float> blurPyr(const std::vector<float>& full, int w, int h, float sigmaPx, int dsMin, int& dsOut,
+                                  int& sw, int& sh) {
+    int ds = dsMin;
+    while (ds < 64 && sigmaPx / (ds * 2) >= 2.5f) ds *= 2;
+    sw = std::max(1, (w + ds - 1) / ds); sh = std::max(1, (h + ds - 1) / ds); dsOut = ds;
+    std::vector<float> sm((size_t)sw * sh * 3, 0.0f);
+    parallelRows(sh, [&](int sy) {
+        for (int sx = 0; sx < sw; ++sx) {
+            float b[3] = {0, 0, 0}; int n = 0;
+            for (int j = 0; j < ds; ++j) for (int i = 0; i < ds; ++i) {
+                int x = sx * ds + i, y = sy * ds + j;
+                if (x >= w || y >= h) continue;
+                for (int c = 0; c < 3; ++c) b[c] += full[((size_t)y * w + x) * 3 + c];
+                ++n;
+            }
+            for (int c = 0; c < 3; ++c) sm[((size_t)sy * sw + sx) * 3 + c] = b[c] / std::max(n, 1);
+        }
+    });
+    gaussBlur(sm, sw, sh, 3, sigmaPx / ds);
+    return sm;
+}
+
 // ---------------- рендер
 // src/dst: RGBA float, рядки по rowFloats чисел. Розміри однакові.
 inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, std::ptrdiff_t dstRowFloats,
@@ -461,9 +570,14 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     const InverseNeutral* invN = dispIn ? &inverseNeutral() : nullptr;
     const M3& Min = inMatrix(P.input);
     const M3& Mout = outMatrix(P.output);
-    const float gaugeW = kGaugeWidthMM[std::clamp(P.gauge, 0, kNumGauges - 1)];
-    const float pxPerMM = w / gaugeW;
-    const float pixUM = 1000.0f / pxPerMM;
+    // формат плівки для зерна (Film Grain → Profile) і для halation (Halation → Profile)
+    const int gp = std::clamp(P.grainProfile, 0, kNumGrainProfiles - 1);
+    const float grainGaugeW = gp == 0 ? kGaugeWidthMM[2] : kGaugeWidthMM[(gp - 1) / 3];
+    const float pixUM = grainGaugeW * 1000.0f / w;
+    const int hp = std::clamp(P.halProfile, 0, kNumHalProfiles - 1);
+    const float halGaugeW = hp == 0 ? kGaugeWidthMM[2] : kGaugeWidthMM[(hp - 1) / 2];
+    const bool remjet = hp == 0 ? !(sd.halation > 1.0f) : ((hp - 1) % 2 == 0);
+    const float halPxPerMM = w / halGaugeW;
 
     const float ev = std::exp2((float)P.exposure);
     const float wb[3] = {std::exp2((float)P.temp * 0.30f), std::exp2(-(float)P.tint * 0.20f), std::exp2(-(float)P.temp * 0.30f)};
@@ -506,74 +620,139 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
         }
     });
 
-    // 2) halation (у шарі емульсії, переважно червоний) і bloom (лінза) — у просторі експозиції,
-    //    як змішування з розмитою копією: енергія зберігається, жорстких порогів немає.
-    const float aH = (float)P.halation * sd.halation * 0.08f;
-    const float aB = (float)P.bloom * 0.10f;
-    const float hw[3] = {mono ? 1.0f : 1.0f, mono ? 1.0f : 0.28f, mono ? 1.0f : 0.05f};
-    if (aH > 0 || aB > 0) {
-        const int ds = std::max(1, std::min(4, w / 480));
-        const int sw = std::max(1, (w + ds - 1) / ds), sh = std::max(1, (h + ds - 1) / ds);
-        std::vector<float> small((size_t)sw * sh * 3, 0.0f);
-        parallelRows(sh, [&](int sy) {
-            for (int sx = 0; sx < sw; ++sx) {
-                float b[3] = {0, 0, 0}; int n = 0;
-                for (int j = 0; j < ds; ++j) for (int i = 0; i < ds; ++i) {
-                    int x = sx * ds + i, y = sy * ds + j;
-                    if (x >= w || y >= h) continue;
-                    for (int c = 0; c < 3; ++c) b[c] += std::min(lin[((size_t)y * w + x) * 3 + c], 4000.0f);
-                    ++n;
-                }
-                for (int c = 0; c < 3; ++c) small[((size_t)sy * sw + sx) * 3 + c] = b[c] / std::max(n, 1);
+    // 1б) роздільна здатність плівки (MTF емульсії): гаусове розмиття ~3.7 мкм при 75
+    //     (гаусова MTF з 50% на ~50 цикл/мм — оцінка порядку величини для 500T, не з тех. листа)
+    {
+        float sUM = (100.0f - (float)P.filmRes) / 25.0f * 3.7f;
+        float sPx = sUM / pixUM;
+        if (P.grainOn && sPx >= 0.3f) gaussBlur(lin, w, h, 3, sPx);
+    }
+
+    // 2) halation: додаткова експозиція червоного (і трохи зеленого) шару світлом, відбитим від основи.
+    //    Додається до експозиції (світло, яке інакше пішло б крізь основу) — до проявлення, без порогів
+    //    у фізиці; Source Limiter / Background Gain — творчі маски, як у Dehancer.
+    std::vector<float> halo;
+    const bool halOn = P.halOn && P.halImpact > 0 && P.amplify > 0;
+    if (halOn) {
+        const HalKernel& K = halKernel(remjet);
+        // Local Diffusion 15 → ефективна товщина 0.5·t: з нею пік кільця ~0.4–0.5% ширини кадру, як у
+        // виміряних профілях CineStill (пік 0.2–0.6%, згасання ~1%). Геометричне 2t·tanθc дало б ~1%.
+        const float tMM = kBaseThicknessMM * (0.25f + 1.67f * (float)P.localDiff / 100.0f);
+        const float sSm = (float)P.smoothness / 100.0f * 0.10f;   // мм: розсіювання в емульсії
+        const float T = P.srcLimiter <= 0 ? 0.0f : kMidGray * (std::exp2((float)P.srcLimiter / 10.0f) - 1.0f);
+        std::vector<float> S((size_t)w * h * 3);
+        parallelRows(h, [&](int y) {
+            for (int x = 0; x < w; ++x) {
+                const float* L = &lin[((size_t)y * w + x) * 3];
+                float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
+                float g = T > 0 ? Y / (Y + T) : 1.0f;
+                for (int c = 0; c < 3; ++c) S[((size_t)y * w + x) * 3 + c] = std::min(L[c], 4000.0f) * g;
             }
         });
-        std::vector<float> hn, hb, bl;
-        if (aH > 0) {
-            hn = small; gaussBlur(hn, sw, sh, 3, 0.10f * (float)P.halSize * pxPerMM / ds);   // ядро
-            hb = small; gaussBlur(hb, sw, sh, 3, 0.45f * (float)P.halSize * pxPerMM / ds);   // широкий хвіст
-        }
-        if (aB > 0) { bl = small; gaussBlur(bl, sw, sh, 3, 0.035f * w / ds); }
+        const int ds0 = std::max(1, std::min(4, w / 960));
+        const int aw = std::max(1, (w + ds0 - 1) / ds0), ah = std::max(1, (h + ds0 - 1) / ds0);
+        std::vector<float> acc((size_t)aw * ah * 3, 0.0f);
+        auto addComp = [&](float sigmaMM, float weight) {
+            if (weight <= 0) return;
+            int ds, sw, sh;
+            auto b = blurPyr(S, w, h, sigmaMM * halPxPerMM, ds0, ds, sw, sh);
+            parallelRows(ah, [&](int ay) {
+                for (int ax = 0; ax < aw; ++ax) {
+                    float fx = ((ax + 0.5f) * ds0) / ds - 0.5f, fy = ((ay + 0.5f) * ds0) / ds - 0.5f;
+                    for (int c = 0; c < 3; ++c) acc[((size_t)ay * aw + ax) * 3 + c] += weight * sampleSmall(b, sw, sh, 3, c, fx, fy);
+                }
+            });
+        };
+        for (int j = 0; j < 6; ++j) addComp(std::sqrt(std::pow(K.s[j] * tMM, 2.0f) + sSm * sSm), K.a[j]);
+        // Global Diffusion: широке вторинне розсіювання (вуаль), ~3% ширини кадру
+        addComp(0.03f * halGaugeW, (float)P.globalDiff / 100.0f * 0.25f * K.total);
+        const float strength = kEmulsionT * std::pow((float)P.amplify / 70.0f, 1.5f) * (float)P.halImpact / 100.0f;
+        const float wc[3] = {mono ? 1.0f : 1.0f, mono ? 1.0f : 0.28f * (float)P.hue / 50.0f, mono ? 1.0f : 0.0f};
+        const float bgTh = kMidGray * std::exp2((float)P.bgGain / 100.0f * 12.0f - 4.0f);
+        if (P.maskMode) halo.assign((size_t)w * h * 3, 0.0f);
+        parallelRows(h, [&](int y) {
+            for (int x = 0; x < w; ++x) {
+                float* L = &lin[((size_t)y * w + x) * 3];
+                float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
+                float gate = P.bgGain >= 100 ? 1.0f : 1.0f / (1.0f + (Y / bgTh) * (Y / bgTh));
+                float blue = std::clamp((L[2] - std::max(L[0], L[1])) / (L[2] + 1e-6f), 0.0f, 1.0f);
+                float f = strength * gate * (1.0f + (float)P.blueComp / 100.0f * 1.5f * blue);
+                float fx = (x + 0.5f) / ds0 - 0.5f, fy = (y + 0.5f) / ds0 - 0.5f;
+                for (int c = 0; c < 3; ++c) {
+                    float hv = f * wc[c] * sampleSmall(acc, aw, ah, 3, mono ? 1 : c, fx, fy);
+                    L[c] += hv;
+                    if (!halo.empty()) halo[((size_t)y * w + x) * 3 + c] = hv;
+                }
+            }
+        });
+    }
+
+    // 2б) bloom — розсіювання в об'єктиві (змішування з розмитою копією, енергія зберігається)
+    if (P.bloom > 0) {
+        int ds, sw, sh;
+        auto b = blurPyr(lin, w, h, 0.035f * w, std::max(1, std::min(4, w / 960)), ds, sw, sh);
+        const float a = std::min((float)P.bloom * 0.10f, 0.9f);
         parallelRows(h, [&](int y) {
             for (int x = 0; x < w; ++x) {
                 float fx = (x + 0.5f) / ds - 0.5f, fy = (y + 0.5f) / ds - 0.5f;
                 float* L = &lin[((size_t)y * w + x) * 3];
-                for (int c = 0; c < 3; ++c) {
-                    float v = L[c];
-                    if (aH > 0) {
-                        float hv = 0.6f * sampleSmall(hn, sw, sh, 3, c, fx, fy) + 0.4f * sampleSmall(hb, sw, sh, 3, c, fx, fy);
-                        float a = std::min(aH * hw[c], 0.9f);
-                        v += a * (hv - L[c]);
-                    }
-                    if (aB > 0) {
-                        float a = std::min(aB, 0.9f);
-                        v += a * (sampleSmall(bl, sw, sh, 3, c, fx, fy) - L[c]);
-                    }
-                    L[c] = std::max(v, 0.0f);
-                }
+                for (int c = 0; c < 3; ++c) L[c] = std::max(L[c] + a * (sampleSmall(b, sw, sh, 3, c, fx, fy) - L[c]), 0.0f);
             }
         });
     }
 
     // 3) проявлення: log-експозиція → щільність (таблиці для швидкості)
     //    зерно — у щільності, з фізичним масштабом: σ на піксель із RMS-гранулярності на апертурі 48 мкм
-    const bool grainOn = P.grainOn && P.grain > 0;
-    const float sigma48 = 0.0045f * sd.grain * (float)P.grain * (1.0f + 0.25f * std::max((float)P.pushPull, 0.0f));
-    const float sigmaPix = sigma48 * 48.0f / std::max(pixUM, 0.5f);
-    const float grainBlur = 6.0f * (float)P.grainSize / pixUM;       // кореляція зерна ~6 мкм × Size
-    const float rho = mono ? 1.0f : 1.0f - 0.8f * (float)P.grainColour;   // спільна частина між шарами
-    std::vector<float> nz;
-    float nzNorm = 1.0f;
+    // Film Grain: σ на піксель із RMS-гранулярності σ48 за законом Селвина (σ·√A = const),
+    // з ефективною апертурою √(піксель² + зерно²), щоб на дрібних пікселях не було «перезерна».
+    const bool grainOn = P.grainOn && P.grainAmount > 0;
+    float sigma48 = gp == 0 ? 0.0060f * sd.grain : kIsoSigma48[(gp - 1) % 3];
+    const float sizeUM = gp == 0 ? (float)P.grainSize : kIsoGrainUM[(gp - 1) % 3] * (float)P.grainSize / 12.0f;
+    sigma48 *= (float)P.grainAmount / 35.0f * (1.0f + 0.25f * std::max((float)P.pushPull, 0.0f));
+    const float sigmaPix = sigma48 * 48.0f / std::sqrt(pixUM * pixUM + sizeUM * sizeUM);
+    const float grainBlur = 0.5f * sizeUM / pixUM;
+    const float rho = mono ? 1.0f : 1.0f - 0.85f * (float)P.chroma / 100.0f;   // спільна частина між шарами
+    const bool analogue = P.grainMode == 0;
+    const bool positive = P.filmType == 1 && film.cls != CL_REV;
+    auto toneW = [&](float r) {   // r: 0 — тіні, 1 — середні, 2 — світлі (у термінах сцени)
+        float a = (float)P.gShadows, b = (float)P.gMid, c = (float)P.gHigh;
+        float v = r <= 1.0f ? a + (b - a) * std::clamp(r, 0.0f, 1.0f) : b + (c - b) * std::clamp(r - 1.0f, 0.0f, 1.0f);
+        return v / 55.0f;
+    };
+    std::vector<float> nz, nz2;
+    float nzNorm = 1.0f, nz2Norm = 1.0f;
     const int nf = grainOn ? (mono ? 1 : 4) : 0;
+    int w2 = (w + 1) / 2, h2 = (h + 1) / 2;
     if (nf) {
         nz.resize((size_t)w * h * nf);
         parallelRows(h, [&](int y) {
             for (int x = 0; x < w; ++x)
                 for (int k = 0; k < nf; ++k)
-                    nz[((size_t)y * w + x) * nf + k] = gauss01(x + P.originX, y + P.originY, seed * 4u + (uint32_t)k);
+                    nz[((size_t)y * w + x) * nf + k] = gauss01(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k);
         });
         float q = gaussBlur(nz, w, h, nf, grainBlur);
-        nzNorm = 1.0f / (q * q);   // std розмитого білого шуму = Σk² (2D = добуток двох напрямків)
+        nzNorm = 1.0f / (q * q);   // std розмитого білого шуму = Σk² (2D)
+        if (analogue) {   // скупчення зерен: друга октава в 2.5 раза більша (на половинній роздільності)
+            nz2.resize((size_t)w2 * h2 * nf);
+            parallelRows(h2, [&](int y) {
+                for (int x = 0; x < w2; ++x)
+                    for (int k = 0; k < nf; ++k)
+                        nz2[((size_t)y * w2 + x) * nf + k] =
+                            gauss01(x + P.originX / 2, y + P.originY / 2, seed * 8u + 4u + (uint32_t)k);
+            });
+            float q2 = gaussBlur(nz2, w2, h2, nf, grainBlur * 2.5f / 2.0f);
+            nz2Norm = 1.0f / (q2 * q2);
+        }
     }
+    auto grainAt = [&](int x, int y, int k) {
+        float g = nz[((size_t)y * w + x) * nf + k] * nzNorm;
+        if (analogue) {
+            int x2 = std::min(x / 2, w2 - 1), y2 = std::min(y / 2, h2 - 1);
+            g = (g + 0.35f * nz2[((size_t)y2 * w2 + x2) * nf + k] * nz2Norm) / 1.06f;
+            g += 0.12f * (g * g - 1.0f);   // асиметрія булевої моделі: рідкісні темні скупчення
+        }
+        return g;
+    };
 
     parallelRows(h, [&](int y) {
         const float* srow = src + (std::ptrdiff_t)y * srcRowFloats;
@@ -583,16 +762,29 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
             float xs[3], D[3], Y[3], o[3];
             for (int c = 0; c < 3; ++c) xs[c] = shapeX(std::log10(std::max(L[c], 1e-7f) / kMidGray), P);
             develop(film, xs, D, sys.pushShift);
+            float gn[3] = {0, 0, 0};
             if (nf) {
-                const float* n = &nz[((size_t)y * w + x) * nf];
+                float g0 = grainAt(x, y, 0);
+                for (int c = 0; c < 3; ++c)
+                    gn[c] = mono ? g0 : std::sqrt(rho) * g0 + std::sqrt(1.0f - rho) * grainAt(x, y, 1 + c);
+            }
+            if (nf && !positive) {   // зерно в щільності плівки (негатив або слайд)
                 for (int c = 0; c < 3; ++c) {
-                    float g = mono ? n[0] : std::sqrt(rho) * n[0] + std::sqrt(1.0f - rho) * n[1 + c];
-                    float rel = film.cls == CL_REV ? (film.dmax - D[c]) : (D[c] - film.dmin[c]);
-                    float amp = sigmaPix * (0.4f + 0.6f * std::clamp(rel / 1.0f, 0.0f, 1.0f));
-                    D[c] += g * nzNorm * amp;
+                    float r = film.cls == CL_REV ? (film.dmax - D[c]) : (D[c] - film.dmin[c]);   // 0 — тіні сцени
+                    float zone = film.cls == CL_REV ? r / 1.2f : r / 0.75f;
+                    D[c] += gn[c] * sigmaPix * toneW(zone);
                 }
             }
             sys.display(D, Y);
+            if (nf && positive) {   // зерно у щільності позитиву (відбитка)
+                for (int c = 0; c < 3; ++c) {
+                    float dp = -std::log10(std::max(Y[c], 1e-5f));
+                    float zone = 2.0f - std::clamp(dp / 0.9f, 0.0f, 2.0f);   // темне = тіні
+                    dp += gn[c] * sigmaPix * 2.0f * toneW(zone);
+                    Y[c] = std::pow(10.0f, -dp);
+                }
+            }
+            if (!halo.empty()) for (int c = 0; c < 3; ++c) { float hv = halo[((size_t)y * w + x) * 3 + c]; Y[c] = hv / (hv + 0.25f); }
             mul(Mout, Y, o);
             for (int c = 0; c < 3; ++c) o[c] = encodeTF(o[c], P.output);
             if (P.expandOn && (P.blackPoint != 0 || P.whitePoint != 100)) {

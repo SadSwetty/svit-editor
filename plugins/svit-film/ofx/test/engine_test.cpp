@@ -27,7 +27,7 @@ static std::vector<float> ramp(int w, int h, float lo = 0, float hi = 1) {   // 
     return s;
 }
 static Params plain() {   // без ефектів, що додають просторові зміни
-    Params P; P.grainOn = false; P.halation = 0; P.bloom = 0; P.vignette = 0; P.weave = 0; return P;
+    Params P; P.grainOn = false; P.halOn = false; P.bloom = 0; P.vignette = 0; P.weave = 0; return P;
 }
 
 int main() {
@@ -84,7 +84,7 @@ int main() {
         for (size_t i = 0; i < x.size(); ++i) x[i] = vals[(i * 7 + i / 13) % 8];
         for (int in = 0; in < kNumInputs; ++in)
             for (int s : {0, 13, 14, 18}) {
-                Params P; P.input = in; P.stock = s; P.bloom = 1; P.halation = 3; P.vignette = 1; P.weave = 1;
+                Params P; P.input = in; P.stock = s; P.bloom = 1; P.amplify = 100; P.globalDiff = 100; P.vignette = 1; P.weave = 1; P.filmType = s % 2;
                 P.devOn = P.compOn = true; P.contrastBoost = 100; P.colorBoost = 100; P.pushPull = 3;
                 P.blacks = 1; P.whites = -1; P.blackPoint = 20; P.whitePoint = 50; P.colorMode = 1;
                 auto d = run(x, 64, 32, P);
@@ -112,24 +112,30 @@ int main() {
         printf("grain mean shift %.5f\n", diff);
     }
 
-    // 6) halation/bloom зберігають рівне поле (енергія не з'являється нізвідки)
+    // 6) halation: рівне поле лишається рівним (лише трохи світлішим), біля джерела — червоне сяйво
     {
         std::vector<float> g((size_t)128 * 64 * 4, 0.45f);
-        Params P = plain(); auto a = run(g, 128, 64, P);
-        P.halation = 3; P.bloom = 2; auto b = run(g, 128, 64, P);
-        float err = 0; for (size_t i = 0; i < a.size(); ++i) err = std::max(err, std::fabs(a[i] - b[i]));
-        CHECK(err < 0.003f, "halation changes a flat field by %.4f", err);
-        // яскрава точка на темному: halation світить довкола, червоне сильніше
-        std::vector<float> s((size_t)128 * 64 * 4, 0.05f);
-        for (int y = 30; y < 34; ++y) for (int x = 62; x < 66; ++x) for (int c = 0; c < 3; ++c) s[((size_t)y * 128 + x) * 4 + c] = 1.0f;
-        Params Q = plain(); Q.input = IN_ACESCCT; Q.stock = 13; Q.halation = 2;   // CineStill
-        for (size_t i = 0; i < s.size(); i += 4) for (int c = 0; c < 3; ++c) if (s[i + c] == 1.0f) s[i + c] = 0.9f;
-        auto h0 = run(s, 128, 64, plain()), h1 = run(s, 128, 64, Q);
-        Params Q0 = Q; Q0.halation = 0; auto h2 = run(s, 128, 64, Q0);
-        size_t at = ((size_t)32 * 128 + 69) * 4;
-        CHECK(h1[at] > h2[at] + 0.005f && (h1[at] - h2[at]) > (h1[at + 2] - h2[at + 2]),
-              "halation glow missing/red not dominant: R %.3f->%.3f B %.3f->%.3f", h2[at], h1[at], h2[at + 2], h1[at + 2]);
-        (void)h0;
+        Params P = plain(); P.halOn = true; P.halProfile = 6; P.amplify = 100; P.bloom = 1; P.bgGain = 100;
+        auto b = run(g, 128, 64, P);
+        float mn = 1, mx = 0;
+        for (int y = 16; y < 48; ++y) for (int x = 32; x < 96; ++x) { float v = b[((size_t)y * 128 + x) * 4]; mn = std::min(mn, v); mx = std::max(mx, v); }
+        CHECK(mx - mn < 0.004f, "halation makes a flat field uneven by %.4f", mx - mn);
+        const int W2 = 384, H2 = 128;
+        std::vector<float> s((size_t)W2 * H2 * 4, 0.05f);
+        float hot = (std::log2(40.0f) + 9.72f) / 17.52f;
+        for (int y = 60; y < 68; ++y) for (int x = 188; x < 196; ++x) for (int c = 0; c < 3; ++c) s[((size_t)y * W2 + x) * 4 + c] = hot;
+        Params Q = plain(); Q.input = IN_ACESCCT; Q.halOn = true; Q.halProfile = 0; Q.stock = 13;   // CineStill, без remjet
+        Params Q0 = Q; Q0.halOn = false;
+        auto h1 = run(s, W2, H2, Q), h2 = run(s, W2, H2, Q0);
+        Params R = Q; R.stock = 0; auto h3 = run(s, W2, H2, R);   // VISION3 з remjet
+        size_t at = ((size_t)64 * W2 + 196 + 4) * 4;
+        float dR = h1[at] - h2[at], dB = h1[at + 2] - h2[at + 2], dRj = h3[at] - h2[at];
+        printf("halation near source: CineStill dR %.3f dB %.3f, VISION3(remjet) dR %.3f\n", dR, dB, dRj);
+        CHECK(dR > 0.02f && dR > 3 * std::max(dB, 0.0f), "no red halo (dR %.3f dB %.3f)", dR, dB);
+        CHECK(dRj < dR * 0.6f, "remjet should reduce halation (%.3f vs %.3f)", dRj, dR);
+        HalKernel k0 = halKernel(false), k1 = halKernel(true);
+        printf("kernel energy: no remjet %.3f, remjet %.3f\n", k0.total, k1.total);
+        CHECK(k0.total > 0.2f && k0.total < 0.6f && k1.total < 0.1f, "kernel energies off");
     }
 
     // 7) ч/б плівки дають R=G=B; оборотна плівка — щільність падає з експозицією
