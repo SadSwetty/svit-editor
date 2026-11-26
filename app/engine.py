@@ -228,6 +228,15 @@ def hms(t):
 
 # ======================================================================= аналіз
 
+def has_vad():
+    """Фільтр тиші faster-whisper потребує onnxruntime — на старих / Intel-Маках його може не бути."""
+    try:
+        import onnxruntime  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
 class Transcriber:
     def __init__(self, model_name, language):
         self.model_name, self.language, self.model = model_name, language, None
@@ -243,7 +252,7 @@ class Transcriber:
         if audio is None or len(audio) < 1600:
             return [], []
         segments, info = self.model.transcribe(audio, language=self.language or None,
-                                               word_timestamps=True, vad_filter=True)
+                                               word_timestamps=True, vad_filter=has_vad())
         segs, words = [], []
         for s in segments:
             check()

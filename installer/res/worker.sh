@@ -100,33 +100,63 @@ if [ "$UPDATE" = "0" ]; then
   "$VENV/bin/python3" -m pip install --quiet --upgrade pip >> "$LOG" 2>&1
 fi
 
-# компоненти: прогрес рахуємо за кількістю пакетів у лозі pip
-p 12 deps "Ставлю компоненти"
+# компоненти. Ставимо частинами і лише готові пакети (--prefer-binary), щоб pip ніколи не
+# застрягав на збиранні з вихідного коду чи нескінченному переборі версій.
 PIPLOG="$DIR/pip.log"
 : > "$PIPLOG"
-# перевірені версії компонентів (requirements.lock), якщо є в пакеті; інакше — найновіші
-LOCK="$RES/payload/requirements.lock"
-if [ -z "$SVIT_PKGS" ] && [ -f "$LOCK" ]; then
-  "$VENV/bin/python3" -m pip install --progress-bar off -r "$LOCK" > "$PIPLOG" 2>&1 &
+ARCH="$(uname -m)"
+MACOS_MAJOR="$(sw_vers -productVersion 2>/dev/null | cut -d. -f1)"; MACOS_MAJOR=${MACOS_MAJOR:-15}
+echo "Мак: $ARCH, macOS $(sw_vers -productVersion 2>/dev/null)" >> "$LOG"
+
+# pip_step <від %> <до %> <скільки пакетів очікуємо> <ліміт секунд> <аргументи pip...>
+pip_step() {
+  local from=$1 to=$2 expect=$3 limit=$4; shift 4
+  "$VENV/bin/python3" -m pip install --progress-bar off --disable-pip-version-check "$@" >> "$PIPLOG" 2>&1 &
+  local pid=$! t=0 n0 n name pct
+  n0=$(grep -c -E "^(Collecting|Requirement already satisfied)" "$PIPLOG" 2>/dev/null); n0=${n0:-0}
+  while kill -0 $pid 2>/dev/null; do
+    n=$(grep -c -E "^(Collecting|Requirement already satisfied)" "$PIPLOG" 2>/dev/null); n=$(( ${n:-0} - n0 ))
+    name=$(grep -E "^(Collecting|Downloading)" "$PIPLOG" | tail -1 | awk '{print $2}' | sed 's/[<>=!].*//; s/-[0-9].*//; s/\.whl$//')
+    pct=$(( from + n * (to - from) / (expect > 0 ? expect : 1) )); [ $pct -gt $to ] && pct=$to
+    p $pct deps "Ставлю компоненти${name:+ · $name} · $(( t / 2 / 60 )):$(printf %02d $(( t / 2 % 60 )))"
+    sleep 0.5; t=$(( t + 1 ))
+    if [ $(( t / 2 )) -ge $limit ]; then
+      kill $pid 2>/dev/null; sleep 1; kill -9 $pid 2>/dev/null
+      echo "pip: перевищено ліміт ${limit} с для: $*" >> "$LOG"
+      return 124
+    fi
+  done
+  wait $pid
+}
+
+if [ -n "$SVIT_PKGS" ]; then
+  pip_step 12 52 45 1800 $PKGS || { cat "$PIPLOG" >> "$LOG"; fail deps "Не вдалося встановити компоненти. Перевір інтернет і спробуй ще раз."; }
 else
-  "$VENV/bin/python3" -m pip install --progress-bar off $PKGS > "$PIPLOG" 2>&1 &
+  # 1) основне + усе для розпізнавання мови, крім onnxruntime
+  pip_step 12 44 90 1800 --prefer-binary anthropic pillow numpy av "pywebview>=5.1" yt-dlp certifi \
+      ctranslate2 huggingface_hub tokenizers tqdm \
+    || { cat "$PIPLOG" >> "$LOG"; fail deps "Не вдалося встановити компоненти. Перевір інтернет і спробуй ще раз."; }
+  # 2) onnxruntime (фільтр тиші в розпізнаванні мови). Нові версії не мають збірок для Intel-Маків
+  #    і macOS старше 14 — там беремо останню сумісну. Не вийшло — Svit працює й без нього.
+  ORT="onnxruntime"
+  if [ "$ARCH" != "arm64" ] || [ "$MACOS_MAJOR" -lt 14 ]; then ORT="onnxruntime<1.24"; fi
+  if pip_step 44 48 2 420 --only-binary=:all: "$ORT"; then
+    echo "onnxruntime: OK" >> "$LOG"
+  else
+    echo "onnxruntime: недоступний для цього Мака — розпізнавання мови працюватиме без фільтра тиші" >> "$LOG"
+  fi
+  # 3) сам faster-whisper без залежностей (вони вже стоять)
+  pip_step 48 52 1 600 --prefer-binary --no-deps faster-whisper \
+    || { cat "$PIPLOG" >> "$LOG"; fail deps "Не вдалося встановити розпізнавання мови. Перевір інтернет і спробуй ще раз."; }
+  "$VENV/bin/python3" -c "import faster_whisper, anthropic, webview, av, numpy, PIL" >> "$LOG" 2>&1 \
+    || { cat "$PIPLOG" >> "$LOG"; fail deps "Компоненти встановились не повністю. Натисни «Показати журнал» і надішли його автору."; }
 fi
-PIPPID=$!
-EXPECT=45; [ "$UPDATE" = "1" ] && EXPECT=8
-while kill -0 $PIPPID 2>/dev/null; do
-  N=$(grep -c -E "^(Collecting|Requirement already satisfied)" "$PIPLOG" 2>/dev/null); N=${N:-0}
-  NAME=$(grep -E "^(Collecting|Downloading)" "$PIPLOG" | tail -1 | awk '{print $2}' | sed 's/[<>=!].*//; s/-[0-9].*//; s/\.whl$//')
-  PCT=$(( 12 + N * 40 / EXPECT )); [ $PCT -gt 52 ] && PCT=52
-  p $PCT deps "Ставлю компоненти${NAME:+ · $NAME}"
-  sleep 0.5
-done
-wait $PIPPID || { cat "$PIPLOG" >> "$LOG"; fail deps "Не вдалося встановити компоненти. Перевір інтернет і спробуй ще раз."; }
 cat "$PIPLOG" >> "$LOG"
 # свіжий yt-dlp (сайти часто ламають старі версії) і маскування під браузер для TikTok — необов'язково
-if [ -z "$SVIT_PKGS" ] && [ ! -f "$LOCK" ]; then
-  p 53 deps "Оновлюю завантажувач референсів"
-  "$VENV/bin/python3" -m pip install --quiet --upgrade "yt-dlp[default]" >> "$LOG" 2>&1 || echo "yt-dlp upgrade failed" >> "$LOG"
-  "$VENV/bin/python3" -m pip install --quiet "curl_cffi" >> "$LOG" 2>&1 || echo "curl_cffi failed (не критично)" >> "$LOG"
+if [ -z "$SVIT_PKGS" ]; then
+  pip_step 53 53 1 300 --prefer-binary --upgrade "yt-dlp[default]" || echo "yt-dlp upgrade failed" >> "$LOG"
+  pip_step 53 53 1 300 --only-binary=:all: curl_cffi || echo "curl_cffi failed (не критично)" >> "$LOG"
+  p 53 deps "Компоненти готові"
 fi
 
 # модель розпізнавання мови: справжній прогрес за розміром завантаженого
