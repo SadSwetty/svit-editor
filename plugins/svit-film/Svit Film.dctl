@@ -1,0 +1,186 @@
+// =====================================================================================
+//  Svit Film — імітація плівки для DaVinci Resolve Studio (DCTL)
+//  SadSvit · Svit Editor. Плівки, експозиція, halation, bloom, зерно, віньєтка, дрижання кадру.
+//
+//  Встановлення: поклади цей файл у
+//    /Library/Application Support/Blackmagic Design/DaVinci Resolve/LUT/
+//  перезапусти DaVinci → вкладка Color → Effects → «DCTL» → кинь на ноду → DCTL List: Svit Film.
+//  Найкраще — на останню ноду, після основної корекції. Вихід — Rec.709 (гама 2.4).
+// =====================================================================================
+
+DEFINE_UI_PARAMS(p_Input, Input, DCTLUI_COMBO_BOX, 0, { IN_REC709, IN_DI, IN_SLOG3, IN_LOGC3 }, { Rec709 Gamma 2.4, DaVinci Intermediate, Sony SLog3, ARRI LogC3 })
+DEFINE_UI_PARAMS(p_Look, Film, DCTLUI_COMBO_BOX, 1, { L_NEUTRAL, L_WARM, L_TUNGSTEN, L_PASTEL, L_VIVID, L_FADED, L_BW, L_BLEACH }, { Neutral Negative, Warm Day 250, Tungsten Night 500, Pastel Portrait 160, Vivid Slide 100, Faded 70s, BW 400, Bleach Bypass })
+DEFINE_UI_PARAMS(p_Exposure, Exposure, DCTLUI_SLIDER_FLOAT, 0.0, -4.0, 4.0, 0.05)
+DEFINE_UI_PARAMS(p_Contrast, Film Contrast, DCTLUI_SLIDER_FLOAT, 1.0, 0.5, 1.6, 0.01)
+DEFINE_UI_PARAMS(p_Sat, Saturation, DCTLUI_SLIDER_FLOAT, 1.0, 0.0, 2.0, 0.01)
+DEFINE_UI_PARAMS(p_Temp, Temperature, DCTLUI_SLIDER_FLOAT, 0.0, -1.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Tint, Tint, DCTLUI_SLIDER_FLOAT, 0.0, -1.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Fade, Fade, DCTLUI_SLIDER_FLOAT, 0.0, 0.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Hal, Halation, DCTLUI_SLIDER_FLOAT, 0.5, 0.0, 2.0, 0.01)
+DEFINE_UI_PARAMS(p_HalR, Halation Size, DCTLUI_SLIDER_FLOAT, 1.0, 0.3, 3.0, 0.01)
+DEFINE_UI_PARAMS(p_Bloom, Bloom, DCTLUI_SLIDER_FLOAT, 0.2, 0.0, 2.0, 0.01)
+DEFINE_UI_PARAMS(p_Grain, Grain, DCTLUI_SLIDER_FLOAT, 0.5, 0.0, 2.0, 0.01)
+DEFINE_UI_PARAMS(p_GrainSize, Grain Size, DCTLUI_SLIDER_FLOAT, 1.0, 0.5, 3.0, 0.01)
+DEFINE_UI_PARAMS(p_GrainCol, Grain Colour, DCTLUI_SLIDER_FLOAT, 0.3, 0.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Vig, Vignette, DCTLUI_SLIDER_FLOAT, 0.25, 0.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Weave, Gate Weave, DCTLUI_SLIDER_FLOAT, 0.0, 0.0, 1.0, 0.01)
+DEFINE_UI_PARAMS(p_Static, Freeze Grain, DCTLUI_CHECK_BOX, 0)
+
+#define N_SAMPLES 24
+#define BASE_S 0.62f
+#define MID 0.46f
+#define HI_BOOST 1.30f
+
+// ---------------------------------------------------------------- допоміжне
+__DEVICE__ float fractf(float x) { return x - _floorf(x); }
+__DEVICE__ int rnd(float x) { return (int)_floorf(x + 0.5f); }
+__DEVICE__ float clamp01(float x) { return _fminf(_fmaxf(x, 0.0f), 1.0f); }
+
+__DEVICE__ float hash2(float x, float y, float s) {
+    return fractf(_sinf(x * 12.9898f + y * 78.233f + s * 37.719f) * 43758.5453f);
+}
+
+__DEVICE__ float vnoise(float x, float y, float s) {
+    float xi = _floorf(x), yi = _floorf(y);
+    float fx = x - xi, fy = y - yi;
+    float ux = fx * fx * (3.0f - 2.0f * fx), uy = fy * fy * (3.0f - 2.0f * fy);
+    float a = hash2(xi, yi, s), b = hash2(xi + 1.0f, yi, s);
+    float c = hash2(xi, yi + 1.0f, s), d = hash2(xi + 1.0f, yi + 1.0f, s);
+    float ab = a + (b - a) * ux, cd = c + (d - c) * ux;
+    return ab + (cd - ab) * uy;
+}
+
+__DEVICE__ float decode1(float v, int mode) {
+    if (mode == IN_DI) {
+        return v <= 0.02740668f ? v / 10.44426855f : _exp2f(v / 0.07329248f - 7.0f) - 0.0075f;
+    } else if (mode == IN_SLOG3) {
+        float x = v * 1023.0f;
+        return x >= 171.2102946929f ? _powf(10.0f, (x - 420.0f) / 261.5f) * 0.19f - 0.01f
+                                    : (x - 95.0f) * 0.01125f / (171.2102946929f - 95.0f);
+    } else if (mode == IN_LOGC3) {
+        return v > 5.367655f * 0.010591f + 0.092809f ? (_powf(10.0f, (v - 0.385537f) / 0.247190f) - 0.052272f) / 5.555556f
+                                                    : (v - 0.092809f) / 5.367655f;
+    }
+    return _powf(_fmaxf(v, 0.0f), 2.4f);
+}
+
+__DEVICE__ float3 lin_at(int x, int y, int w, int h, int mode, float ev,
+                         __TEXTURE__ tr, __TEXTURE__ tg, __TEXTURE__ tb) {
+    int xx = x < 0 ? 0 : (x > w - 1 ? w - 1 : x);
+    int yy = y < 0 ? 0 : (y > h - 1 ? h - 1 : y);
+    return make_float3(decode1(_tex2D(tr, xx, yy), mode) * ev,
+                       decode1(_tex2D(tg, xx, yy), mode) * ev,
+                       decode1(_tex2D(tb, xx, yy), mode) * ev);
+}
+
+// крива плівки для одного каналу: логістична в логарифмі експозиції, крутіша у світлих тонах
+__DEVICE__ float film1(float lin, float s, float shift, float lo, float hi) {
+    float le = _log2f(_fmaxf(lin, 1e-6f) / 0.18f) + shift;
+    float k0 = _logf((MID - lo) / (hi - MID));
+    float x = s * le * (le > 0.0f ? HI_BOOST : 1.0f) + k0;
+    return lo + (hi - lo) / (1.0f + _expf(-x));
+}
+
+// ---------------------------------------------------------------- головне
+__DEVICE__ float3 transform(int p_Width, int p_Height, int p_X, int p_Y,
+                            __TEXTURE__ p_TexR, __TEXTURE__ p_TexG, __TEXTURE__ p_TexB)
+{
+    float W = (float)p_Width, H = (float)p_Height;
+    float sc = W / 1920.0f;
+    float ev = _exp2f(p_Exposure);
+
+    // «номер кадру» з самого зображення: зерно й дрижання змінюються щокадру, як на плівці
+    float seed = 0.0f;
+    if (p_Static == 0) {
+        float s0 = _tex2D(p_TexR, (int)(W * 0.13f), (int)(H * 0.21f)) + _tex2D(p_TexG, (int)(W * 0.71f), (int)(H * 0.37f))
+                 + _tex2D(p_TexB, (int)(W * 0.42f), (int)(H * 0.83f)) + _tex2D(p_TexG, (int)(W * 0.88f), (int)(H * 0.66f))
+                 + _tex2D(p_TexR, (int)(W * 0.27f), (int)(H * 0.58f)) + _tex2D(p_TexB, (int)(W * 0.55f), (int)(H * 0.12f));
+        seed = fractf(s0 * 91.7f) * 100.0f;
+    }
+
+    // дрижання кадру (gate weave)
+    int dx = rnd((hash2(seed, 1.0f, 0.0f) - 0.5f) * 2.0f * p_Weave * 3.0f * sc);
+    int dy = rnd((hash2(seed, 2.0f, 0.0f) - 0.5f) * 2.0f * p_Weave * 2.0f * sc);
+    int X = p_X + dx, Y = p_Y + dy;
+
+    float3 lin = lin_at(X, Y, p_Width, p_Height, p_Input, ev, p_TexR, p_TexG, p_TexB);
+
+    // halation: червонувате сяйво навколо яскравого
+    if (p_Hal > 0.0f) {
+        float R = 14.0f * p_HalR * sc, acc = 0.0f;
+        for (int i = 0; i < N_SAMPLES; i++) {
+            float r = _sqrtf(((float)i + 0.5f) / (float)N_SAMPLES), a = (float)i * 2.39996323f;
+            float3 s = lin_at(X + rnd(r * _cosf(a) * R), Y + rnd(r * _sinf(a) * R),
+                              p_Width, p_Height, p_Input, ev, p_TexR, p_TexG, p_TexB);
+            float L = 0.2126f * s.x + 0.7152f * s.y + 0.0722f * s.z;
+            acc += _fmaxf(L - 0.8f, 0.0f);
+        }
+        float hh = acc / (float)N_SAMPLES * p_Hal * 4.0f;
+        lin.x += hh; lin.y += hh * 0.32f; lin.z += hh * 0.07f;
+    }
+    // bloom: м'яке світіння від світлих ділянок
+    if (p_Bloom > 0.0f) {
+        float R = 46.0f * sc;
+        float3 acc = make_float3(0.0f, 0.0f, 0.0f);
+        for (int i = 0; i < N_SAMPLES; i++) {
+            float r = _sqrtf(((float)i + 0.5f) / (float)N_SAMPLES), a = (float)i * 2.39996323f;
+            float3 s = lin_at(X + rnd(r * _cosf(a) * R), Y + rnd(r * _sinf(a) * R),
+                              p_Width, p_Height, p_Input, ev, p_TexR, p_TexG, p_TexB);
+            acc.x += _fmaxf(s.x - 0.35f, 0.0f); acc.y += _fmaxf(s.y - 0.35f, 0.0f); acc.z += _fmaxf(s.z - 0.35f, 0.0f);
+        }
+        float k = p_Bloom * 0.6f / (float)N_SAMPLES;
+        lin.x += acc.x * k; lin.y += acc.y * k; lin.z += acc.z * k;
+    }
+    // віньєтка (в лінійному світлі, як в об'єктиві)
+    if (p_Vig > 0.0f) {
+        float nx = ((float)p_X - W * 0.5f) / (W * 0.5f), ny = ((float)p_Y - H * 0.5f) / (W * 0.5f);
+        float r = _sqrtf(nx * nx + ny * ny) / 0.75f;
+        float t = clamp01((r - 0.45f) / (1.25f - 0.45f));
+        t = t * t * (3.0f - 2.0f * t);
+        float v = 1.0f - p_Vig * 0.85f * t;
+        lin.x *= v; lin.y *= v; lin.z *= v;
+    }
+    // температура / відтінок
+    lin.x *= _exp2f(p_Temp * 0.35f); lin.y *= _exp2f(-p_Tint * 0.25f); lin.z *= _exp2f(-p_Temp * 0.35f);
+
+    // параметри плівки: контраст RGB, зсув RGB (стопи), чорне RGB, біле RGB, насиченість
+    float cr = 1.0f, cg = 1.0f, cb = 1.0f, sr = 0.0f, sg = 0.0f, sb = 0.0f;
+    float lr = 0.025f, lg = 0.025f, lb = 0.030f, hr = 0.965f, hg = 0.960f, hb = 0.950f, sat = 1.0f;
+    int bw = 0;
+    if (p_Look == L_WARM)          { cr = 1.02f; cg = 1.00f; cb = 0.94f; sr = 0.16f; sg = 0.04f; sb = -0.14f; lr = 0.030f; lg = 0.034f; lb = 0.040f; hr = 0.975f; hg = 0.955f; hb = 0.900f; sat = 1.08f; }
+    else if (p_Look == L_TUNGSTEN) { cr = 0.92f; cg = 0.98f; cb = 1.06f; sr = -0.12f; sg = 0.02f; sb = 0.16f; lr = 0.020f; lg = 0.032f; lb = 0.048f; hr = 0.950f; hg = 0.960f; hb = 0.965f; sat = 0.92f; }
+    else if (p_Look == L_PASTEL)   { cr = 0.80f; cg = 0.82f; cb = 0.80f; sr = 0.10f; sg = 0.06f; sb = 0.00f; lr = 0.055f; lg = 0.055f; lb = 0.060f; hr = 0.960f; hg = 0.950f; hb = 0.930f; sat = 0.82f; }
+    else if (p_Look == L_VIVID)    { cr = 1.30f; cg = 1.28f; cb = 1.34f; sr = 0.04f; sg = 0.00f; sb = -0.02f; lr = 0.006f; lg = 0.006f; lb = 0.012f; hr = 0.985f; hg = 0.980f; hb = 0.975f; sat = 1.30f; }
+    else if (p_Look == L_FADED)    { cr = 0.86f; cg = 0.90f; cb = 0.78f; sr = 0.20f; sg = 0.14f; sb = -0.20f; lr = 0.090f; lg = 0.075f; lb = 0.070f; hr = 0.930f; hg = 0.910f; hb = 0.840f; sat = 0.85f; }
+    else if (p_Look == L_BW)       { cr = 1.10f; cg = 1.10f; cb = 1.10f; lr = 0.020f; lg = 0.020f; lb = 0.020f; hr = 0.970f; hg = 0.970f; hb = 0.970f; sat = 0.0f; bw = 1; }
+    else if (p_Look == L_BLEACH)   { cr = 1.35f; cg = 1.35f; cb = 1.35f; sr = 0.02f; sg = 0.00f; sb = 0.02f; lr = 0.012f; lg = 0.012f; lb = 0.014f; hr = 0.975f; hg = 0.975f; hb = 0.970f; sat = 0.45f; }
+
+    if (bw == 1) {
+        float L = 0.30f * lin.x + 0.62f * lin.y + 0.08f * lin.z;
+        lin = make_float3(L, L, L);
+    }
+    float fl = p_Fade * 0.12f, fh = p_Fade * 0.03f;
+    float3 o = make_float3(film1(lin.x, BASE_S * cr * p_Contrast, sr, lr + fl, hr - fh),
+                           film1(lin.y, BASE_S * cg * p_Contrast, sg, lg + fl, hg - fh),
+                           film1(lin.z, BASE_S * cb * p_Contrast, sb, lb + fl, hb - fh));
+    float Yl = 0.2126f * o.x + 0.7152f * o.y + 0.0722f * o.z;
+    float S = sat * p_Sat;
+    o = make_float3(Yl + (o.x - Yl) * S, Yl + (o.y - Yl) * S, Yl + (o.z - Yl) * S);
+
+    // зерно: сильніше в середніх тонах
+    if (p_Grain > 0.0f) {
+        float gs = _fmaxf(0.5f, 1.6f * p_GrainSize * sc);
+        float gx = (float)p_X / gs, gy = (float)p_Y / gs;
+        float n0 = vnoise(gx, gy, seed) - 0.5f;
+        n0 += 0.5f * (vnoise(gx * 2.1f + 17.0f, gy * 2.1f + 3.0f, seed) - 0.5f);
+        float nr = vnoise(gx + 31.0f, gy + 7.0f, seed) - 0.5f;
+        float nb = vnoise(gx + 59.0f, gy + 13.0f, seed) - 0.5f;
+        float Yg = 0.2126f * o.x + 0.7152f * o.y + 0.0722f * o.z;
+        float amp = p_Grain * 0.11f * (0.35f + 2.6f * Yg * (1.0f - Yg));
+        float gc = p_GrainCol;
+        o.x += (n0 * (1.0f - gc) + nr * gc) * amp;
+        o.y += n0 * amp;
+        o.z += (n0 * (1.0f - gc) + nb * gc) * amp;
+    }
+    return make_float3(clamp01(o.x), clamp01(o.y), clamp01(o.z));
+}
