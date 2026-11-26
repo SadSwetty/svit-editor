@@ -1,6 +1,12 @@
 // Svit Film — OpenFX-плагін для DaVinci Resolve (Effects → OpenFX → Svit → Svit Film).
 // Обгортка над svitfilm_core.h: опис ефекту, повзунки й обробка кадру.
+#include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <cstring>
+#include <ctime>
+#include <mutex>
+#include <thread>
 #include <string>
 #include <vector>
 
@@ -367,6 +373,29 @@ struct Img {
     float* pxw(int x, int y) { return (float*)((char*)data + (std::ptrdiff_t)(y - b.y1) * rowBytes) + (x - b.x1) * 4; }
 };
 
+// Журнал швидкості: ~/Library/Logs/Svit Film.log — рядок на кожні 24 кадри (середній час, роздільність,
+// скільки кадрів DaVinci рахує одночасно, скільки ядер). Щоб знати, де саме гальмує на конкретному Маку.
+void perfLog(int w, int h, double ms, const svitfilm::Params& p) {
+    static std::mutex m; static int n = 0; static double sum = 0, mx = 0; static int maxConc = 0;
+    std::lock_guard<std::mutex> lk(m);
+    ++n; sum += ms; mx = std::max(mx, ms);
+    maxConc = std::max(maxConc, svitfilm::activeRenders().load() + 1);
+    if (n < 24) return;
+    const char* home = std::getenv("HOME");
+    if (home) {
+        std::string path = std::string(home) + "/Library/Logs/Svit Film.log";
+        if (FILE* f = std::fopen(path.c_str(), "a")) {
+            std::time_t tt = std::time(nullptr); char ts[32];
+            std::strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
+            std::fprintf(f, "%s v%s %dx%d avg %.0f ms max %.0f ms | cores %u, frames at once %d | grain %d hal %d bloom %.2f fast %d\n",
+                         ts, SVIT_VERSION, w, h, sum / n, mx, std::thread::hardware_concurrency(), maxConc,
+                         (int)p.grainOn, (int)p.halOn, p.bloom, (int)p.fastPreview);
+            std::fclose(f);
+        }
+    }
+    n = 0; sum = 0; mx = 0; maxConc = 0;
+}
+
 OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     OfxTime t = 0;
     gProp->propGetDouble(inArgs, kOfxPropTime, 0, &t);
@@ -436,7 +465,10 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
         sp = tmp.data(); sstride = (std::ptrdiff_t)w * 4;
     }
     if (dst.rowBytes % 4 != 0) return kOfxStatErrImageFormat;
+    auto t0 = std::chrono::steady_clock::now();
     svitfilm::render(sp, sstride, (float*)dst.data, dst.rowBytes / 4, w, h, p);
+    double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    perfLog(w, h, ms, p);
     return kOfxStatOK;
 }
 
