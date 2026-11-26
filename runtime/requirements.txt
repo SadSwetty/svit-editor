@@ -6,11 +6,10 @@ numpy
 av
 pywebview>=5.1
 yt-dlp[default]
-curl_cffi
 certifi
 faster-whisper
 ctranslate2
 huggingface_hub
 tokenizers
 tqdm
-onnxruntime
+# onnxruntime і curl_cffi — необов'язкові, ставляться окремо (див. tools/build_runtime.sh)
