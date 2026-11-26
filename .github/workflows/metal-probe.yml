@@ -1,0 +1,23 @@
+name: metal-probe
+on:
+  push:
+    branches: [main]
+    paths: [".github/workflows/metal-probe.yml", "plugins/svit-film/metal/**"]
+  workflow_dispatch:
+jobs:
+  probe:
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Info
+        run: |
+          sw_vers; uname -m; sysctl -n hw.ncpu
+          system_profiler SPDisplaysDataType | head -30
+          xcrun --find metal || true
+          cat > /tmp/m.swift <<'S'
+          import Metal
+          let d = MTLCreateSystemDefaultDevice()
+          print("device:", d?.name ?? "NONE")
+          S
+          swift /tmp/m.swift || true
