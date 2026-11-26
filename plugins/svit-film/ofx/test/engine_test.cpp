@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "svitfilm_core.h"
+#include "svit_looks.h"
 
 using namespace svitfilm;
 static int fails = 0;
@@ -172,6 +173,39 @@ int main() {
         CHECK(c[4 * 4 + 1] > a[4 * 4 + 1] + 0.01f, "blacks + should lift shadows");
         Params Wt = plain(); Wt.input = IN_ACESCCT; Wt.whites = -1; auto d = run(g, W, 1, Wt);
         CHECK(d[(W - 2) * 4 + 1] < a[(W - 2) * 4 + 1] - 0.01f, "whites - should darken highlights");
+    }
+
+    // 10) 30 образів: усі ключі відомі, результат скінченний і відрізняється від нейтрального
+    {
+        CHECK(looks().size() == 30, "expected 30 looks, got %zu", looks().size());
+        auto g = ramp(96, 48, 0.0f, 1.0f);
+        Params N = plain(); N.filmOn = false; N.printOn = false; auto n = run(g, 96, 48, N);
+        for (int i = 1; i <= (int)looks().size(); ++i) {
+            Params P; P.frame = 3;
+            CHECK(applyLook(P, i), "look %d has unknown keys", i);
+            auto d = run(g, 96, 48, P);
+            bool ok = true; double diff = 0;
+            for (size_t k = 0; k < d.size(); ++k) { if (!(d[k] >= 0 && d[k] <= 1)) ok = false; diff += std::fabs(d[k] - n[k]); }
+            CHECK(ok, "look %s: bad values", looks()[i - 1].name);
+            CHECK(diff / d.size() > 0.005, "look %s looks neutral", looks()[i - 1].name);
+        }
+    }
+
+    // 11) унікальні модулі: прострочена плівка, крос-процес, засвітка, Mix
+    {
+        auto g = ramp(64, 4, 0.0f, 1.0f);
+        Params A = plain(); auto a = run(g, 64, 4, A);
+        Params E = plain(); E.age = 20; E.storage = 2; auto e = run(g, 64, 4, E);
+        CHECK(e[0] > a[0] + 0.01f || e[2] > a[2] + 0.01f, "expired film should fog the shadows");
+        Params C = plain(); C.cross = 100; auto c = run(g, 64, 4, C);
+        size_t hi = 56 * 4;
+        CHECK(c[hi + 2] < c[hi] - 0.01f, "cross process: highlights should go yellow (B < R): %.3f %.3f", c[hi], c[hi + 2]);
+        Params Lk = plain(); Lk.leak = 1; Lk.leakPos = 0; auto l = run(g, 64, 4, Lk);
+        CHECK(l[0] > a[0] + 0.05f && std::fabs(l[60 * 4 + 1] - a[60 * 4 + 1]) < 0.02f, "leak should come from the left edge");
+        Params M = plain(); M.stock = 13; M.mix = 0; auto m = run(g, 64, 4, M);
+        Params Nn = plain(); Nn.filmOn = false; Nn.printOn = false; auto nn = run(g, 64, 4, Nn);
+        float err = 0; for (size_t k = 0; k < m.size(); ++k) err = std::max(err, std::fabs(m[k] - nn[k]));
+        CHECK(err < 0.01f, "mix 0 should equal neutral (%.4f)", err);
     }
 
     printf(fails ? "\n%d FAILED\n" : "\nALL OK\n", fails);

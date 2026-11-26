@@ -44,3 +44,18 @@ Mask Mode (показати лише сяйво).
 FILM GRAIN (2.1)
 Профіль: формат + ISO (8/16/35/65 мм × ISO 50/250/500) або Custom (зерно обраної плівки).
 Size, Amount, Film Resolution, Shadows/Midtones/Highlights, Chroma, Film Type, Mode.
+
+SVIT LOOK (2.2) — 30 готових образів
+Група «Svit Look» угорі: обери образ, і всі повзунки нижче виставляться. Далі докручуй що завгодно.
+Svit Classic, Night Tram, Neon Rain, Frankivsk '98, Karpaty Fog, Super 8 Summer, Home Movie '74,
+16mm Doc, 16mm Indie Day, Portra Skin, Ektar Punch, Velvia Mountains, Slide Show '72,
+Kodachrome Memory, Bleach Bypass, Cross Process '99, Tri-X Street, HP5 Concert, Expired Superia,
+Basement Gig, Golden Hour, Teal Night, Pastel Dream, Faded Print, Eterna Drama, Music Video Flash,
+Light Leak Roll, 65mm Epic, Snapshot ColorPlus, Flat Scan.
+
+ВЛАСНІ МОДУЛІ SVIT
+Expired Film — Age (роки) і Storage (Fridge / Room / Hot Car): вуаль, зсув кольору, менше контрасту, більше зерна.
+Light Leak   — засвітка від краю кадру (Amount, Hue, Drift, Edge; Random міняє край кожні ~2 с).
+               Рахується до проявлення, тож засвітка теж дає halation.
+Lab          — Cross Process (слайд у негативній хімії) і Flicker (мерехтіння експозиції).
+Output → Mix — змішування з нейтральним відтворенням без плівки.

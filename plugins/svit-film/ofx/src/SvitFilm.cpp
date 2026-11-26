@@ -16,6 +16,7 @@ extern char** environ;
 #include "ofxParam.h"
 #include "ofxProperty.h"
 #include "svitfilm_core.h"
+#include "svit_looks.h"
 
 #ifndef SVIT_VERSION
 #define SVIT_VERSION "dev"
@@ -155,6 +156,15 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     for (int k = 0; k < kNumPrints; ++k) printNames.push_back(kPrints[k].name);
     printNames.push_back("Film Scan (no print)");
 
+    std::vector<std::string> lookNameStore = {"None (manual)"};
+    for (auto& l : looks()) lookNameStore.push_back(l.name);
+    std::vector<const char*> lookNames;
+    for (auto& n : lookNameStore) lookNames.push_back(n.c_str());
+    defineGroup(ps, "gLook", "Svit Look");
+    defineChoice(ps, "look", "Look", lookNames.data(), (int)lookNames.size(), 0, "gLook",
+                 "30 ready looks. Picking one sets the controls below; then tweak anything.");
+    defineLabel(ps, "lookInfo", "About", "Pick a look or set everything by hand.", "gLook");
+
     defineGroup(ps, "gInput", "Input");
     defineChoice(ps, "input", "Source", kInputNames, kNumInputs, IN_REC709, "gInput",
                  "Colour space and gamma of what comes into this node.");
@@ -229,6 +239,20 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineBool(ps, "freezeGrain", "Freeze Grain", 0, "gGrain", "Keep the same grain on every frame.");
     defineBool(ps, "grainOn", "Enabled", 1, "gGrain", "Turn grain on.");
 
+    defineGroup(ps, "gExpired", "Expired Film", false);
+    defineDouble(ps, "age", "Age (years)", 0.0, 0.0, 30.0, "gExpired", "How long past its date: fog, colour shift, lost contrast, more grain.", 0.5, 1);
+    defineChoice(ps, "storage", "Storage", kStorageNames, 3, 1, "gExpired", "Where the roll was kept.");
+
+    defineGroup(ps, "gLeak", "Light Leak", false);
+    defineDouble(ps, "leak", "Amount", 0.0, 0.0, 2.0, "gLeak", "Light leaking onto the film from the edge (exposes before development).");
+    defineDouble(ps, "leakHue", "Hue", 40.0, 0.0, 100.0, "gLeak", "Red -> orange -> yellow.", 1, 1);
+    defineDouble(ps, "leakSpeed", "Drift", 0.3, 0.0, 1.0, "gLeak", "How fast the leak moves.");
+    defineChoice(ps, "leakPos", "Edge", kLeakPosNames, 5, 4, "gLeak", "Where the leak comes from. Random changes every ~2 s.");
+
+    defineGroup(ps, "gLab", "Lab", false);
+    defineDouble(ps, "cross", "Cross Process", 0.0, 0.0, 100.0, "gLab", "Slide film in negative chemistry: cyan shadows, yellow highlights.", 1, 1);
+    defineDouble(ps, "flicker", "Flicker", 0.0, 0.0, 1.0, "gLab", "Exposure flicker from frame to frame.");
+
     defineGroup(ps, "gCamera", "Camera", false);
     defineDouble(ps, "vignette", "Vignette", 0.0, 0.0, 1.0, "gCamera", "Darker corners.");
     defineDouble(ps, "weave", "Gate Weave", 0.0, 0.0, 1.0, "gCamera", "Subtle frame jitter like a projector.");
@@ -241,6 +265,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
 
     defineGroup(ps, "gOutput", "Output");
     defineChoice(ps, "output", "Output", kOutputNames, kNumOutputs, OUT_REC709, "gOutput", "Display colour space of the result.");
+    defineDouble(ps, "mix", "Mix", 100.0, 0.0, 100.0, "gOutput", "Blend with the neutral (no film) rendering.", 1, 1);
 
     defineGroup(ps, "gAbout", "Svit Film v" SVIT_VERSION, false);
     defineButton(ps, "update", "Update Svit Film", "gAbout", "Check GitHub for a new Svit Film version and install it.");
@@ -277,6 +302,24 @@ void updateStatus(OfxImageEffectHandle inst) {
     if (gParam->paramSetValue) gParam->paramSetValue(h, svitfilm::statusText(p));
 }
 
+// вибір образу: виставити всі його параметри (спершу типові значення, потім образ)
+void applyLookParams(OfxImageEffectHandle inst) {
+    if (!gParam->paramSetValue) return;
+    int i = getI(inst, "look", 0);
+    svitfilm::Params P;
+    if (!svitfilm::applyLook(P, i)) return;
+    OfxParamSetHandle ps; OfxParamHandle h;
+    gEffect->getParamSet(inst, &ps);
+    for (auto& f : svitfilm::lookFields()) {
+        if (gParam->paramGetHandle(ps, f.name, &h, nullptr) != kOfxStatOK) continue;
+        double v = svitfilm::getField(P, f);
+        if (f.d) gParam->paramSetValue(h, v); else gParam->paramSetValue(h, (int)v);
+    }
+    if (gParam->paramGetHandle(ps, "lookInfo", &h, nullptr) == kOfxStatOK)
+        gParam->paramSetValue(h, svitfilm::looks()[i - 1].info);
+    updateStatus(inst);
+}
+
 OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     char* type = nullptr; char* name = nullptr; char* reason = nullptr;
     gProp->propGetString(inArgs, kOfxPropType, 0, &type);
@@ -285,6 +328,7 @@ OfxStatus instanceChanged(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs
     if (!type || !name || std::strcmp(type, kOfxTypeParameter)) return kOfxStatReplyDefault;
     if (!std::strcmp(name, "update") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) launchUpdate();
     if (!std::strcmp(name, "stock") || !std::strcmp(name, "filmOn")) updateStatus(inst);
+    if (!std::strcmp(name, "look") && (!reason || !std::strcmp(reason, kOfxChangeUserEdited))) applyLookParams(inst);
     return kOfxStatOK;
 }
 
@@ -359,6 +403,10 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     p.vignette = getD(inst, "vignette", t); p.weave = getD(inst, "weave", t);
     p.blackPoint = getD(inst, "blackPoint", t); p.whitePoint = getD(inst, "whitePoint", t);
     p.colorMode = getI(inst, "colorMode", t); p.expandOn = getI(inst, "expandOn", t) != 0;
+    p.age = getD(inst, "age", t); p.storage = getI(inst, "storage", t);
+    p.leak = getD(inst, "leak", t); p.leakHue = getD(inst, "leakHue", t); p.leakSpeed = getD(inst, "leakSpeed", t);
+    p.leakPos = getI(inst, "leakPos", t); p.cross = getD(inst, "cross", t); p.flicker = getD(inst, "flicker", t);
+    p.mix = getD(inst, "mix", t);
     p.frame = t; p.originX = dst.b.x1; p.originY = dst.b.y1;
 
     const int w = dst.b.x2 - dst.b.x1, h = dst.b.y2 - dst.b.y1;

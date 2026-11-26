@@ -49,6 +49,9 @@ static const char* kHalProfileNames[] = {"Custom", "8 mm / Super 8", "8 mm / Sup
 static const int kNumHalProfiles = 9;
 static const char* kFilmTypeNames[] = {"Negative", "Positive"};
 static const char* kGrainModeNames[] = {"Analogue", "Digital"};
+static const char* kStorageNames[] = {"Fridge", "Room", "Hot Car"};
+static const float kStorageRate[] = {0.4f, 1.0f, 2.2f};
+static const char* kLeakPosNames[] = {"Left", "Right", "Top", "Bottom", "Random"};
 static const char* kColorModeNames[] = {"Normal", "Luminance"};
 static const int kNumColorModes = 2;
 
@@ -82,6 +85,14 @@ struct Params {
     int filmType = 0, grainMode = 0; bool freezeGrain = false;
     // Camera
     double vignette = 0, weave = 0;
+    // Expired Film (унікальне Svit): вік плівки і умови зберігання
+    double age = 0; int storage = 1;
+    // Light Leak (унікальне Svit): засвітка крізь щілину касети/дверцят камери
+    double leak = 0, leakHue = 40, leakSpeed = 0.3; int leakPos = 4;
+    // Lab: крос-процес і мерехтіння експозиції
+    double cross = 0, flicker = 0;
+    // Mix з нейтральним відтворенням
+    double mix = 100;
     // Expand
     bool expandOn = true; double blackPoint = 0, whitePoint = 100; int colorMode = 0;
     // кадр і зсув зображення (щоб зерно не залежало від тайлів/обрізки)
@@ -239,6 +250,15 @@ inline float gauss01(int x, int y, uint32_t s) {
     return std::sqrt(-2.0f * std::log(u1)) * std::cos(6.2831853f * u2);
 }
 
+inline float vnoise(float x, float y, uint32_t s) {   // гладкий value-noise для засвіток
+    float xi = std::floor(x), yi = std::floor(y), fx = x - xi, fy = y - yi;
+    float ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+    auto H = [&](float a, float b) { return (hash3((uint32_t)(int32_t)a, (uint32_t)(int32_t)b, s) >> 8) * (1.0f / 16777216.0f); };
+    float a = H(xi, yi), b = H(xi + 1, yi), c = H(xi, yi + 1), d = H(xi + 1, yi + 1);
+    float ab = a + (b - a) * ux, cd = c + (d - c) * ux;
+    return ab + (cd - ab) * uy;
+}
+
 inline float softplus(float z) { return z > 20 ? z : (z < -20 ? 0.0f : std::log1p(std::exp(z))); }
 // «рампа» від 0 до (sh − toe) з м'якою п'ятою і плечем; монотонна
 inline float ramp(float x, float toe, float sh, float tw, float sw) {
@@ -254,6 +274,7 @@ struct Film {
     StockDef s; int cls = CL_NEG; int nch = 3;
     float g[3], toe[3], sh[3], dmin[3], dmax = 0;
     float colorSep = 0, colorBoost = 0, gammaCorr = 0, fog = 0;
+    float speedLoss[3] = {0, 0, 0};   // прострочена плівка: шари втрачають чутливість (синій — найбільше)
     float density(int c, float x) const {
         float r = ramp(x, toe[c], sh[c], s.toeW, s.shW);
         if (cls == CL_REV) return dmax - g[c] * r;
@@ -279,6 +300,20 @@ inline Film makeFilm(const StockDef& sd, const Params& P, bool creative) {
         }
     }
     f.dmax = sd.dmax;
+    // Expired Film. Модель (оцінка, творча): старіння = вуаль (base+fog росте, синій шар найбільше),
+    // втрата чутливості шарів і падіння контрасту; лабораторія таймує середній сірий, тож лишаються
+    // кольорова вуаль у тінях, кросовери і «вицвілий» контраст. a ≈ роки/10 × швидкість зберігання.
+    if (creative && P.age > 0) {
+        float a = (float)P.age / 10.0f * kStorageRate[std::clamp(P.storage, 0, 2)];
+        const float fogK[3] = {0.030f, 0.040f, 0.065f}, lossK[3] = {0.04f, 0.06f, 0.10f};
+        for (int c = 0; c < 3; ++c) {
+            f.dmin[c] += fogK[c] * a;
+            if (sd.cls == CL_REV) f.dmin[c] += fogK[c] * a * 0.5f;
+            f.g[c] *= std::max(0.55f, 1.0f - 0.07f * a);
+            f.speedLoss[c] = lossK[c] * a;
+        }
+        if (sd.cls == CL_REV) for (int c = 0; c < 3; ++c) f.sh[c] = f.toe[c] + (sd.dmax - f.dmin[c]) / f.g[c];
+    }
     f.colorSep = sd.colorSep * ((creative && P.devOn) ? (float)P.colorSep / 100.0f : 1.0f);
     f.colorBoost = (creative && P.devOn) ? (float)P.colorBoost / 100.0f : 0.0f;
     f.gammaCorr = (creative && P.devOn) ? (float)P.gammaCorr / 100.0f : 0.0f;
@@ -293,10 +328,10 @@ inline Print makePrint(const PrintDef& pd) {
 // x: log10 експозиції відносно 18% (уже з усіма зсувами) → щільність негативу/слайда (3 канали)
 inline void develop(const Film& f, const float* xin, float* D, float pushShift) {
     float x[3];
-    if (f.nch == 1) { x[0] = x[1] = x[2] = xin[0] - pushShift; }
+    if (f.nch == 1) { x[0] = x[1] = x[2] = xin[0] - pushShift - f.speedLoss[1]; }
     else {
         float m = (xin[0] + xin[1] + xin[2]) / 3.0f;
-        for (int c = 0; c < 3; ++c) x[c] = xin[c] + f.colorSep * (xin[c] - m) + f.s.balance[c] - pushShift;
+        for (int c = 0; c < 3; ++c) x[c] = xin[c] + f.colorSep * (xin[c] - m) + f.s.balance[c] - pushShift - f.speedLoss[c];
     }
     for (int c = 0; c < f.nch; ++c) D[c] = f.density(c, x[c]);
     if (f.nch == 1) D[1] = D[2] = D[0];
@@ -330,6 +365,7 @@ struct System {
     float lightShift[3] = {0, 0, 0};          // творчі printer lights / print exposure (log10 E)
     float colorDensity = 0;
     float scanGamma[3] = {1, 1, 1};
+    float cross = 0;   // крос-процес (творча модель): різні контрасти/зсуви шарів у щільності відбитка
     // Expand: чорне і біле системи (дуже темна / дуже яскрава сцена) → 0 і 1 дисплея
     float yb[3] = {0, 0, 0}, yw[3] = {1, 1, 1};
     bool expand = false; int expandMode = 0;
@@ -351,6 +387,20 @@ struct System {
     // щільність (вже з зерном) → дисплей-лінійне (+ Expand)
     void display(const float* D, float* Y) const { displayRaw(D, Y); applyExpand(Y); }
     void displayRaw(const float* D, float* Y) const {
+        displayBase(D, Y);
+        if (cross > 0) {
+            // E-6 у C-41 / C-41 в E-6: блакитні тіні, жовто-зелені світлі, жорсткий контраст
+            const float g[3] = {1.25f, 1.08f, 0.78f}, o[3] = {-0.05f, 0.02f, 0.12f};
+            for (int c = 0; c < 3; ++c) {
+                float d = -std::log10(std::max(Y[c], 1e-6f));
+                float d2 = 0.92f + (d - 0.92f) * g[c] + o[c];
+                d = d + (d2 - d) * cross;
+                Y[c] = std::pow(10.0f, -d);
+            }
+        }
+        if (film.nch == 1) Y[0] = Y[2] = Y[1];
+    }
+    void displayBase(const float* D, float* Y) const {
         if (mode == 2) {   // слайд: пропускання відносно Dmin
             for (int c = 0; c < 3; ++c) Y[c] = std::pow(10.0f, -(D[c] - film.dmin[c]) + off[c]);
             return;
@@ -409,10 +459,18 @@ inline System makeSystem(const StockDef& sd, const PrintDef& pd, int printMode, 
         s.lightShift[2] = pe + (float)P.lightB * 0.025f;
         if (s.mode != 0) for (int c = 0; c < 3; ++c) s.off[c] -= s.lightShift[c] * 2.0f;   // скан/слайд: експозиція скану
         s.colorDensity = P.compOn ? (float)P.colorDensity / 100.0f : 0.0f;
+        s.cross = (float)P.cross / 100.0f;
     }
     s.expand = creative ? P.expandOn : true;
     s.expandMode = creative ? P.colorMode : 0;
-    s.measureRange();
+    if (creative && (P.age > 0 || P.cross > 0)) {
+        // Expand розтягує рідний діапазон плівки; старіння і крос-процес лишаються видимими
+        Params Q = P; Q.age = 0; Q.cross = 0;
+        System b = makeSystem(sd, pd, printMode, Q, true);
+        for (int c = 0; c < 3; ++c) { s.yb[c] = b.yb[c]; s.yw[c] = b.yw[c]; }
+    } else {
+        s.measureRange();
+    }
     return s;
 }
 
@@ -568,6 +626,8 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     const bool mono = film.nch == 1;
     const bool dispIn = displayReferred(P.input);
     const InverseNeutral* invN = dispIn ? &inverseNeutral() : nullptr;
+    Params P0;
+    const System refSys = makeSystem(kReferenceStock, kReferencePrint, 0, P0, false);
     const M3& Min = inMatrix(P.input);
     const M3& Mout = outMatrix(P.output);
     // формат плівки для зерна (Film Grain → Profile) і для halation (Halation → Profile)
@@ -579,7 +639,20 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     const bool remjet = hp == 0 ? !(sd.halation > 1.0f) : ((hp - 1) % 2 == 0);
     const float halPxPerMM = w / halGaugeW;
 
-    const float ev = std::exp2((float)P.exposure);
+    // мерехтіння: випадкова (детермінована для кадру) зміна експозиції, ±0.25 стопа при 1
+    const uint32_t fseed = (uint32_t)(int64_t)std::floor(P.frame);
+    const float flick = P.flicker > 0 ? (float)P.flicker * 0.5f * ((hash3(fseed, 77, 9) >> 8) / 16777216.0f - 0.5f) : 0.0f;
+    const float ev = std::exp2((float)P.exposure + flick);
+    // засвітка: колір від червоного до жовтого (світло крізь основу засвічує насамперед червоний шар)
+    float leakCol[3];
+    {
+        float hcol = (float)P.leakHue / 100.0f;
+        leakCol[0] = 1.0f; leakCol[1] = 0.10f + 0.75f * hcol; leakCol[2] = 0.02f + 0.25f * hcol * hcol;
+    }
+    int leakPos = std::clamp(P.leakPos, 0, 4);
+    const uint32_t roll = (uint32_t)(int64_t)std::floor(P.frame / 48.0);   // «рулон» міняється раз на ~2 с
+    if (leakPos == 4) leakPos = (int)(hash3(roll, 5, 11) % 4u);
+    const float leakT = (float)P.frame * (float)P.leakSpeed * 0.03f;
     const float wb[3] = {std::exp2((float)P.temp * 0.30f), std::exp2(-(float)P.tint * 0.20f), std::exp2(-(float)P.temp * 0.30f)};
     const uint32_t seed = P.freezeGrain ? 1u : (uint32_t)(int64_t)std::floor(P.frame) * 2654435761u + 7u;
     const float sc = w / 1920.0f;
@@ -613,6 +686,16 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
             }
             float* o = &lin[((size_t)y * w + x) * 3];
             for (int c = 0; c < 3; ++c) o[c] = std::max(L[c], 0.0f) * ev * wb[c] * vig;
+            if (P.leak > 0) {   // додаткова експозиція від краю кадру (до проявлення — тож вона і halation дає)
+                float u = leakPos == 0 ? (float)x / w : leakPos == 1 ? 1.0f - (float)x / w
+                        : leakPos == 2 ? (float)y / h : 1.0f - (float)y / h;
+                float along = (leakPos <= 1 ? (float)y / h : (float)x / w);
+                float n = vnoise(along * 3.0f + leakT, leakT * 0.7f + 5.0f, roll) * 0.7f +
+                          vnoise(along * 7.0f - leakT * 1.3f, leakT + 9.0f, roll + 1u) * 0.3f;
+                float reach = 0.05f + 0.16f * n;
+                float I = (float)P.leak * 1.6f * std::exp(-u / reach) * (0.25f + 1.5f * n * n);
+                for (int c = 0; c < 3; ++c) o[c] += I * leakCol[c];
+            }
             if (mono) {   // панхроматичний шар: одне число
                 float m = sd.mono[0] * o[0] + sd.mono[1] * o[1] + sd.mono[2] * o[2];
                 o[0] = o[1] = o[2] = m;
@@ -708,7 +791,8 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     const bool grainOn = P.grainOn && P.grainAmount > 0;
     float sigma48 = gp == 0 ? 0.0060f * sd.grain : kIsoSigma48[(gp - 1) % 3];
     const float sizeUM = gp == 0 ? (float)P.grainSize : kIsoGrainUM[(gp - 1) % 3] * (float)P.grainSize / 12.0f;
-    sigma48 *= (float)P.grainAmount / 35.0f * (1.0f + 0.25f * std::max((float)P.pushPull, 0.0f));
+    sigma48 *= (float)P.grainAmount / 35.0f * (1.0f + 0.25f * std::max((float)P.pushPull, 0.0f)) *
+               (1.0f + 0.03f * (float)P.age * kStorageRate[std::clamp(P.storage, 0, 2)]);
     const float sigmaPix = sigma48 * 48.0f / std::sqrt(pixUM * pixUM + sizeUM * sizeUM);
     const float grainBlur = 0.5f * sizeUM / pixUM;
     const float rho = mono ? 1.0f : 1.0f - 0.85f * (float)P.chroma / 100.0f;   // спільна частина між шарами
@@ -787,6 +871,20 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
             if (!halo.empty()) for (int c = 0; c < 3; ++c) { float hv = halo[((size_t)y * w + x) * 3 + c]; Y[c] = hv / (hv + 0.25f); }
             mul(Mout, Y, o);
             for (int c = 0; c < 3; ++c) o[c] = encodeTF(o[c], P.output);
+            if (P.mix < 100 && halo.empty()) {   // змішування з нейтральним відтворенням того ж пікселя
+                float a[3], Ln[3], Yn[3], on[3];
+                for (int c = 0; c < 3; ++c) { float v = srow[x * 4 + c]; a[c] = decodeTF(std::isfinite(v) ? v : 0.0f, P.input); }
+                mul(Min, a, Ln);
+                if (dispIn) { for (int c = 0; c < 3; ++c) Yn[c] = std::max(Ln[c], 0.0f); }
+                else {
+                    float xr[3], Dr[3];
+                    for (int c = 0; c < 3; ++c) xr[c] = std::log10(std::max(Ln[c], 1e-7f) / kMidGray);
+                    develop(refSys.film, xr, Dr, 0); refSys.display(Dr, Yn);
+                }
+                mul(Mout, Yn, on);
+                float m = std::clamp((float)P.mix / 100.0f, 0.0f, 1.0f);
+                for (int c = 0; c < 3; ++c) o[c] = encodeTF(on[c], P.output) + (o[c] - encodeTF(on[c], P.output)) * m;
+            }
             if (P.expandOn && (P.blackPoint != 0 || P.whitePoint != 100)) {
                 float bp = (float)P.blackPoint / 100.0f, wp = (float)P.whitePoint / 100.0f;
                 float sc2 = 1.0f / std::max(wp - bp, 0.05f);
