@@ -586,3 +586,6 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 .tpstat.ok{background:#E2F55C}
 .tpstat.bad{border-color:#B4321E;color:#B4321E}
 .tpstat .btn{flex:none}
+
+textarea.storyidea{min-height:64px}
+#storyarc{flex-wrap:wrap}

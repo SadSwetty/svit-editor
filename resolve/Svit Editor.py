@@ -1285,7 +1285,19 @@ def place_song(sess, mp, tl, mus, start):
         sfps = float(str(song.GetClipProperty("FPS") or "").split()[0])
     except Exception:
         sfps = timeline_fps(tl)
-    mp.AppendToTimeline([{"mediaPoolItem": song, "mediaType": 2, "trackIndex": 1,
+    track = int(mus.get("track") or 1)       # 2 — коли на A1 звучить голос із відео
+    try:
+        while tl.GetTrackCount("audio") < track:
+            if not tl.AddTrack("audio", "stereo"):
+                break
+    except Exception:
+        pass
+    try:
+        if tl.GetTrackCount("audio") < track:
+            track = 1
+    except Exception:
+        track = 1
+    mp.AppendToTimeline([{"mediaPoolItem": song, "mediaType": 2, "trackIndex": track,
                           "startFrame": int(round(mus["start"] * sfps)),
                           "endFrame": int(round(mus["end"] * sfps)),
                           "recordFrame": start}])
@@ -1305,8 +1317,8 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
         sf = int(round((sg["start"] + off) * src["fps"]))
         ef = max(sf + 1, int(round((sg["end"] + off) * src["fps"])))
         info = {"mediaPoolItem": src["item"], "startFrame": sf, "endFrame": ef, "trackIndex": 1}
-        if mus:
-            info["mediaType"] = 1   # тільки картинка — звучить трек
+        if mus and not sg.get("voice"):
+            info["mediaType"] = 1   # тільки картинка — звучить трек (а де говорять — лишаємо їхній звук)
         infos.append(info)
         metas.append((src, sg))
     if not infos:

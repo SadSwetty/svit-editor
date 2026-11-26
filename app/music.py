@@ -280,3 +280,51 @@ def sync_offset(song_path, video_path, song_env=None, window=None):
 
 def song_envelope(path):
     return song_features(path)
+
+
+def decode_stereo(path, start, end, sr=48000):
+    """Шматок треку [start, end] у стерео float32 (n, 2)."""
+    import av
+    c = av.open(str(path))
+    try:
+        if not c.streams.audio:
+            raise RuntimeError("У файлі немає звуку.")
+        res = av.AudioResampler(format="s16", layout="stereo", rate=sr)
+        chunks = []
+        for frame in c.decode(c.streams.audio[0]):
+            for f in res.resample(frame):
+                chunks.append(f.to_ndarray().reshape(-1, 2))
+        try:
+            for f in res.resample(None):
+                chunks.append(f.to_ndarray().reshape(-1, 2))
+        except Exception:
+            pass
+    finally:
+        c.close()
+    y = np.concatenate(chunks).astype(np.float32) / 32768.0
+    return y[int(max(0, start) * sr):int(max(start, end) * sr)]
+
+
+def ducked_bed(path, start, end, voice, out_path, bed_db=-4.0, duck_db=-17.0, ramp=0.25, sr=48000):
+    """Музична підкладка під голос: шматок треку, який притихає там, де говорять (voice — [(від, до)] у секундах
+    від початку ролика). Плавні переходи ramp секунд. Пише 16-бітний WAV."""
+    y = decode_stereo(path, start, end, sr)
+    n = len(y)
+    t = np.arange(n) / sr
+    g_db = np.full(n, bed_db, np.float32)
+    for a, b in voice:
+        a0, b1 = max(0.0, a - ramp), b + ramp
+        m = (t >= a0) & (t <= b1)
+        if not m.any():
+            continue
+        # трапеція: спуск за ramp до початку голосу, тримаємо, підйом після
+        k = np.minimum(np.clip((t[m] - a0) / ramp, 0, 1), np.clip((b1 - t[m]) / ramp, 0, 1))
+        g_db[m] = np.minimum(g_db[m], bed_db + (duck_db - bed_db) * k)
+    y = y * (10 ** (g_db / 20.0))[:, None]
+    y = np.clip(y, -1, 1)
+    with wave.open(str(out_path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((y * 32767).astype(np.int16).tobytes())
+    return n / sr

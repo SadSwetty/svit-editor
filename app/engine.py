@@ -600,7 +600,8 @@ def estimate(sources_total_sec, n_sources, settings, n_shots, n_refs=0):
     """Приблизні токени, ціна й час ще до старту. Повертає dict."""
     minutes = sources_total_sec / 60.0
     tin = 2000
-    if settings.get("transcribe", True):
+    story = bool(settings.get("story_on"))
+    if settings.get("transcribe", True) or story:
         tin += minutes * 300
     tin += minutes * 35
     frames = 0
@@ -615,8 +616,12 @@ def estimate(sources_total_sec, n_sources, settings, n_shots, n_refs=0):
     tout = 800 + nv * int(250 + segs * 60)
     model = settings.get("model", "claude-sonnet-5-5")
     cost = price_of(model, tin, tout)
-    secs = 20 + sources_total_sec * 0.02 + frames * 0.15
-    if settings.get("transcribe", True):
+    if story:   # окремий прохід «сенсу»: усі розшифровки + сюжет у відповідь
+        s_in, s_out = 1500 + minutes * 320, 6000 + nv * 1500
+        cost += price_of(model, s_in, s_out)
+        tin, tout = tin + s_in, tout + s_out
+    secs = 20 + sources_total_sec * 0.02 + frames * 0.15 + (40 if story else 0)
+    if settings.get("transcribe", True) or story:
         secs += sources_total_sec * WHISPER_SPEED.get(settings.get("whisper_model", "medium"), 0.22)
     secs += 15 + tout / 60 + n_refs * 25
     return {"tokens_in": int(tin), "tokens_out": int(tout), "cost": cost,
@@ -747,6 +752,170 @@ def compress_segments(segs, window):
     return out
 
 
+# ======================================================================= сюжет за змістом мови
+
+STORY_ARCS = {
+    "auto": "обери структуру сам, як найсильніше розкриється зміст",
+    "hook": "гачок → контекст → розвиток → кульмінація → фінальна думка",
+    "chrono": "хронологічно: як усе відбувалось, від початку до кінця",
+    "themes": "тематично: блоки за темами, кожен з власною думкою, з переходами між ними",
+    "qa": "питання → відповідь: як інтерв'ю, кожна відповідь розкриває одне питання",
+}
+
+STORY_SYSTEM = """Ти — сценарист-документаліст і монтажер. Тобі дають розшифровки всього відзнятого матеріалу
+(з таймкодами фраз). Твоє завдання — зрозуміти СЕНС: про що люди насправді говорять, яка тут історія,
+де емоція, де жарт, де головна думка — і скласти з цього логічний сюжет для короткого відео.
+
+Правила:
+- бери лише те, що справді сказано; не вигадуй цитат і не змінюй слова;
+- межі цитат — по фразах: start = початок першого слова, end = кінець останнього; ніколи не різати посеред думки;
+- прибирай повтори, «ееее», фальстарти, обірвані речення, технічні розмови («пишемо?», «ще раз»);
+- історія має працювати й без контексту: глядач, що бачить ролик уперше, має зрозуміти, про що він;
+- сильний початок (гачок у перші 2–3 секунди) і фінал, що закриває думку;
+- загальна довжина цитат має вміщатися в задану тривалість, лишаючи місце на перебивки.
+
+Відповідь — ТІЛЬКИ JSON:
+{"logline": "одне речення: про що історія",
+ "videos": [{"title": "...",
+             "arc": [{"beat": "Гачок", "goal": "навіщо ця частина",
+                      "quotes": [{"source": 3, "start": 12.4, "end": 18.9, "text": "дослівно", "why": "чому саме це"}],
+                      "broll": "що показати як перебивку на цій частині"}]}],
+ "skip": [{"source": 2, "start": 40.0, "end": 55.0, "why": "повтор / шум / не по темі"}]}"""
+
+
+def story_input(job, data, max_chars=140000):
+    """Повні розшифровки всіх джерел для проходу «сенсу»."""
+    s = job["settings"]
+    head = [f"ЗАПИТ АВТОРА: {job['prompt'].strip() or '(порожній)'}",
+            f"ГОЛОВНА ДУМКА ВІД АВТОРА: {s.get('story_idea') or '(не задана — знайди сам)'}",
+            f"СТРУКТУРА: {STORY_ARCS.get(s.get('story_arc', 'auto'), STORY_ARCS['auto'])}",
+            f"СКІЛЬКИ ВІДЕО: {s['num_videos']}", f"ДОВЖИНА КОЖНОГО: {s['video_length']}",
+            "", "МАТЕРІАЛ:"]
+    body = []
+    for src in job["sources"]:
+        segs = data.get(src["id"], {}).get("segs") or []
+        body.append(f"\n===== ДЖЕРЕЛО {src['id']}: «{src['name']}», {hms(src['duration'])} =====")
+        if segs:
+            body += [f"[{x['start']:.1f}–{x['end']:.1f}] {x['text']}" for x in segs]
+        else:
+            body.append("(мови немає — лише картинка, годиться для перебивок)")
+    txt = "\n".join(head + body)
+    if len(txt) > max_chars:      # дуже багато мови — зливаємо фрази у вікна
+        body = []
+        for src in job["sources"]:
+            segs = compress_segments(data.get(src["id"], {}).get("segs") or [], 15)
+            body.append(f"\n===== ДЖЕРЕЛО {src['id']}: «{src['name']}», {hms(src['duration'])} =====")
+            body += [f"[{x['start']:.1f}–{x['end']:.1f}] {x['text']}" for x in segs] or ["(мови немає)"]
+        txt = "\n".join(head + body)[:max_chars]
+    return txt
+
+
+def story_pass(client, model, job, data, check, on_progress):
+    """Claude читає всі розшифровки й складає сюжет. Повертає (сюжет або None, usage)."""
+    import threading
+    res = {}
+
+    def call():
+        try:
+            r = client.messages.create(model=model, max_tokens=20000, system=STORY_SYSTEM,
+                                       messages=[{"role": "user", "content": story_input(job, data)}],
+                                       extra_body={"output_config": {"effort": "medium"}})
+            res["r"] = r
+        except Exception as e:      # noqa: BLE001
+            res["e"] = e
+    th = threading.Thread(target=call, daemon=True)
+    th.start()
+    t0 = time.time()
+    while th.is_alive():
+        check()
+        on_progress(min(0.95, 1 - math.exp(-(time.time() - t0) / 25.0)))
+        time.sleep(0.4)
+    if "e" in res:
+        _log(f"Сюжет: помилка {res['e']!r}")
+        if "Authentication" in type(res["e"]).__name__:
+            raise res["e"]
+        return None, None
+    r = res["r"]
+    text = "".join(getattr(b, "text", "") for b in r.content if getattr(b, "type", "") == "text")
+    story = try_parse(text, need="videos")
+    _log(f"Сюжет: {len(text)} символів, usage={getattr(r, 'usage', None)}")
+    if not story:
+        _log("Сюжет не розібрано — монтую без нього")
+        return None, r.usage
+    # прибираємо цитати з неіснуючих джерел і неправильними межами
+    ids = {x["id"]: x["duration"] for x in job["sources"]}
+    for v in story.get("videos") or []:
+        for b in v.get("arc") or []:
+            ok = []
+            for q in b.get("quotes") or []:
+                try:
+                    sid, a, e = int(q.get("source")), float(q.get("start")), float(q.get("end"))
+                except (TypeError, ValueError):
+                    continue
+                if sid in ids and 0 <= a < e <= ids[sid] + 0.5:
+                    ok.append(dict(q, source=sid, start=round(a, 2), end=round(min(e, ids[sid]), 2)))
+            b["quotes"] = ok
+    _log("Сюжет: " + str(story.get("logline", ""))[:200] + " | біти: " + "; ".join(
+        f"{b.get('beat')}({len(b.get('quotes') or [])})" for v in story.get("videos") or [] for b in v.get("arc") or []))
+    return story, r.usage
+
+
+def story_text(job):
+    """Блок «СЮЖЕТ» для основного запиту на монтаж."""
+    st = job.get("story")
+    s = job["settings"]
+    if not st:
+        return ""
+    w = int(s.get("story_weight", 70))
+    prio = ("сенс понад усе: цитати цілі, темп підлаштовуй під мову" if w >= 75 else
+            "баланс: історія зрозуміла, але ритм живий — довгі цитати можна розбити перебивками" if w >= 40 else
+            "динаміка понад усе: лише найсильніші короткі фрази, швидкий ритм")
+    lines = ["СЮЖЕТ (з аналізу змісту мови — ДОТРИМУЙСЯ ЙОГО):", f"Логлайн: {st.get('logline', '')}", f"Пріоритет: {prio}."]
+    for i, v in enumerate(st.get("videos") or [], 1):
+        lines.append(f"\nВідео {i}: «{v.get('title', '')}»")
+        for b in v.get("arc") or []:
+            lines.append(f"• {b.get('beat', '')} — {b.get('goal', '')}")
+            for q in b.get("quotes") or []:
+                lines.append(f"    цитата: джерело {q['source']}, {q['start']:.1f}–{q['end']:.1f} с: «{q.get('text', '')}»")
+            if b.get("broll"):
+                lines.append(f"    перебивки: {b['broll']}")
+    if st.get("skip"):
+        lines.append("\nНЕ БРАТИ: " + "; ".join(
+            f"джерело {x.get('source')}, {x.get('start')}–{x.get('end')} с ({x.get('why', '')})" for x in st["skip"][:30]))
+    lines.append(
+        "\nЯК МОНТУВАТИ ЗА СЮЖЕТОМ:\n"
+        "- іди за бітами сюжету по черзі; цитати бери з тими межами, що вказані (можна розбити довгу на 2–3 шматки "
+        "з перебивкою між ними, але кожен шматок — ціла фраза);\n"
+        "- поки людина говорить, у кадрі вона сама — її звук іде разом із її відео; перебивки ставлять між фразами;\n"
+        "- не ріж фразу посеред слова і не переставляй слова так, щоб змінився сенс;\n"
+        "- перший шматок — гачок, останній — фраза, що закриває думку.")
+    return "\n".join(lines)
+
+
+def speech_spans(data, sid):
+    return [(float(x["start"]), float(x["end"])) for x in (data.get(sid, {}).get("segs") or [])]
+
+
+def speech_frac(st, en, spans):
+    if en <= st:
+        return 0.0
+    ov = sum(max(0.0, min(en, b) - max(st, a)) for a, b in spans)
+    return ov / (en - st)
+
+
+def snap_phrase(st, en, spans, sdur, slack=1.2, end_slack=10.0):
+    """Межі шматка — по фразах: початок не посеред фрази, кінець — коли фраза договорена."""
+    for a, b in spans:
+        if a < st < b and st - a <= slack:
+            st = max(0.0, a - 0.1)
+            break
+    for a, b in spans:
+        if a < en < b and b - en <= end_slack:
+            en = min(sdur, b + 0.15)
+            break
+    return st, en
+
+
 def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_videos=None):
     s = job["settings"]
     head = [
@@ -804,6 +973,8 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
         for t, jpg in rv["frames"][::frame_step]:
             content.append({"type": "text", "text": f"Кадр референсу №{i}, {t:.1f} с"})
             content.append(b64img(jpg))
+    if job.get("story"):
+        content.append({"type": "text", "text": story_text(job)})
     if job.get("vgroups"):
         content.append({"type": "text", "text": "ГРУПИ СХОЖИХ ДЖЕРЕЛ (знімають той самий об'єкт чи локацію — "
                         "не став їх поруч, з кожної групи бери кілька найкращих моментів, а не все підряд): "
@@ -994,6 +1165,8 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
     raw = spread_raw([x for x in raw if isinstance(x, dict)], job)
     seen_key = {}            # що вже було в цьому ролику: ключ схожості → кадрування
     reframed = [0]
+    story = bool(s.get("story_on"))
+    whole = story and s.get("story_whole", True)
 
     def reframe(item, reuse=False):
         """Повтор того самого об'єкта — інше кадрування, щоб читалось як новий план."""
@@ -1051,6 +1224,16 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
             nb = max(1, int(round(_f(sg.get("beats"), 2))))
             nxt = min(beat_to, cursor + nb)
             dur = grid[nxt] - grid[cursor]
+            spans = speech_spans(data, sid) if story else []
+            if whole and spans and not (job.get("sync") or {}).get(str(sid)):
+                # фраза ціла: шматок починається з початку фрази і триває стільки ударів, щоб її договорити
+                st2, en2 = snap_phrase(st, st + dur, spans, sdur)
+                if speech_frac(st2, en2, spans) > 0.3:
+                    st = st2
+                    need = min(en2 - st, 14.0)
+                    while nxt < beat_to and grid[nxt] - grid[cursor] < need - 0.05:
+                        nxt += 1
+                    dur = grid[nxt] - grid[cursor]
             sy = (job.get("sync") or {}).get(str(sid))
             synced = False
             if sy:
@@ -1074,10 +1257,15 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
                 item["sync"] = True
             reframe(item, reuse)
             item.update(start=round(st, 3), end=round(st + dur, 3), beat=cursor)
+            if story and not synced and speech_frac(st, st + dur, spans) > 0.3:
+                item["voice"] = True       # тут говорять — звук цього шматка має бути чутно
             used.setdefault(sid, []).append((st, st + dur))
             segs.append(item)
             continue
         en = min(sdur, _f(sg.get("end"), st))
+        spans = speech_spans(data, sid) if story else []
+        if whole and spans:
+            st, en = snap_phrase(st, en, spans, sdur)
         if en - st < 0.3:
             continue
         # склейка «план сам із собою»: продовження попереднього шматка — зливаємо в один
@@ -1095,6 +1283,8 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
         st, en = cut
         reframe(item)
         item.update(start=round(st, 3), end=round(en, 3), tighten=bool(sg.get("tighten")))
+        if story and speech_frac(st, en, spans) > 0.3:
+            item["voice"] = True
         used.setdefault(sid, []).append((st, en))
         segs.append(item)
     if reframed[0]:
@@ -1692,6 +1882,21 @@ class Job:
         import anthropic
         client = anthropic.Anthropic(api_key=cfg.get("api_key", ""))
         model = s.get("model", "claude-sonnet-5-5")
+        story_usage = None
+        if s.get("story_on") and any(data.get(x["id"], {}).get("segs") for x in job["sources"]):
+            self.report("plan", 0.01, "Розбираю сенс розмов і складаю сюжет")
+            story, story_usage = story_pass(client, model, job, data, self.check,
+                                            lambda f: self.report("plan", 0.01, "Розбираю сенс розмов і складаю сюжет"))
+            if story:
+                job["story"] = story
+                try:
+                    (self.out / "story.json").write_text(json.dumps(story, ensure_ascii=False, indent=1), encoding="utf-8")
+                except Exception:
+                    pass
+            else:
+                self.warnings.append("Сюжет за змістом не вдалося скласти — змонтовано звичайним способом.")
+        elif s.get("story_on"):
+            self.warnings.append("Сюжет: у матеріалі не знайдено мови — змонтовано звичайним способом.")
         self.report("plan", 0.02, "Рахую точну ціну")
         content, seg_window, frame_step = None, 0, 1
         for _ in range(6):
@@ -1782,6 +1987,8 @@ class Job:
                     raise
                 except Exception as e:
                     _log(f"Не вдалося дописати кінець: {e!r} — добиваю автоматично")
+        if story_usage is not None:
+            usage = Usage(usage, story_usage)
         self.cost = usage_cost(model, usage)
         month_total = add_spend(self.cost)
 
@@ -2090,9 +2297,38 @@ def parse_json(text, need="videos"):
     return obj
 
 
+def duck_music(job, videos, out, version):
+    """Сюжет з голосом під музику: трек іде на другу аудіодоріжку і притихає там, де говорять."""
+    s = job.get("settings", {})
+    if not (job.get("music_info") and s.get("story_on") and s.get("story_voice", True)):
+        return
+    import music as _m
+    for i, v in enumerate(videos, 1):
+        mu = v.get("music")
+        if not mu or not any(x.get("voice") for x in v["segments"]):
+            continue
+        t, spans = 0.0, []
+        for x in v["segments"]:
+            d = x["end"] - x["start"]
+            if x.get("voice"):
+                spans.append((t, t + d))
+            t += d
+        try:
+            p = Path(out) / f"music_v{version}_{i}.wav"
+            dur = _m.ducked_bed(mu["path"], mu["start"], mu["end"], spans, p)
+            v["music"] = {"path": str(p), "start": 0.0, "end": round(dur, 3), "track": 2}
+            v["voice"] = True
+            _log(f"Голос під музикою: ролик {i}, ділянок голосу {len(spans)}, трек на A2 з приглушенням")
+        except Exception as e:
+            v["music"] = dict(mu, track=2)
+            v["voice"] = True
+            _log(f"Приглушення музики не вдалося ({e!r}) — трек на A2 без приглушення")
+
+
 def finalize(job, data, text, out, version, plan=None):
     plan = plan if plan is not None else parse_json(text)
     videos = clean_plan(plan, job, data)
+    duck_music(job, videos, out, version)
     if not videos:
         raise RuntimeError("Claude не зміг скласти план: " + str(plan.get("notes", "")))
     try:                     # поворот джерел пам'ятаємо для наступних правок
@@ -2286,6 +2522,7 @@ def revise(job_dir, edit_text, progress, cancel_event, rng=None):
     if mus:
         for x in videos:
             x["music"] = {k: mus[k] for k in ("path", "start", "end")}
+        duck_music(job, videos, job_dir, version)
     result = finalize_videos(job, data, videos, notes, job_dir, version)
     result.update({"cost": round(cost, 4), "month_total": month_total,
                    "tokens_in": usage.input_tokens, "tokens_out": usage.output_tokens,

@@ -135,7 +135,7 @@
 
     <div class="card adv" id="adv">
       <div class="tabs" id="tabs">
-        <button data-t="frame">Кадр</button><button data-t="pace">Динаміка</button><button data-t="zoom">Зуми</button><button data-t="fx">Ефекти</button><button data-t="color">Колір</button><button data-t="text">Текст</button><button data-t="result">Результат</button><button data-t="analysis">Аналіз</button>
+        <button data-t="frame">Кадр</button><button data-t="pace">Динаміка</button><button data-t="zoom">Зуми</button><button data-t="fx">Ефекти</button><button data-t="color">Колір</button><button data-t="text">Текст</button><button data-t="story">Сюжет</button><button data-t="result">Результат</button><button data-t="analysis">Аналіз</button>
       </div>
 
       <div class="tab" data-t="frame">
@@ -282,6 +282,22 @@
         <div style="margin-top:8px">
           <div class="sw" data-k="adjust_fx"><div class="lb">Ефекти окремо на Adjustment Clip<small>Фактура, halation, дрімі й зерно — одним шаром «Svit Look» над відео, щоб правити їх в одному місці</small></div><i class="i up" data-tip="На кліпах лишаються зуми, переходи й вирівнювання експозиції, а творчий вигляд — на Adjustment Clip зверху. Один раз у DaVinci перетягни Effects → Toolbox → Effects → Adjustment Clip на таймлайн, а з таймлайну — у Media Pool: Svit бере його звідти як основу.">i</i><div class="tog"></div></div>
           <div class="sw" data-k="auto_render"><div class="lb">Одразу експортувати MP4<small>У папку Фільми → Svit Editor</small></div><i class="i up" data-tip="Після монтажу DaVinci сам експортує кожен ролик окремим MP4.">i</i><div class="tog"></div></div>
+        </div>
+      </div>
+
+      <div class="tab" data-t="story">
+        <div class="sw" data-k="story_on"><div class="lb">Сторітелінг за змістом <span class="beta">бета</span><small>Svit слухає всі відео, розуміє, про що говорять, і складає з цього логічну історію</small></div><i class="i" data-tip="Спершу Claude читає розшифровки всіх файлів цілком і пише сюжет: логлайн, гачок, розвиток, кульмінацію, фінал, які фрази взяти, а які викинути (повтори, «ееее», технічні розмови). Потім монтує за цим сюжетом. Розпізнавання слів вмикається само. Для влогів, інтерв'ю, бекстейджів, історій.">i</i><div class="tog"></div></div>
+        <div class="ovopt" id="storyopt">
+          <div class="fld" style="margin-top:10px"><label>Структура історії <i class="i left" data-tip="Авто — Claude обере сам. Гачок → фінал — сильна фраза на початку, потім розвиток і думка, що все закриває. Хронологія — як усе відбувалось. За темами — блоки, кожен зі своєю думкою. Питання → відповідь — як інтерв'ю.">i</i></label>
+            <div class="seg" id="storyarc"><button data-v="auto">Авто</button><button data-v="hook">Гачок → фінал</button><button data-v="chrono">Хронологія</button><button data-v="themes">За темами</button><button data-v="qa">Питання → відповідь</button></div></div>
+          <div class="fld" style="margin-top:14px"><label>Про що історія <i class="i left" data-tip="Необов'язково. Якщо знаєш головну думку — напиши, і Claude збиратиме сюжет навколо неї. Якщо ні — він знайде її сам у тому, що говорять.">i</i></label>
+            <textarea id="storyidea" class="lyrics storyidea" placeholder="Необов'язково. Наприклад: як ми вперше зіграли в Харкові і чому це було важливо"></textarea></div>
+          <div class="fld" style="margin-top:14px"><label>Сенс ↔ динаміка <span class="val" id="storyv"></span> <i class="i left" data-tip="Ліворуч — лише найсильніші короткі фрази в швидкому ритмі. Праворуч — цитати цілком, темп підлаштовується під мову.">i</i></label>
+            <input type="range" id="storyw" min="0" max="100" step="5">
+            <div class="scale"><span>динаміка</span><span>баланс</span><span>сенс</span></div>
+            <div class="abhint" id="storyhint"></div></div>
+          <div class="sw" data-k="story_whole" style="margin-top:10px"><div class="lb">Не різати фрази<small>Шматок триває, доки людина не договорить — навіть під біт</small></div><div class="tog"></div></div>
+          <div class="sw" data-k="story_voice"><div class="lb">Голос поверх музики<small>Де говорять — звучить голос з відео, трек притихає під ним</small></div><i class="i up" data-tip="Коли увімкнено «Монтаж під аудіо»: голос іде на доріжку A1 разом з відео, музика — на A2 і плавно притихає там, де говорять. Без музики звук з відео звучить завжди.">i</i><div class="tog"></div></div>
         </div>
       </div>
 
@@ -495,7 +511,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -546,6 +562,9 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $$("#storyarc button").forEach(b=>b.onclick=()=>{this.st.story_arc=b.dataset.v; this.paint(); this.save()});
+    $("#storyw").addEventListener("input",e=>{this.st.story_weight=+e.target.value; this.paint(); this.save()});
+    $("#storyidea").addEventListener("input",e=>{this.st.story_idea=e.target.value; clearTimeout(this.stT); this.stT=setTimeout(()=>this.save(),400)});
     $$("#zstyle button").forEach(b=>b.onclick=()=>{this.st.zoom_style=b.dataset.v; this.paint(); this.save()});
     $$(".pace").forEach(b=>b.onclick=()=>{this.st.pace=b.dataset.v; this.paint(); this.save()});
     $$("#tabs button").forEach(b=>b.onclick=()=>{
@@ -607,6 +626,11 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $$("#storyarc button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.story_arc||"auto")));
+    $("#storyopt").classList.toggle("off",!s.story_on);
+    $("#storyw").value=s.story_weight; $("#storyv").textContent=s.story_weight+"%";
+    $("#storyhint").textContent = s.story_weight>=75?"Цитати цілком, темп підлаштовується під мову":s.story_weight>=40?"Історія зрозуміла, ритм живий — довгі думки розбиваються перебивками":"Лише найсильніші короткі фрази, швидкий ритм";
+    if(document.activeElement!==$("#storyidea")) $("#storyidea").value=s.story_idea||"";
     $$("#zstyle button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.zoom_style));
     $$(".pace").forEach(b=>b.classList.toggle("on",b.dataset.v===s.pace));
     $$("#tabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===s.adv_tab));
@@ -646,7 +670,7 @@ const SV = {
     $("#advsum").textContent = [fmt, s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
       s.fx_on&&(s.fx_allowed||[]).length ? "ефектів: "+s.fx_allowed.length : "без ефектів",
       s.tr_on&&(s.tr_allowed||[]).length ? "переходів: "+s.tr_allowed.length : "без переходів",
-      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
+      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
     this.estimate();
   },
   save(){ clearTimeout(this._sv); this._sv=setTimeout(()=>this.api("save_settings",this.st),300); this.estimate() },
