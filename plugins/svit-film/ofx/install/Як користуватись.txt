@@ -15,7 +15,13 @@ Effects → OpenFX → Svit → Svit Film. На кліп (Edit) або на но
 
 ГРУПИ
 Input      Source — що на вході: Rec.709, Rec.2020, Apple Gamma 2.0, ACEScct, DVR WG/Rec709,
-           DVR WG/Intermediate, Cineon, Sony S-Log3, ARRI LogC3.
+           DVR WG/Intermediate, Cineon, Sony S-Log3, ARRI LogC3, а з 3.2 ще камери:
+           HLG, Apple Log (iPhone 15/16 Pro), Apple Log 2 (iPhone 17/18 Pro), Sony S-Log2/S-Gamut,
+           S-Log3/S-Gamut3, ARRI LogC4, Panasonic V-Log, Fujifilm F-Log/F-Log2, DJI D-Log,
+           Blackmagic Film Gen 5, RED Log3G10.
+           iPhone 17/18 Pro → «Apple Log 2». Sony A7 III → той профіль, яким знімав
+           (PP7 S-Log2 → S-Log2/S-Gamut, PP8/PP9 S-Log3 → S-Log3/S-Gamut3, PP10 HLG → HLG).
+           Ставь Svit Film на ноду БЕЗ попередньої конвертації (сирий лог із камери).
 Exposure   Exposure (стопи), Blacks, Whites, Temperature, Tint.
 Film       Profile (20 плівок), Push/Pull, Enabled, Profile Status.
 Film Developer   Contrast Boost, Gamma Correction, Color Separation, Color Boost (Enabled).

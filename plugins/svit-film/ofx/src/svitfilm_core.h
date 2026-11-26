@@ -23,11 +23,25 @@
 namespace svitfilm {
 
 // ---------------- вибори в інтерфейсі
-enum Input { IN_REC709 = 0, IN_REC2020, IN_APPLE20, IN_ACESCCT, IN_DWG709, IN_DWGDI, IN_CINEON, IN_SLOG3, IN_LOGC3 };
+enum Input { IN_REC709 = 0, IN_REC2020, IN_APPLE20, IN_ACESCCT, IN_DWG709, IN_DWGDI, IN_CINEON, IN_SLOG3, IN_LOGC3,
+             IN_HLG, IN_APPLELOG, IN_APPLELOG2, IN_SLOG2, IN_SLOG3SG3, IN_LOGC4, IN_VLOG, IN_FLOG, IN_FLOG2, IN_DLOG,
+             IN_BMDGEN5, IN_LOG3G10 };
 static const char* kInputNames[] = {"Rec.709",         "Rec.2020",           "Apple Gamma 2.0",
                                     "ACEScct (AP1)",   "DVR WG/Rec709",      "DVR WG/Intermediate",
-                                    "Cineon Film Log", "Sony S-Log3 / SGamut3.Cine", "ARRI LogC3 / AWG3"};
-static const int kNumInputs = 9;
+                                    "Cineon Film Log", "Sony S-Log3 / SGamut3.Cine", "ARRI LogC3 / AWG3",
+                                    "HLG (Rec.2100)",
+                                    "Apple Log (iPhone 15/16 Pro)",
+                                    "Apple Log 2 (iPhone 17 Pro and later)",
+                                    "Sony S-Log2 / S-Gamut (A7 III)",
+                                    "Sony S-Log3 / S-Gamut3",
+                                    "ARRI LogC4 / AWG4",
+                                    "Panasonic V-Log / V-Gamut",
+                                    "Fujifilm F-Log / F-Gamut",
+                                    "Fujifilm F-Log2 / F-Gamut",
+                                    "DJI D-Log / D-Gamut",
+                                    "Blackmagic Film Gen 5",
+                                    "RED Log3G10 / REDWideGamutRGB"};
+static const int kNumInputs = 21;
 
 enum Output { OUT_REC709 = 0, OUT_REC2020, OUT_P3, OUT_APPLE20, OUT_SRGB };
 static const char* kOutputNames[] = {"Rec.709 Gamma 2.4", "Rec.2020 Gamma 2.4", "P3-D65 Gamma 2.6", "Apple Gamma 2.0",
@@ -116,6 +130,14 @@ static const M3 kAP1toW = {{1.025824748f, -0.020053191f, -0.005771557f, -0.00223
 static const M3 kDWGtoW = {{1.130302181f, -0.020392852f, -0.109909329f, -0.025547057f, 1.310849318f, -0.285302260f, -0.092598607f, -0.164653022f, 1.257251628f}};
 static const M3 kSG3CtoW = {{0.960046344f, 0.119532979f, -0.079579323f, -0.052239480f, 1.264305747f, -0.212066268f, -0.028840507f, -0.059520968f, 1.088361475f}};
 static const M3 kAWG3toW = {{0.990688119f, 0.092539656f, -0.083227775f, 0.046632234f, 1.187526852f, -0.234159086f, 0.001403589f, -0.094602004f, 1.093198415f}};
+// нові камери (первинні кольори D65 → робочий Rec.2020)
+static const M3 kAWG_APPLEtoW = {{1.028100938f, 0.098978818f, -0.127079756f, 0.002520342f, 1.170849643f, -0.173369985f, -0.022087573f, -0.064050383f, 1.086137957f}};
+static const M3 kSGAMUTtoW = {{1.118856877f, -0.059831938f, -0.059024939f, -0.033120022f, 1.185737396f, -0.152617374f, -0.008245241f, -0.027037897f, 1.035283137f}};
+static const M3 kAWG4toW = {{1.119469060f, -0.055195633f, -0.064273427f, -0.058484457f, 1.176734933f, -0.118250476f, 0.001547445f, -0.031135329f, 1.029587884f}};
+static const M3 kVGAMUTtoW = {{1.076353143f, -0.013144776f, -0.063208367f, -0.031861841f, 1.151052662f, -0.119190821f, -0.007932016f, -0.034803143f, 1.042735159f}};
+static const M3 kDGAMUTtoW = {{1.016654744f, 0.064971985f, -0.081626729f, 0.025057710f, 1.183829200f, -0.208886910f, -0.017871885f, -0.109710360f, 1.127582244f}};
+static const M3 kBMDG5toW = {{0.953357302f, 0.104132174f, -0.057489476f, 0.028371654f, 1.197810705f, -0.226182358f, -0.028500894f, -0.113326952f, 1.141827846f}};
+static const M3 kRWGtoW = {{1.180430852f, -0.094039564f, -0.086391288f, -0.028017319f, 1.311442035f, -0.283424716f, -0.074359516f, -0.362077603f, 1.436437119f}};
 static const M3 kWto709 = {{1.660491002f, -0.587641139f, -0.072849863f, -0.124550475f, 1.132899897f, -0.008349423f, -0.018150763f, -0.100578898f, 1.118729661f}};
 static const M3 kWtoP3 = {{1.343578253f, -0.282179671f, -0.061398582f, -0.065297453f, 1.075787916f, -0.010490463f, 0.002821787f, -0.019598495f, 1.016776707f}};
 static const float kLumW[3] = {0.26270021f, 0.67799807f, 0.05930172f};   // Y для Rec.2020
@@ -127,6 +149,14 @@ inline const M3& inMatrix(int in) {
     case IN_DWG709: case IN_DWGDI: return kDWGtoW;
     case IN_SLOG3: return kSG3CtoW;
     case IN_LOGC3: return kAWG3toW;
+    case IN_HLG: case IN_APPLELOG: case IN_FLOG: case IN_FLOG2: return kI;   // Rec.2020 / F-Gamut
+    case IN_APPLELOG2: return kAWG_APPLEtoW;
+    case IN_SLOG2: case IN_SLOG3SG3: return kSGAMUTtoW;
+    case IN_LOGC4: return kAWG4toW;
+    case IN_VLOG: return kVGAMUTtoW;
+    case IN_DLOG: return kDGAMUTtoW;
+    case IN_BMDGEN5: return kBMDG5toW;
+    case IN_LOG3G10: return kRWGtoW;
     default: return k709toW;   // Rec.709, Apple Gamma 2.0, Cineon
     }
 }
@@ -142,7 +172,9 @@ inline bool displayReferred(int in) { return in == IN_REC709 || in == IN_REC2020
 
 // ---------------- передавальні функції
 inline float spow(float v, float g) { return v > 0 ? std::pow(v, g) : 0.0f; }
+inline float decodeCamera(float v, int mode);   // нові камери — див. нижче (той самий код, що в gpu_shared.h)
 inline float decodeTF(float v, int mode) {
+    if (mode >= IN_HLG) return decodeCamera(v, mode);
     switch (mode) {
     case IN_APPLE20: return spow(v, 2.0f);
     case IN_ACESCCT:
@@ -165,6 +197,62 @@ inline float decodeTF(float v, int mode) {
     default: return spow(v, 2.4f);   // Rec.709 / Rec.2020 / DWG-Rec709: дисплей BT.1886 (γ 2.4)
     }
 }
+// Криві камер (лінійне світло сцени, 18% сірий ≈ 0.18). Джерела: HLG — ITU-R BT.2100 (масштаб: опорне біле
+// 0.265 → 1.0); Apple Log / Apple Log 2 — Apple Log Profile White Paper (2023), ті самі константи в Log 2 (2025);
+// S-Log2 — Sony S-Log2 Technical Paper (через colour-science: legal → full, ×0.9, ×219/155); S-Log3 — Sony;
+// LogC4 — ARRI; V-Log — Panasonic; F-Log/F-Log2 — Fujifilm; D-Log — DJI; Gen 5 — Blackmagic; Log3G10 — RED.
+inline float decodeCamera(float v, int mode) {
+    switch (mode) {
+    case IN_HLG: {
+        const float a = 0.17883277f, b = 0.28466892f, c = 0.55991073f;
+        float e = v <= 0.5f ? v * v / 3.0f : (std::exp((v - c) / a) + b) / 12.0f;
+        return e / 0.2647f;
+    }
+    case IN_APPLELOG: case IN_APPLELOG2: {
+        const float R0 = -0.05641088f, Rt = 0.01f, cc = 47.28711236f, be = 0.00964052f, ga = 0.08550479f, de = 0.69336945f;
+        const float Pt = cc * (Rt - R0) * (Rt - R0);
+        if (v >= Pt) return std::exp2((v - de) / ga) - be;
+        if (v >= 0.0f) return std::sqrt(v / cc) + R0;
+        return R0;
+    }
+    case IN_SLOG2: {
+        float y = (v * 1023.0f - 64.0f) / 876.0f;
+        float x = y >= 0.030001222851889303f ? std::pow(10.0f, (y - 0.646596f) / 0.432699f) - 0.037584f
+                                             : (y - 0.030001222851889303f) / 5.0f;
+        return x * 0.9f * 219.0f / 155.0f;
+    }
+    case IN_SLOG3SG3: {
+        float x = v * 1023.0f;
+        return x >= 171.2102946929f ? std::pow(10.0f, (x - 420.0f) / 261.5f) * 0.19f - 0.01f
+                                    : (x - 95.0f) * 0.01125f / (171.2102946929f - 95.0f);
+    }
+    case IN_LOGC4: {
+        const float a = (262144.0f - 16.0f) / 117.45f, b = (1023.0f - 95.0f) / 1023.0f, c = 95.0f / 1023.0f;
+        const float s = (7.0f * 0.69314718f * std::exp2(7.0f - 14.0f * c / b)) / (a * b);
+        const float t = (std::exp2(14.0f * (-c / b) + 6.0f) - 64.0f) / a;
+        return v >= 0.0f ? (std::exp2(14.0f * (v - c) / b + 6.0f) - 64.0f) / a : v * s + t;
+    }
+    case IN_VLOG:
+        return v < 0.181f ? (v - 0.125f) / 5.6f : std::pow(10.0f, (v - 0.598206f) / 0.241514f) - 0.00873f;
+    case IN_FLOG:
+        return v >= 0.100537775223865f ? (std::pow(10.0f, (v - 0.790453f) / 0.344676f) - 0.009468f) / 0.555556f
+                                       : (v - 0.092864f) / 8.735631f;
+    case IN_FLOG2:
+        return v >= 0.100686685370811f ? (std::pow(10.0f, (v - 0.384316f) / 0.245281f) - 0.064829f) / 5.555556f
+                                       : (v - 0.092864f) / 8.799461f;
+    case IN_DLOG:
+        return v <= 0.14f ? (v - 0.0929f) / 6.025f : (std::pow(10.0f, 3.89616f * v - 2.27752f) - 0.0108f) / 0.9892f;
+    case IN_BMDGEN5: {
+        const float A = 0.08692876065491224f, B = 0.005494072432257808f, C = 0.5300133392291939f;
+        const float D = 8.283605932402494f, E = 0.09246575342465753f;
+        return v < D * 0.005f + E ? (v - E) / D : std::exp((v - C) / A) - B;
+    }
+    case IN_LOG3G10:
+        return v < 0.0f ? v / 15.1927f - 0.01f : (std::pow(10.0f, v / 0.224282f) - 1.0f) / 155.975327f - 0.01f;
+    default: return v;
+    }
+}
+
 inline float fastPow(float x, float e);
 inline float encodeTF(float v, int out) {
     v = std::max(v, 0.0f);
@@ -321,6 +409,24 @@ inline float vnoise(float x, float y, uint32_t s) {   // гладкий value-no
     return ab + (cd - ab) * uy;
 }
 
+// Color Boost як «вібранс»: підсилення слабшає для вже насичених кольорів, щоб не вибивало гамут
+// і не підкреслювало кольорові обідки стиснутого відео (4:2:0) на дрібних деталях.
+inline float boostK(float cb, float spread) { return cb > 0 ? 1.0f + cb / (1.0f + spread * 2.0f) : 1.0f + cb; }
+// м'яке стиснення гамуту перед виводом (за мотивами ACES Reference Gamut Compression): кольори, ближчі
+// за поріг до межі, плавно підтягуються всередину, замість жорсткого обрізання від'ємних каналів.
+inline void gamutCompress(float* o) {
+    float ach = std::max({o[0], o[1], o[2]});
+    if (ach <= 1e-6f) return;
+    const float t = 0.985f, l = 1.3f, p = 1.2f;   // лише справді позагамутні (від'ємні) й крайні кольори
+    const float sc = (l - t) / std::pow(std::pow((1.0f - t) / (l - t), -p) - 1.0f, 1.0f / p);
+    for (int c = 0; c < 3; ++c) {
+        float d = (ach - o[c]) / ach;
+        if (d <= t) continue;
+        float x = (d - t) / sc;
+        float cd = t + sc * x / std::pow(1.0f + std::pow(x, p), 1.0f / p);
+        o[c] = ach - cd * ach;
+    }
+}
 inline double smoothstepD(double a, double b, double x) { double t = std::clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3 - 2 * t); }
 // засвітка з одного краю (без множника Amount)
 inline float leakAt(int pos, uint32_t rs, int x, int y, int w, int h, float t) {
@@ -414,7 +520,8 @@ inline void develop(const Film& f, const float* xin, float* D, float pushShift) 
     if (f.colorBoost != 0 && f.nch == 3) {
         float r[3], m = 0;
         for (int c = 0; c < 3; ++c) { r[c] = D[c] - f.dmin[c]; m += r[c] / 3.0f; }
-        for (int c = 0; c < 3; ++c) D[c] = f.dmin[c] + m + (r[c] - m) * (1.0f + f.colorBoost);
+        float k = boostK(f.colorBoost, std::max({r[0], r[1], r[2]}) - std::min({r[0], r[1], r[2]}));
+        for (int c = 0; c < 3; ++c) D[c] = f.dmin[c] + m + (r[c] - m) * k;
     }
 }
 
@@ -735,7 +842,8 @@ struct FastChain {
         if (f.colorBoost != 0 && !mono) {
             float r[3], mm = 0;
             for (int c = 0; c < 3; ++c) { r[c] = D[c] - f.dmin[c]; mm += r[c] / 3.0f; }
-            for (int c = 0; c < 3; ++c) D[c] = f.dmin[c] + mm + (r[c] - mm) * (1.0f + f.colorBoost);
+            float k = boostK(f.colorBoost, std::max({r[0], r[1], r[2]}) - std::min({r[0], r[1], r[2]}));
+            for (int c = 0; c < 3; ++c) D[c] = f.dmin[c] + mm + (r[c] - mm) * k;
         }
     }
     void display(const float* D, float* Y) const {
@@ -934,7 +1042,7 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
                         if (x >= w || y >= h) continue;
                         const float* L = &lin[((size_t)y * w + x) * 3];
                         float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
-                        float g = T > 0 ? Y / (Y + T) : 1.0f;
+                        float g = T > 0 ? Y * Y / (Y * Y + T * T) : 1.0f;   // різкіший поріг: світять джерела, а не все світле
                         for (int c = 0; c < 3; ++c) b[c] += softSrc(L[c], 64.0f) * g;   // halation: м'якше обмеження
                         ++n;
                     }
@@ -1132,6 +1240,7 @@ inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst
             }
             if (!halo.empty()) for (int c = 0; c < 3; ++c) { float hv = halo[((size_t)y * w + x) * 3 + c]; Y[c] = hv / (hv + 0.25f); }
             mul(Mout, Y, o);
+            gamutCompress(o);
             for (int c = 0; c < 3; ++c) o[c] = o[c] <= 0.0f ? 0.0f : o[c] <= 1.2f ? encLut(std::sqrt(o[c])) : encodeTF(o[c], P.output);
             if (P.mix < 100 && halo.empty()) {   // змішування з нейтральним відтворенням того ж пікселя
                 float a[3], Ln[3], Yn[3], on[3];

@@ -138,6 +138,44 @@ inline float decodeTFG(float v, int mode) {
     if (mode == 8)                                                          // LogC3
         return v > 5.367655f * 0.010591f + 0.092809f ? (f_pow(10.0f, (v - 0.385537f) / 0.247190f) - 0.052272f) / 5.555556f
                                                     : (v - 0.092809f) / 5.367655f;
+    if (mode == 9) {   // HLG
+        float e = v <= 0.5f ? v * v / 3.0f : (f_exp((v - 0.55991073f) / 0.17883277f) + 0.28466892f) / 12.0f;
+        return e / 0.2647f;
+    }
+    if (mode == 10 || mode == 11) {   // Apple Log / Apple Log 2
+        float Pt = 47.28711236f * (0.01f + 0.05641088f) * (0.01f + 0.05641088f);
+        if (v >= Pt) return f_exp2((v - 0.69336945f) / 0.08550479f) - 0.00964052f;
+        if (v >= 0.0f) return f_sqrt(v / 47.28711236f) - 0.05641088f;
+        return -0.05641088f;
+    }
+    if (mode == 12) {   // S-Log2
+        float y = (v * 1023.0f - 64.0f) / 876.0f;
+        float x = y >= 0.030001222851889303f ? f_pow(10.0f, (y - 0.646596f) / 0.432699f) - 0.037584f
+                                             : (y - 0.030001222851889303f) / 5.0f;
+        return x * 0.9f * 219.0f / 155.0f;
+    }
+    if (mode == 13) {   // S-Log3 / S-Gamut3
+        float x = v * 1023.0f;
+        return x >= 171.2102946929f ? f_pow(10.0f, (x - 420.0f) / 261.5f) * 0.19f - 0.01f
+                                    : (x - 95.0f) * 0.01125f / (171.2102946929f - 95.0f);
+    }
+    if (mode == 14) {   // LogC4
+        float a = (262144.0f - 16.0f) / 117.45f, b = (1023.0f - 95.0f) / 1023.0f, c = 95.0f / 1023.0f;
+        float s = (7.0f * 0.69314718f * f_exp2(7.0f - 14.0f * c / b)) / (a * b);
+        float t = (f_exp2(14.0f * (-c / b) + 6.0f) - 64.0f) / a;
+        return v >= 0.0f ? (f_exp2(14.0f * (v - c) / b + 6.0f) - 64.0f) / a : v * s + t;
+    }
+    if (mode == 15) return v < 0.181f ? (v - 0.125f) / 5.6f : f_pow(10.0f, (v - 0.598206f) / 0.241514f) - 0.00873f;
+    if (mode == 16) return v >= 0.100537775223865f ? (f_pow(10.0f, (v - 0.790453f) / 0.344676f) - 0.009468f) / 0.555556f
+                                                   : (v - 0.092864f) / 8.735631f;
+    if (mode == 17) return v >= 0.100686685370811f ? (f_pow(10.0f, (v - 0.384316f) / 0.245281f) - 0.064829f) / 5.555556f
+                                                   : (v - 0.092864f) / 8.799461f;
+    if (mode == 18) return v <= 0.14f ? (v - 0.0929f) / 6.025f : (f_pow(10.0f, 3.89616f * v - 2.27752f) - 0.0108f) / 0.9892f;
+    if (mode == 19) {
+        float D = 8.283605932402494f, E = 0.09246575342465753f;
+        return v < D * 0.005f + E ? (v - E) / D : f_exp((v - 0.5300133392291939f) / 0.08692876065491224f) - 0.005494072432257808f;
+    }
+    if (mode == 20) return v < 0.0f ? v / 15.1927f - 0.01f : (f_pow(10.0f, v / 0.224282f) - 1.0f) / 155.975327f - 0.01f;
     return spowG(v, 2.4f);
 }
 inline float encodeTFG(float v, int out) {
@@ -191,6 +229,19 @@ inline void stage1G(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, in
     }
 }
 
+inline void gamutCompressG(THR float* o) {
+    float ach = fmx(o[0], fmx(o[1], o[2]));
+    if (ach <= 1e-6f) return;
+    float t = 0.985f, l = 1.3f, p = 1.2f;
+    float sc = (l - t) / f_pow(f_pow((1.0f - t) / (l - t), -p) - 1.0f, 1.0f / p);
+    for (int c = 0; c < 3; ++c) {
+        float d = (ach - o[c]) / ach;
+        if (d <= t) continue;
+        float x = (d - t) / sc;
+        float cd = t + sc * x / f_pow(1.0f + f_pow(x, p), 1.0f / p);
+        o[c] = ach - cd * ach;
+    }
+}
 inline float toneWG(CONSTP KParams& k, float r) {
     float v = r <= 1.0f ? k.toneS + (k.toneM - k.toneS) * fcl(r, 0.0f, 1.0f)
                         : k.toneM + (k.toneH - k.toneM) * fcl(r - 1.0f, 0.0f, 1.0f);
@@ -229,7 +280,9 @@ inline void finalG(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, int
         if (k.colorBoost != 0.0f) {
             float r[3], mm = 0.0f;
             for (int c = 0; c < 3; ++c) { r[c] = D[c] - k.dmin[c]; mm += r[c] / 3.0f; }
-            for (int c = 0; c < 3; ++c) D[c] = k.dmin[c] + mm + (r[c] - mm) * (1.0f + k.colorBoost);
+            float spread = fmx(r[0], fmx(r[1], r[2])) - fmn(r[0], fmn(r[1], r[2]));
+            float kb = k.colorBoost > 0.0f ? 1.0f + k.colorBoost / (1.0f + spread * 2.0f) : 1.0f + k.colorBoost;
+            for (int c = 0; c < 3; ++c) D[c] = k.dmin[c] + mm + (r[c] - mm) * kb;
         }
     }
     // зерно
@@ -280,6 +333,7 @@ inline void finalG(DEVC float* src, DEVC float* T, CONSTP KParams& k, int x, int
         }
     if (k.maskOn != 0) for (int c = 0; c < 3; ++c) Y[c] = haloPx[c] / (haloPx[c] + 0.25f);
     mul9(k.Mout, Y, o);
+    gamutCompressG(o);
     for (int c = 0; c < 3; ++c)
         o[c] = o[c] <= 0.0f ? 0.0f : (o[c] <= 1.2f ? lutAt(T, k, G_ENC, f_sqrt(o[c])) : encodeTFG(o[c], k.output));
     int si = srcIndex(k, x, y);
@@ -358,7 +412,7 @@ inline void downG(DEVC float* lin, DEVW float* out, CONSTP DownP& p, int sx, int
         int q = (y * p.w + x) * 3;
         float L0 = lin[q], L1 = lin[q + 1], L2 = lin[q + 2];
         float g = 1.0f;
-        if (p.T > 0.0f) { float Y = 0.26270021f * L0 + 0.67799807f * L1 + 0.05930172f * L2; g = Y / (Y + p.T); }
+        if (p.T > 0.0f) { float Y = 0.26270021f * L0 + 0.67799807f * L1 + 0.05930172f * L2; g = Y * Y / (Y * Y + p.T * p.T); }
         if (p.clampSrc != 0) {
             float K = p.clampSrc == 1 ? 64.0f : 24.0f;   // 1 — halation, 2 — bloom
             L0 = L0 * K / (K + L0); L1 = L1 * K / (K + L1); L2 = L2 * K / (K + L2);
