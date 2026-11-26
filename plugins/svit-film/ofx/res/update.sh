@@ -30,6 +30,7 @@ fi
 URL="https://github.com/$REPO/releases/download/svit-film-$LATEST/Svit.Film.$LATEST.zip"
 curl -fsSL --max-time 300 -o "$TMP/sf.zip" "$URL" && ditto -x -k "$TMP/sf.zip" "$TMP/x" \
   || { say "Не вдалося завантажити Svit Film $LATEST. Спробуй пізніше."; exit 1; }
+chmod -R a+rX "$TMP"
 SRC="$(find "$TMP/x" -maxdepth 3 -type d -name SvitFilm.ofx.bundle | head -1)"
 [ -n "$SRC" ] && file "$SRC/Contents/MacOS/SvitFilm.ofx" | grep -q Mach-O \
   || { say "Архів Svit Film $LATEST пошкоджений. Спробуй пізніше."; exit 1; }
@@ -37,7 +38,8 @@ SRC="$(find "$TMP/x" -maxdepth 3 -type d -name SvitFilm.ofx.bundle | head -1)"
 osascript -e 'on run argv
   set s to quoted form of item 1 of argv
   set d to quoted form of item 2 of argv
-  do shell script "mkdir -p " & d & " && rm -rf " & d & "/SvitFilm.ofx.bundle && cp -R " & s & " " & d & "/ && xattr -dr com.apple.quarantine " & d & "/SvitFilm.ofx.bundle; codesign --force --deep -s - " & d & "/SvitFilm.ofx.bundle; true" with administrator privileges with prompt "Svit Film хоче оновити свій ефект для DaVinci Resolve."
+  do shell script "mkdir -p " & d & " && rm -rf " & d & "/SvitFilm.ofx.bundle && cp -R " & s & " " & d & "/ && xattr -dr com.apple.quarantine " & d & "/SvitFilm.ofx.bundle; codesign --force --deep -s - " & d & "/SvitFilm.ofx.bundle; test -f " & d & "/SvitFilm.ofx.bundle/Contents/MacOS/SvitFilm.ofx" with administrator privileges with prompt "Svit Film хоче оновити свій ефект для DaVinci Resolve."
 end run' "$SRC" "$DST" >/dev/null 2>&1 \
   || { say "Оновлення скасовано або не вдалося."; exit 1; }
+rm -f "$HOME/Library/Application Support/Blackmagic Design/DaVinci Resolve/OFXPluginCacheV2.xml"
 say "Svit Film оновлено до $LATEST.\n\nПерезапусти DaVinci Resolve, щоб нова версія запрацювала."
