@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <thread>
 #include <vector>
 
@@ -97,6 +98,7 @@ struct Params {
     bool expandOn = true; double blackPoint = 0, whitePoint = 100; int colorMode = 0;
     // кадр і зсув зображення (щоб зерно не залежало від тайлів/обрізки)
     double frame = 0; int originX = 0, originY = 0;
+    bool fastPreview = false;   // половинна роздільність для плавного перегляду
 };
 
 // ---------------- кольорові матриці (обчислені з первинних кольорів; Bradford D60→D65 для AP1)
@@ -162,13 +164,14 @@ inline float decodeTF(float v, int mode) {
     default: return spow(v, 2.4f);   // Rec.709 / Rec.2020 / DWG-Rec709: дисплей BT.1886 (γ 2.4)
     }
 }
+inline float fastPow(float x, float e);
 inline float encodeTF(float v, int out) {
     v = std::max(v, 0.0f);
     switch (out) {
-    case OUT_P3: return std::pow(v, 1.0f / 2.6f);
-    case OUT_APPLE20: return std::pow(v, 0.5f);
-    case OUT_SRGB: return v <= 0.0031308f ? v * 12.92f : 1.055f * std::pow(v, 1.0f / 2.4f) - 0.055f;
-    default: return std::pow(v, 1.0f / 2.4f);
+    case OUT_P3: return fastPow(v, 1.0f / 2.6f);
+    case OUT_APPLE20: return std::sqrt(v);
+    case OUT_SRGB: return v <= 0.0031308f ? v * 12.92f : 1.055f * fastPow(v, 1.0f / 2.4f) - 0.055f;
+    default: return fastPow(v, 1.0f / 2.4f);
     }
 }
 inline float decodeOutTF(float v, int out) {   // для перевірок
@@ -204,27 +207,36 @@ template <class F> void parallelRows(int h, F f) {
 // розділюване гаусове розмиття; повертає sqrt(Σk²) для одного напрямку (для нормування шуму)
 inline float gaussBlur(std::vector<float>& buf, int w, int h, int ch, float sigma) {
     if (sigma < 0.3f || w < 2 || h < 2) return 1.0f;
-    int r = std::min(std::max(1, (int)std::ceil(sigma * 3.0f)), 768);
+    int r = std::min(std::max(1, (int)std::ceil(sigma * 2.6f)), 768);
     std::vector<float> k(2 * r + 1);
     float sum = 0, sq = 0;
     for (int i = -r; i <= r; ++i) sum += (k[i + r] = std::exp(-0.5f * i * i / (sigma * sigma)));
     for (auto& v : k) { v /= sum; sq += v * v; }
     std::vector<float> tmp(buf.size());
+    const int rowN = w * ch;
+    // по рядках: рядок з полями (без clamp у внутрішньому циклі)
     parallelRows(h, [&](int y) {
-        for (int x = 0; x < w; ++x)
-            for (int c = 0; c < ch; ++c) {
-                float a = 0;
-                for (int i = -r; i <= r; ++i) a += k[i + r] * buf[((size_t)y * w + std::clamp(x + i, 0, w - 1)) * ch + c];
-                tmp[((size_t)y * w + x) * ch + c] = a;
-            }
+        std::vector<float> pad((size_t)(w + 2 * r) * ch);
+        const float* in = &buf[(size_t)y * rowN];
+        for (int x = -r; x < w + r; ++x) {
+            const float* sp = in + std::clamp(x, 0, w - 1) * ch;
+            for (int c = 0; c < ch; ++c) pad[(size_t)(x + r) * ch + c] = sp[c];
+        }
+        float* out = &tmp[(size_t)y * rowN];
+        for (int i = 0; i < rowN; ++i) out[i] = 0;
+        for (int t = 0; t <= 2 * r; ++t) {
+            const float kt = k[t]; const float* pp = &pad[(size_t)t * ch];
+            for (int i = 0; i < rowN; ++i) out[i] += kt * pp[i];
+        }
     });
+    // по стовпцях: зважена сума цілих рядків (послідовна пам'ять, векторизується)
     parallelRows(h, [&](int y) {
-        for (int x = 0; x < w; ++x)
-            for (int c = 0; c < ch; ++c) {
-                float a = 0;
-                for (int i = -r; i <= r; ++i) a += k[i + r] * tmp[((size_t)std::clamp(y + i, 0, h - 1) * w + x) * ch + c];
-                buf[((size_t)y * w + x) * ch + c] = a;
-            }
+        float* out = &buf[(size_t)y * rowN];
+        for (int i = 0; i < rowN; ++i) out[i] = 0;
+        for (int t = -r; t <= r; ++t) {
+            const float kt = k[t + r]; const float* row = &tmp[(size_t)std::clamp(y + t, 0, h - 1) * rowN];
+            for (int i = 0; i < rowN; ++i) out[i] += kt * row[i];
+        }
     });
     return std::sqrt(sq);
 }
@@ -238,12 +250,54 @@ inline float sampleSmall(const std::vector<float>& b, int sw, int sh, int ch, in
     return a + (d - a) * fy;
 }
 
+// білінійна вибірка всіх 3 каналів одразу
+inline void sample3(const std::vector<float>& b, int sw, int sh, float x, float y, float* o) {
+    x = std::clamp(x, 0.0f, (float)sw - 1.001f); y = std::clamp(y, 0.0f, (float)sh - 1.001f);
+    int x0 = (int)x, y0 = (int)y, x1 = std::min(x0 + 1, sw - 1), y1 = std::min(y0 + 1, sh - 1);
+    float fx = x - x0, fy = y - y0;
+    const float *a = &b[((size_t)y0 * sw + x0) * 3], *bb = &b[((size_t)y0 * sw + x1) * 3];
+    const float *c = &b[((size_t)y1 * sw + x0) * 3], *d = &b[((size_t)y1 * sw + x1) * 3];
+    for (int k = 0; k < 3; ++k) {
+        float t = a[k] + (bb[k] - a[k]) * fx, u = c[k] + (d[k] - c[k]) * fx;
+        o[k] = t + (u - t) * fy;
+    }
+}
+
 inline uint32_t hash3(uint32_t x, uint32_t y, uint32_t s) {
     uint32_t h = x * 0x8da6b343u ^ y * 0xd8163841u ^ s * 0xcb1ab31fu;
     h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
     return h;
 }
 // гаусівське число з хешу (Box–Muller), детерміноване для (x, y, seed)
+// ---- швидка математика для гарячих циклів (похибка ~1e-6 відносно std::log2 / std::exp2)
+inline float fastLog2(float x) {
+    x = std::max(x, 1e-30f);
+    uint32_t i; std::memcpy(&i, &x, 4);
+    float e = (float)((int)((i >> 23) & 255) - 127);
+    i = (i & 0x007FFFFFu) | 0x3F800000u; float m; std::memcpy(&m, &i, 4);
+    float t = m - 1.0f;
+    float p = ((((((0.0145987508f * t - 0.0759216121f) * t + 0.188654064f) * t - 0.321484765f) * t + 0.47172247f) * t -
+                0.720202841f) * t + 1.44263371f) * t + 8.1107724e-07f;
+    return e + p;
+}
+inline float fastExp2(float x) {
+    x = std::clamp(x, -126.0f, 126.0f);
+    float fi = std::floor(x), f = x - fi;
+    float p = (((((0.000218712623f * f + 0.00123824155f) * f + 0.00968618629f) * f + 0.0554789125f) * f +
+                0.240231097f) * f + 0.693146838f) * f + 1.00000001f;
+    uint32_t i = (uint32_t)((int)fi + 127) << 23; float sc; std::memcpy(&sc, &i, 4);
+    return p * sc;
+}
+inline float fastLog10(float x) { return fastLog2(x) * 0.30102999566f; }
+inline float fastPow10(float x) { return fastExp2(x * 3.32192809489f); }
+inline float fastPow(float x, float e) { return x <= 0 ? 0.0f : fastExp2(fastLog2(x) * e); }
+// дешеве ~гаусівське число: сума 4 байтів хешу (Ірвін–Голл), середнє 0, σ = 1
+inline float gaussFast(int x, int y, uint32_t s) {
+    uint32_t h = hash3((uint32_t)x, (uint32_t)y, s);
+    float sum = (float)((h & 255) + ((h >> 8) & 255) + ((h >> 16) & 255) + (h >> 24));
+    return (sum - 510.0f) * (1.0f / 147.80f);
+}
+
 inline float gauss01(int x, int y, uint32_t s) {
     uint32_t a = hash3((uint32_t)x, (uint32_t)y, s), b = hash3((uint32_t)x + 0x9e3779b9u, (uint32_t)y, s ^ 0x5bd1e995u);
     float u1 = ((a >> 8) + 0.5f) * (1.0f / 16777216.0f), u2 = (b >> 8) * (1.0f / 16777216.0f);
@@ -614,10 +668,116 @@ inline std::vector<float> blurPyr(const std::vector<float>& full, int w, int h, 
     return sm;
 }
 
+// Той самий develop + display, але через таблиці (у кілька разів швидше в гарячому циклі)
+struct FastChain {
+    const System& S; Lut dens[3], dispA[3], dispB[3], dispAB[3]; float base[3]; bool mono, merged;
+    explicit FastChain(const System& s) : S(s) {
+        const Film& f = s.film; mono = f.nch == 1;
+        for (int c = 0; c < 3; ++c) {
+            dens[c].build(-8.0f, 6.0f, 8192, [&](float x) {
+                float d = f.density(mono ? 0 : c, x);
+                if (f.gammaCorr != 0) d += (f.cls == CL_REV ? -1.0f : 1.0f) * f.gammaCorr * 0.22f * std::exp(-x * x / (2 * 0.55f * 0.55f));
+                return d;
+            });
+            base[c] = s.mode == 0 ? s.print.p.dmin[c] : 0.0f;
+            dispA[c].build(-1.0f, 7.0f, 8192, [&](float D) {
+                if (s.mode == 0) return s.print.density(c, -D + s.off[c] + s.lightShift[c]);
+                if (s.mode == 2) return (D - f.dmin[c]) - s.off[c];
+                float e = (D - s.Dmid[c]) / s.scanGamma[c];
+                float y = kTargetY * std::pow(10.0f, 0.85f * e + s.off[c]);
+                return -std::log10(std::max(y / std::cbrt(1.0f + y * y * y), 1e-9f));
+            });
+            dispB[c].build(-3.0f, 9.0f, 8192, [&](float dp) {
+                float Y = std::pow(10.0f, -(dp - base[c]));
+                if (s.cross > 0) {
+                    const float g[3] = {1.25f, 1.08f, 0.78f}, o[3] = {-0.05f, 0.02f, 0.12f};
+                    float d = -std::log10(std::max(Y, 1e-6f));
+                    float d2 = 0.92f + (d - 0.92f) * g[c] + o[c];
+                    Y = std::pow(10.0f, -(d + (d2 - d) * s.cross));
+                }
+                if (s.expand) Y = (Y - s.yb[c]) / std::max(s.yw[c] - s.yb[c], 1e-4f);
+                return Y;
+            });
+        }
+        merged = !(s.mode == 0 && s.colorDensity > 0);
+        if (merged)
+            for (int c = 0; c < 3; ++c) dispAB[c].build(-1.0f, 7.0f, 16384, [&](float D) { return dispB[c](dispA[c](D)); });
+    }
+    void develop(const float* xin, float* D) const {
+        const Film& f = S.film; float x[3];
+        if (mono) { x[0] = xin[0] - S.pushShift - f.speedLoss[1]; D[0] = D[1] = D[2] = dens[0](x[0]); }
+        else {
+            float m = (xin[0] + xin[1] + xin[2]) * (1.0f / 3.0f);
+            for (int c = 0; c < 3; ++c) D[c] = dens[c](xin[c] + f.colorSep * (xin[c] - m) + f.s.balance[c] - S.pushShift - f.speedLoss[c]);
+        }
+        if (f.colorBoost != 0 && !mono) {
+            float r[3], mm = 0;
+            for (int c = 0; c < 3; ++c) { r[c] = D[c] - f.dmin[c]; mm += r[c] / 3.0f; }
+            for (int c = 0; c < 3; ++c) D[c] = f.dmin[c] + mm + (r[c] - mm) * (1.0f + f.colorBoost);
+        }
+    }
+    void display(const float* D, float* Y) const {
+        if (merged) {
+            if (mono) { Y[0] = Y[1] = Y[2] = dispAB[1](D[1]); return; }
+            for (int c = 0; c < 3; ++c) Y[c] = dispAB[c](D[c]);
+            return;
+        }
+        float dp[3];
+        for (int c = 0; c < 3; ++c) dp[c] = dispA[c](D[c]);
+        if (S.mode == 0 && S.colorDensity > 0) {
+            float mx = std::max({dp[0], dp[1], dp[2]}), mn = std::min({dp[0], dp[1], dp[2]});
+            for (int c = 0; c < 3; ++c) dp[c] += S.colorDensity * 0.35f * (mx - mn);
+        }
+        if (mono) { Y[0] = Y[1] = Y[2] = dispB[1](dp[1]); return; }
+        for (int c = 0; c < 3; ++c) Y[c] = dispB[c](dp[c]);
+    }
+};
+
 // ---------------- рендер
 // src/dst: RGBA float, рядки по rowFloats чисел. Розміри однакові.
+inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst, std::ptrdiff_t dstRowFloats,
+                       int w, int h, const Params& P);
+
+// Швидкий перегляд: обробити кадр у половинній роздільності і збільшити. Фізичний масштаб (зерно,
+// halation) не змінюється, бо він рахується від ширини кадру.
 inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, std::ptrdiff_t dstRowFloats,
                    int w, int h, const Params& P) {
+    if (!P.fastPreview || w < 640 || h < 360) { renderFull(src, srcRowFloats, dst, dstRowFloats, w, h, P); return; }
+    const int hw = (w + 1) / 2, hh = (h + 1) / 2;
+    std::vector<float> s2((size_t)hw * hh * 4), d2(s2.size());
+    parallelRows(hh, [&](int y) {
+        for (int x = 0; x < hw; ++x)
+            for (int c = 0; c < 4; ++c) {
+                float a = 0; int n = 0;
+                for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i) {
+                    int xx = std::min(2 * x + i, w - 1), yy = std::min(2 * y + j, h - 1);
+                    float v = src[(std::ptrdiff_t)yy * srcRowFloats + xx * 4 + c];
+                    if (std::isfinite(v)) { a += v; ++n; }
+                }
+                s2[((size_t)y * hw + x) * 4 + c] = n ? a / n : 0.0f;
+            }
+    });
+    Params Q = P; Q.originX /= 2; Q.originY /= 2;
+    renderFull(s2.data(), hw * 4, d2.data(), hw * 4, hw, hh, Q);
+    parallelRows(h, [&](int y) {
+        float fy = std::clamp((y + 0.5f) * 0.5f - 0.5f, 0.0f, hh - 1.0f);
+        int y0 = (int)fy, y1 = std::min(y0 + 1, hh - 1); float ty = fy - y0;
+        for (int x = 0; x < w; ++x) {
+            float fxx = std::clamp((x + 0.5f) * 0.5f - 0.5f, 0.0f, hw - 1.0f);
+            int x0 = (int)fxx, x1 = std::min(x0 + 1, hw - 1); float tx = fxx - x0;
+            float* o = dst + (std::ptrdiff_t)y * dstRowFloats + x * 4;
+            for (int c = 0; c < 3; ++c) {
+                auto at = [&](int xx, int yy) { return d2[((size_t)yy * hw + xx) * 4 + c]; };
+                float a = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * tx, b = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * tx;
+                o[c] = a + (b - a) * ty;
+            }
+            o[3] = src[(std::ptrdiff_t)y * srcRowFloats + x * 4 + 3];
+        }
+    });
+}
+
+inline void renderFull(const float* src, std::ptrdiff_t srcRowFloats, float* dst, std::ptrdiff_t dstRowFloats,
+                       int w, int h, const Params& P) {
     const StockDef& sd = stockFor(P);
     const bool scan = P.printOn && P.print >= kNumPrints;
     const PrintDef& pd = (!P.printOn || scan) ? kReferencePrint : kPrints[std::clamp(P.print, 0, kNumPrints - 1)];
@@ -626,6 +786,13 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     const bool mono = film.nch == 1;
     const bool dispIn = displayReferred(P.input);
     const InverseNeutral* invN = dispIn ? &inverseNeutral() : nullptr;
+    // дисплей-лінійне → сцена-лінійне одним LUT за √L (√ — апаратна, точність у тінях достатня)
+    Lut invSq[3];
+    if (dispIn)
+        for (int c = 0; c < 3; ++c)
+            invSq[c].build(0.0f, 1.2f, 16384, [&](float u) {
+                return kMidGray * std::pow(10.0f, invN->inv[c](std::log10(std::max(u * u, 1e-9f))));
+            });
     Params P0;
     const System refSys = makeSystem(kReferenceStock, kReferencePrint, 0, P0, false);
     const M3& Min = inMatrix(P.input);
@@ -676,7 +843,7 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
             mul(Min, a, L);
             if (dispIn)
                 for (int c = 0; c < 3; ++c)
-                    L[c] = kMidGray * std::pow(10.0f, invN->inv[c](std::log10(std::max(L[c], 1e-9f))));
+                    L[c] = invSq[c](std::sqrt(std::max(L[c], 0.0f)));
             float vig = 1.0f;
             if (P.vignette > 0) {
                 float nx = (x - w * 0.5f) / (w * 0.5f), ny = (y - h * 0.5f) / (w * 0.5f);
@@ -693,7 +860,7 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
                 float n = vnoise(along * 3.0f + leakT, leakT * 0.7f + 5.0f, roll) * 0.7f +
                           vnoise(along * 7.0f - leakT * 1.3f, leakT + 9.0f, roll + 1u) * 0.3f;
                 float reach = 0.05f + 0.16f * n;
-                float I = (float)P.leak * 1.6f * std::exp(-u / reach) * (0.25f + 1.5f * n * n);
+                float I = (float)P.leak * 1.6f * fastExp2(-1.442695f * u / reach) * (0.25f + 1.5f * n * n);
                 for (int c = 0; c < 3; ++c) o[c] += I * leakCol[c];
             }
             if (mono) {   // панхроматичний шар: одне число
@@ -723,26 +890,63 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
         const float tMM = kBaseThicknessMM * (0.25f + 1.67f * (float)P.localDiff / 100.0f);
         const float sSm = (float)P.smoothness / 100.0f * 0.10f;   // мм: розсіювання в емульсії
         const float T = P.srcLimiter <= 0 ? 0.0f : kMidGray * (std::exp2((float)P.srcLimiter / 10.0f) - 1.0f);
-        std::vector<float> S((size_t)w * h * 3);
-        parallelRows(h, [&](int y) {
-            for (int x = 0; x < w; ++x) {
-                const float* L = &lin[((size_t)y * w + x) * 3];
-                float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
-                float g = T > 0 ? Y / (Y + T) : 1.0f;
-                for (int c = 0; c < 3; ++c) S[((size_t)y * w + x) * 3 + c] = std::min(L[c], 4000.0f) * g;
-            }
-        });
+        // піраміда джерела: рівень 0 — крок ds0, далі кожен удвічі менший
         const int ds0 = std::max(1, std::min(4, w / 960));
-        const int aw = std::max(1, (w + ds0 - 1) / ds0), ah = std::max(1, (h + ds0 - 1) / ds0);
+        struct Lvl { int ds, w, h; std::vector<float> b; };
+        std::vector<Lvl> pyr;
+        {
+            Lvl l0; l0.ds = ds0; l0.w = std::max(1, (w + ds0 - 1) / ds0); l0.h = std::max(1, (h + ds0 - 1) / ds0);
+            l0.b.assign((size_t)l0.w * l0.h * 3, 0.0f);
+            parallelRows(l0.h, [&](int sy) {
+                for (int sx = 0; sx < l0.w; ++sx) {
+                    float b[3] = {0, 0, 0}; int n = 0;
+                    for (int j = 0; j < ds0; ++j) for (int i = 0; i < ds0; ++i) {
+                        int x = sx * ds0 + i, y = sy * ds0 + j;
+                        if (x >= w || y >= h) continue;
+                        const float* L = &lin[((size_t)y * w + x) * 3];
+                        float Y = kLumW[0] * L[0] + kLumW[1] * L[1] + kLumW[2] * L[2];
+                        float g = T > 0 ? Y / (Y + T) : 1.0f;
+                        for (int c = 0; c < 3; ++c) b[c] += std::min(L[c], 4000.0f) * g;
+                        ++n;
+                    }
+                    for (int c = 0; c < 3; ++c) l0.b[((size_t)sy * l0.w + sx) * 3 + c] = b[c] / std::max(n, 1);
+                }
+            });
+            pyr.push_back(std::move(l0));
+            while (pyr.back().w > 8 && pyr.back().h > 8 && pyr.back().ds < 64) {
+                const Lvl& p = pyr.back();
+                Lvl q; q.ds = p.ds * 2; q.w = (p.w + 1) / 2; q.h = (p.h + 1) / 2;
+                q.b.assign((size_t)q.w * q.h * 3, 0.0f);
+                for (int y = 0; y < q.h; ++y)
+                    for (int x = 0; x < q.w; ++x)
+                        for (int c = 0; c < 3; ++c) {
+                            float a = 0; int n = 0;
+                            for (int j = 0; j < 2; ++j) for (int i = 0; i < 2; ++i) {
+                                int xx = 2 * x + i, yy = 2 * y + j;
+                                if (xx < p.w && yy < p.h) { a += p.b[((size_t)yy * p.w + xx) * 3 + c]; ++n; }
+                            }
+                            q.b[((size_t)y * q.w + x) * 3 + c] = a / std::max(n, 1);
+                        }
+                pyr.push_back(std::move(q));
+            }
+        }
+        const int aw = pyr[0].w, ah = pyr[0].h;
         std::vector<float> acc((size_t)aw * ah * 3, 0.0f);
         auto addComp = [&](float sigmaMM, float weight) {
-            if (weight <= 0) return;
-            int ds, sw, sh;
-            auto b = blurPyr(S, w, h, sigmaMM * halPxPerMM, ds0, ds, sw, sh);
+            if (weight <= 0.02f * K.total) return;   // складові <2% енергії не варті розмиття
+            float sPx = sigmaMM * halPxPerMM;
+            size_t li = 0;
+            while (li + 1 < pyr.size() && sPx / pyr[li + 1].ds >= 1.6f) ++li;
+            const Lvl& L = pyr[li];
+            std::vector<float> b = L.b;
+            gaussBlur(b, L.w, L.h, 3, sPx / L.ds);
+            const float k = (float)ds0 / L.ds;
             parallelRows(ah, [&](int ay) {
                 for (int ax = 0; ax < aw; ++ax) {
-                    float fx = ((ax + 0.5f) * ds0) / ds - 0.5f, fy = ((ay + 0.5f) * ds0) / ds - 0.5f;
-                    for (int c = 0; c < 3; ++c) acc[((size_t)ay * aw + ax) * 3 + c] += weight * sampleSmall(b, sw, sh, 3, c, fx, fy);
+                    float v[3];
+                    sample3(b, L.w, L.h, (ax + 0.5f) * k - 0.5f, (ay + 0.5f) * k - 0.5f, v);
+                    float* a = &acc[((size_t)ay * aw + ax) * 3];
+                    a[0] += weight * v[0]; a[1] += weight * v[1]; a[2] += weight * v[2];
                 }
             });
         };
@@ -760,9 +964,10 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
                 float gate = P.bgGain >= 100 ? 1.0f : 1.0f / (1.0f + (Y / bgTh) * (Y / bgTh));
                 float blue = std::clamp((L[2] - std::max(L[0], L[1])) / (L[2] + 1e-6f), 0.0f, 1.0f);
                 float f = strength * gate * (1.0f + (float)P.blueComp / 100.0f * 1.5f * blue);
-                float fx = (x + 0.5f) / ds0 - 0.5f, fy = (y + 0.5f) / ds0 - 0.5f;
+                float av[3];
+                sample3(acc, aw, ah, (x + 0.5f) / ds0 - 0.5f, (y + 0.5f) / ds0 - 0.5f, av);
                 for (int c = 0; c < 3; ++c) {
-                    float hv = f * wc[c] * sampleSmall(acc, aw, ah, 3, mono ? 1 : c, fx, fy);
+                    float hv = f * wc[c] * av[mono ? 1 : c];
                     L[c] += hv;
                     if (!halo.empty()) halo[((size_t)y * w + x) * 3 + c] = hv;
                 }
@@ -807,29 +1012,34 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
     float nzNorm = 1.0f, nz2Norm = 1.0f;
     const int nf = grainOn ? (mono ? 1 : 4) : 0;
     int w2 = (w + 1) / 2, h2 = (h + 1) / 2;
-    if (nf) {
+    // якщо кореляція зерна менша за ~0.6 пікселя, розмиття нічого не дає: шум рахуємо на льоту
+    const bool nzInline = grainBlur < 0.6f;
+    if (nf && !nzInline) {
         nz.resize((size_t)w * h * nf);
         parallelRows(h, [&](int y) {
             for (int x = 0; x < w; ++x)
                 for (int k = 0; k < nf; ++k)
-                    nz[((size_t)y * w + x) * nf + k] = gauss01(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k);
+                    nz[((size_t)y * w + x) * nf + k] = gaussFast(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k);
         });
         float q = gaussBlur(nz, w, h, nf, grainBlur);
         nzNorm = 1.0f / (q * q);   // std розмитого білого шуму = Σk² (2D)
+    }
+    if (nf) {
         if (analogue) {   // скупчення зерен: друга октава в 2.5 раза більша (на половинній роздільності)
             nz2.resize((size_t)w2 * h2 * nf);
             parallelRows(h2, [&](int y) {
                 for (int x = 0; x < w2; ++x)
                     for (int k = 0; k < nf; ++k)
                         nz2[((size_t)y * w2 + x) * nf + k] =
-                            gauss01(x + P.originX / 2, y + P.originY / 2, seed * 8u + 4u + (uint32_t)k);
+                            gaussFast(x + P.originX / 2, y + P.originY / 2, seed * 8u + 4u + (uint32_t)k);
             });
             float q2 = gaussBlur(nz2, w2, h2, nf, grainBlur * 2.5f / 2.0f);
             nz2Norm = 1.0f / (q2 * q2);
         }
     }
     auto grainAt = [&](int x, int y, int k) {
-        float g = nz[((size_t)y * w + x) * nf + k] * nzNorm;
+        float g = nzInline ? gaussFast(x + P.originX, y + P.originY, seed * 8u + (uint32_t)k)
+                           : nz[((size_t)y * w + x) * nf + k] * nzNorm;
         if (analogue) {
             int x2 = std::min(x / 2, w2 - 1), y2 = std::min(y / 2, h2 - 1);
             g = (g + 0.35f * nz2[((size_t)y2 * w2 + x2) * nf + k] * nz2Norm) / 1.06f;
@@ -838,14 +1048,22 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
         return g;
     };
 
+    // таблиці для пікселя: shapeX (blacks/whites/компресія), крива плівки, друк/скан, дисплей
+    const bool shapeOn = P.blacks != 0 || P.whites != 0 || (P.compOn && P.impact > 0);
+    Lut shapeLut;
+    if (shapeOn) shapeLut.build(-8.0f, 6.0f, 8192, [&](float v) { return shapeX(v, P); });
+    const FastChain fx(sys);
+    Lut encLut; encLut.build(0.0f, 1.1f, 16384, [&](float u) { return encodeTF(u * u, P.output); });
+
     parallelRows(h, [&](int y) {
         const float* srow = src + (std::ptrdiff_t)y * srcRowFloats;
         float* drow = dst + (std::ptrdiff_t)y * dstRowFloats;
         for (int x = 0; x < w; ++x) {
             const float* L = &lin[((size_t)y * w + x) * 3];
             float xs[3], D[3], Y[3], o[3];
-            for (int c = 0; c < 3; ++c) xs[c] = shapeX(std::log10(std::max(L[c], 1e-7f) / kMidGray), P);
-            develop(film, xs, D, sys.pushShift);
+            for (int c = 0; c < 3; ++c) xs[c] = fastLog10(std::max(L[c], 1e-7f) * (1.0f / kMidGray));
+            if (shapeOn) for (int c = 0; c < 3; ++c) xs[c] = shapeLut(xs[c]);
+            fx.develop(xs, D);
             float gn[3] = {0, 0, 0};
             if (nf) {
                 float g0 = grainAt(x, y, 0);
@@ -859,18 +1077,18 @@ inline void render(const float* src, std::ptrdiff_t srcRowFloats, float* dst, st
                     D[c] += gn[c] * sigmaPix * toneW(zone);
                 }
             }
-            sys.display(D, Y);
+            fx.display(D, Y);
             if (nf && positive) {   // зерно у щільності позитиву (відбитка)
                 for (int c = 0; c < 3; ++c) {
-                    float dp = -std::log10(std::max(Y[c], 1e-5f));
+                    float dp = -fastLog10(std::max(Y[c], 1e-5f));
                     float zone = 2.0f - std::clamp(dp / 0.9f, 0.0f, 2.0f);   // темне = тіні
                     dp += gn[c] * sigmaPix * 2.0f * toneW(zone);
-                    Y[c] = std::pow(10.0f, -dp);
+                    Y[c] = fastPow10(-dp);
                 }
             }
             if (!halo.empty()) for (int c = 0; c < 3; ++c) { float hv = halo[((size_t)y * w + x) * 3 + c]; Y[c] = hv / (hv + 0.25f); }
             mul(Mout, Y, o);
-            for (int c = 0; c < 3; ++c) o[c] = encodeTF(o[c], P.output);
+            for (int c = 0; c < 3; ++c) o[c] = o[c] <= 0.0f ? 0.0f : o[c] <= 1.2f ? encLut(std::sqrt(o[c])) : encodeTF(o[c], P.output);
             if (P.mix < 100 && halo.empty()) {   // змішування з нейтральним відтворенням того ж пікселя
                 float a[3], Ln[3], Yn[3], on[3];
                 for (int c = 0; c < 3; ++c) { float v = srow[x * 4 + c]; a[c] = decodeTF(std::isfinite(v) ? v : 0.0f, P.input); }

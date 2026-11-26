@@ -59,3 +59,9 @@ Light Leak   — засвітка від краю кадру (Amount, Hue, Drift
                Рахується до проявлення, тож засвітка теж дає halation.
 Lab          — Cross Process (слайд у негативній хімії) і Flicker (мерехтіння експозиції).
 Output → Mix — змішування з нейтральним відтворенням без плівки.
+
+ШВИДКІСТЬ (2.3)
+• Output → Fast Preview: обробка в половинній роздільності — плавне відтворення. Перед фінальним
+  рендером вимкни.
+• У DaVinci: Playback → Timeline Proxy Resolution → Half / Quarter — плагін рахує менший кадр.
+• Або Playback → Render Cache → Smart: DaVinci один раз прорахує кліп і далі грає з кешу.

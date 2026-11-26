@@ -266,6 +266,8 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineGroup(ps, "gOutput", "Output");
     defineChoice(ps, "output", "Output", kOutputNames, kNumOutputs, OUT_REC709, "gOutput", "Display colour space of the result.");
     defineDouble(ps, "mix", "Mix", 100.0, 0.0, 100.0, "gOutput", "Blend with the neutral (no film) rendering.", 1, 1);
+    defineBool(ps, "fastPreview", "Fast Preview", 0, "gOutput",
+               "Process at half resolution for smooth playback. Turn off before the final render.");
 
     defineGroup(ps, "gAbout", "Svit Film v" SVIT_VERSION, false);
     defineButton(ps, "update", "Update Svit Film", "gAbout", "Check GitHub for a new Svit Film version and install it.");
@@ -407,6 +409,11 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
     p.leak = getD(inst, "leak", t); p.leakHue = getD(inst, "leakHue", t); p.leakSpeed = getD(inst, "leakSpeed", t);
     p.leakPos = getI(inst, "leakPos", t); p.cross = getD(inst, "cross", t); p.flicker = getD(inst, "flicker", t);
     p.mix = getD(inst, "mix", t);
+    p.fastPreview = getI(inst, "fastPreview", t) != 0;
+    {   // хост може сам попросити чорнову якість (OFX 1.4 renderQualityDraft)
+        int draft = 0;
+        if (gProp->propGetInt(inArgs, "OfxImageEffectPropRenderQualityDraft", 0, &draft) == kOfxStatOK && draft) p.fastPreview = true;
+    }
     p.frame = t; p.originX = dst.b.x1; p.originY = dst.b.y1;
 
     const int w = dst.b.x2 - dst.b.x1, h = dst.b.y2 - dst.b.y1;
