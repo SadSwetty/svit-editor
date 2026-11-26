@@ -1,0 +1,34 @@
+# Готове середовище Svit Editor (Python + компоненти) для Apple Silicon та Intel.
+# Збирається, коли змінюється runtime/VERSION (або вручну), і кладеться в реліз runtime-<N>.
+name: runtime
+on:
+  push:
+    branches: [main]
+    paths: ["runtime/VERSION"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Rosetta (для перевірки Intel-середовища)
+        run: softwareupdate --install-rosetta --agree-to-license || true
+      - name: Build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/build_runtime.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RT="$(tr -d '[:space:]' < runtime/VERSION)"
+          TAG="runtime-$RT"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --prerelease \
+              --title "Svit Editor · середовище $RT" \
+              --notes "Готове середовище (Python 3.11 і компоненти) для інсталятора й оновлень Svit Editor. Окремо не встановлюється."
+          fi
+          gh release upload "$TAG" dist-runtime/* --clobber

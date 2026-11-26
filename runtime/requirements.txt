@@ -1,0 +1,16 @@
+# Компоненти, які входять у готове середовище Svit Editor (збирається на GitHub, див. .github/workflows/runtime.yml).
+# Змінив список — підніми номер у runtime/VERSION, тоді GitHub збере нове середовище.
+anthropic
+pillow
+numpy
+av
+pywebview>=5.1
+yt-dlp[default]
+curl_cffi
+certifi
+faster-whisper
+ctranslate2
+huggingface_hub
+tokenizers
+tqdm
+onnxruntime
