@@ -29,6 +29,24 @@ import music  # noqa: E402
 HOME = engine.HOME
 SHOTS = HOME / "shots"
 VERSION = (HERE / "VERSION").read_text().strip() if (HERE / "VERSION").exists() else "dev"
+
+
+def web_root():
+    """Інтерфейс відкриваємо з окремої теки для кожної версії: вбудований браузер macOS кешує сторінку
+    за адресою, і після оновлення інакше показував би старий інтерфейс (без нових вкладок)."""
+    import shutil
+    src = HERE / "web"
+    if VERSION == "dev":
+        return src
+    dst = HOME / "webui" / VERSION
+    try:
+        if not (dst / "index.html").exists():
+            shutil.rmtree(HOME / "webui", ignore_errors=True)
+            shutil.copytree(src, dst)
+        return dst
+    except Exception as e:
+        svlog.log(f"webui: {e!r} — відкриваю інтерфейс напряму")
+        return src
 UPDATE_REPO = "SadSwetty/svit-editor"   # GitHub: власник/репозиторій, звідки брати оновлення
 RESTART_CODE = 75
 BRIDGE_REV = 30        # має збігатися з BRIDGE_REV у resolve/Svit Editor.py
@@ -1092,7 +1110,7 @@ def main():
 
     import webview
     api = Api(Bridge(args.session))
-    win = webview.create_window("Svit Editor", url=str(HERE / "web" / "index.html"), js_api=api,
+    win = webview.create_window("Svit Editor", url=str(web_root() / "index.html"), js_api=api,
                                 width=780, height=920, min_size=(640, 640),
                                 background_color="#111114", text_select=True,
                                 on_top=bool(engine.load_cfg().get("on_top", True)))
