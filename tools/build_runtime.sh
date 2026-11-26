@@ -1,6 +1,6 @@
 #!/bin/bash
 # Збирає готове середовище Svit Editor (Python 3.11 + усі компоненти) для обох типів Маків.
-# Запускається на GitHub (macos-14, Apple Silicon): arm64 ставимо звичайно і перевіряємо,
+# Запускається на GitHub (macos-latest, Apple Silicon): arm64 ставимо звичайно і перевіряємо,
 # x86_64 (Intel) — готовими пакетами під платформу Intel, перевіряємо через Rosetta, якщо вона є.
 # Результат: dist-runtime/svit-runtime-<N>-arm64.tar.gz і svit-runtime-<N>-x86_64.tar.gz
 set -euo pipefail
