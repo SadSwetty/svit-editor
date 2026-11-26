@@ -4,6 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 VER="$(tr -d '[:space:]' < VERSION)"
+python3 gen_metal_src.py
 [ -d openfx/include ] || git clone -q --depth 1 https://github.com/AcademySoftwareFoundation/openfx openfx
 B="build/SvitFilm.ofx.bundle"
 rm -rf build && mkdir -p "$B/Contents/MacOS" "$B/Contents/Resources"

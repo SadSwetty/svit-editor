@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include <string>
@@ -23,6 +24,11 @@ extern char** environ;
 #include "ofxProperty.h"
 #include "svitfilm_core.h"
 #include "svit_looks.h"
+#include "gpu_plan.h"
+#include "ofxGPURender.h"
+#if defined(__APPLE__) || defined(SVIT_METAL_CHECK)
+#include "metal_backend.h"
+#endif
 
 #ifndef SVIT_VERSION
 #define SVIT_VERSION "dev"
@@ -69,6 +75,11 @@ OfxStatus describe(OfxImageEffectHandle effect) {
     gProp->propSetInt(p, kOfxImageEffectPropTemporalClipAccess, 0, 0);
     gProp->propSetInt(p, kOfxImageEffectPluginPropHostFrameThreading, 0, 0);   // потоки — наші
     gProp->propSetString(p, kOfxImageEffectPluginRenderThreadSafety, 0, kOfxImageEffectRenderFullySafe);
+#if defined(__APPLE__) || defined(SVIT_METAL_CHECK)
+    // відеокарта Мака: оголошуємо Metal, лише якщо ядра справді скомпілювалися на цьому Маку
+    if (std::getenv("SVIT_FILM_NO_METAL") == nullptr && svitmetal::available())
+        gProp->propSetString(p, kOfxImageEffectPropMetalRenderSupported, 0, "true");
+#endif
     return kOfxStatOK;
 }
 
@@ -282,7 +293,7 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
 
 // ---- оновлення: кнопка запускає Contents/Resources/update.sh окремим процесом (DaVinci не чекає)
 void launchUpdate() {
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(SVIT_METAL_CHECK)
     Dl_info info;
     if (!dladdr((const void*)&launchUpdate, &info) || !info.dli_fname) return;
     std::string bin = info.dli_fname;                       // .../Contents/MacOS/SvitFilm.ofx
@@ -375,21 +386,25 @@ struct Img {
 
 // Журнал швидкості: ~/Library/Logs/Svit Film.log — рядок на кожні 24 кадри (середній час, роздільність,
 // скільки кадрів DaVinci рахує одночасно, скільки ядер). Щоб знати, де саме гальмує на конкретному Маку.
-void perfLog(int w, int h, double ms, const svitfilm::Params& p) {
+void perfLog(int w, int h, double ms, const svitfilm::Params& p, bool metal = false, double gpuMs = -1) {
     static std::mutex m; static int n = 0; static double sum = 0, mx = 0; static int maxConc = 0;
     std::lock_guard<std::mutex> lk(m);
     ++n; sum += ms; mx = std::max(mx, ms);
+    if (metal ? gpuMs < 0 : n < 24) return;   // Metal: пишемо на кадрах, де виміряно час відеокарти
     maxConc = std::max(maxConc, svitfilm::activeRenders().load() + 1);
-    if (n < 24) return;
     const char* home = std::getenv("HOME");
     if (home) {
         std::string path = std::string(home) + "/Library/Logs/Svit Film.log";
         if (FILE* f = std::fopen(path.c_str(), "a")) {
             std::time_t tt = std::time(nullptr); char ts[32];
             std::strftime(ts, sizeof ts, "%Y-%m-%d %H:%M:%S", std::localtime(&tt));
-            std::fprintf(f, "%s v%s %dx%d avg %.0f ms max %.0f ms | cores %u, frames at once %d | grain %d hal %d bloom %.2f fast %d\n",
-                         ts, SVIT_VERSION, w, h, sum / n, mx, std::thread::hardware_concurrency(), maxConc,
-                         (int)p.grainOn, (int)p.halOn, p.bloom, (int)p.fastPreview);
+            if (metal)
+                std::fprintf(f, "%s v%s %dx%d GPU (Metal) frame %.1f ms, CPU prep avg %.1f ms | grain %d hal %d bloom %.2f\n",
+                             ts, SVIT_VERSION, w, h, gpuMs, sum / n, (int)p.grainOn, (int)p.halOn, p.bloom);
+            else
+                std::fprintf(f, "%s v%s %dx%d CPU avg %.0f ms max %.0f ms | cores %u, frames at once %d | grain %d hal %d bloom %.2f fast %d\n",
+                             ts, SVIT_VERSION, w, h, sum / n, mx, std::thread::hardware_concurrency(), maxConc,
+                             (int)p.grainOn, (int)p.halOn, p.bloom, (int)p.fastPreview);
             std::fclose(f);
         }
     }
@@ -447,6 +462,28 @@ OfxStatus render(OfxImageEffectHandle inst, OfxPropertySetHandle inArgs) {
 
     const int w = dst.b.x2 - dst.b.x1, h = dst.b.y2 - dst.b.y1;
     if (w <= 0 || h <= 0) return kOfxStatOK;
+
+#if defined(__APPLE__) || defined(SVIT_METAL_CHECK)
+    int metalOn = 0;
+    gProp->propGetInt(inArgs, kOfxImageEffectPropMetalEnabled, 0, &metalOn);
+    if (metalOn) {
+        // DaVinci передав кадри як id<MTLBuffer>: усе рахується на відеокарті
+        void* queue = nullptr;
+        gProp->propGetPointer(inArgs, kOfxImageEffectPropMetalCommandQueue, 0, &queue);
+        static std::atomic<int> frameNo{0};
+        bool measure = (++frameNo % 24) == 0;
+        auto t0 = std::chrono::steady_clock::now();
+        svitfilm::FramePlan fp = svitfilm::buildPlan(p, w, h);
+        double gpuMs = -1;
+        bool ok = svitmetal::render(queue, src.data, dst.data, std::move(fp), src.rowBytes / 4, dst.rowBytes / 4,
+                                    dst.b.x1 - src.b.x1, dst.b.y1 - src.b.y1, src.b.x2 - src.b.x1, src.b.y2 - src.b.y1,
+                                    measure, &gpuMs);
+        double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+        if (!ok) { svitmetal::log("render failed (see errors above)"); return kOfxStatFailed; }
+        perfLog(w, h, measure ? ms - gpuMs : ms, p, true, measure ? gpuMs : -1);
+        return kOfxStatOK;
+    }
+#endif
 
     // джерело в розмір кадру результату (якщо межі однакові — без копії)
     std::vector<float> tmp;

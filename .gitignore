@@ -12,3 +12,4 @@ release/*.zip
 plugins/svit-film/ofx/build/
 plugins/svit-film/ofx/openfx/
 plugins/svit-film/ofx/pkg/
+plugins/svit-film/ofx/src/metal_src.inc

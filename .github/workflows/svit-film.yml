@@ -28,6 +28,13 @@ jobs:
           python3 tools/gen_profiles.py --check
           g++ -std=c++17 -O2 -Iofx/src ofx/test/engine_test.cpp -o /tmp/engine_test -lpthread
           /tmp/engine_test
+          cd ofx
+          [ -d openfx/include ] || git clone -q --depth 1 https://github.com/AcademySoftwareFoundation/openfx openfx
+          python3 gen_metal_src.py
+          g++ -std=c++17 -O2 -Isrc test/gpu_plan_test.cpp -o /tmp/gpu_plan_test -lpthread && /tmp/gpu_plan_test | tail -1
+          clang++ -std=c++14 -fsyntax-only -Wno-unknown-attributes -Isrc test/msl_check.cpp
+          g++ -std=c++17 -fsyntax-only -DSVIT_METAL_CHECK -DSVIT_VERSION='"ci"' -Iopenfx/include -Isrc src/SvitFilm.cpp
+          g++ -std=c++17 -O2 -Wno-attributes -Isrc test/metal_mock_test.cpp -o /tmp/metal_mock_test -lpthread -ldl && /tmp/metal_mock_test | tail -1
       - name: Build
         run: bash plugins/svit-film/ofx/build_cross.sh
       - name: Sign (ad-hoc)

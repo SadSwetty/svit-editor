@@ -65,3 +65,8 @@ Output → Mix — змішування з нейтральним відтвор
   рендером вимкни.
 • У DaVinci: Playback → Timeline Proxy Resolution → Half / Quarter — плагін рахує менший кадр.
 • Або Playback → Render Cache → Smart: DaVinci один раз прорахує кліп і далі грає з кешу.
+
+ВІДЕОКАРТА (3.0)
+Svit Film рахує на відеокарті Мака (Metal), коли DaVinci це дозволяє (Preferences → Memory and GPU →
+GPU Processing Mode: Metal). Якщо шейдери не скомпілювалися, плагін сам повертається на процесор.
+Журнал: ~/Library/Logs/Svit Film.log — рядки [metal] показують, чи працює відеокарта і скільки мс на кадр.
