@@ -81,7 +81,15 @@ if [ -z "$SVIT_PKGS" ] && rt_wanted; then
   if [ "$WAS_INSTALLED" = "0" ] && ! find_python >/dev/null; then
     echo "E|nopython|Потрібен Python 3.9 або новіший." >> "$PF"; exit 2
   fi
-  if rt_install 4 52; then RUNTIME_OK=1; else echo "готове середовище не вдалося — ставлю через pip" >> "$LOG"; fi
+  if [ "$WAS_INSTALLED" = "1" ] && [ ! -L "$DIR/venv" ] && \
+     "$DIR/venv/bin/python3" -c "import webview, faster_whisper, anthropic, av, numpy, PIL" >/dev/null 2>&1; then
+    # уже встановлено і працює — нічого не перекачуємо, лише доставимо нові компоненти, якщо такі з'явились
+    echo "середовище вже працює — готове не завантажую" >> "$LOG"
+  elif rt_install 4 52; then
+    RUNTIME_OK=1
+  else
+    echo "готове середовище не вдалося — ставлю через pip" >> "$LOG"
+  fi
 fi
 VENV="$DIR/venv"
 
