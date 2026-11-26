@@ -510,8 +510,13 @@ class Api:
         for rel in rels if isinstance(rels, list) else []:
             if rel.get("draft") or (rel.get("prerelease") and not beta):
                 continue
-            ver = str(rel.get("tag_name", "")).lstrip("vV")
-            asset = next((a for a in rel.get("assets", []) if a.get("name", "").endswith(".zip")), None)
+            tag = str(rel.get("tag_name", ""))
+            if not tag[:1] in ("v", "V"):
+                continue                      # напр. runtime-1 — це готове середовище, а не версія програми
+            ver = tag.lstrip("vV")
+            zips = [a for a in rel.get("assets", []) if a.get("name", "").endswith(".zip")]
+            # легкий архів оновлення (без середовища), якщо він є; інакше — повний
+            asset = next((a for a in zips if "update" in a.get("name", "").lower()), zips[0] if zips else None)
             if not ver or not asset:
                 continue
             url = asset.get("browser_download_url", "")
@@ -1040,6 +1045,10 @@ def macos_polish(window, api=None):
 
         def apply():
             app = NSApplication.sharedApplication()
+            try:   # готовий Python не є «додатком» macOS — явно робимо вікно звичайною програмою з фокусом
+                app.setActivationPolicy_(0)   # NSApplicationActivationPolicyRegular
+            except Exception:
+                pass
             icon = HERE / "web" / "icon.png"
             if icon.exists():
                 app.setApplicationIconImage_(NSImage.alloc().initWithContentsOfFile_(str(icon)))

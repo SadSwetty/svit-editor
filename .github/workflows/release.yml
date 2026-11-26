@@ -1,31 +1,73 @@
-# Створює реліз на GitHub, коли в папку release/ потрапляє новий підписаний інсталятор.
-# Ключ підпису тут НЕ використовується: інсталятор підписує автор перед комітом.
+# Збирає і публікує реліз Svit Editor, коли змінюється VERSION у main (або вручну).
+# Два архіви:
+#   Svit.Editor.<версія>.update.zip — легкий, для кнопки «Оновити» в програмі (завантажується першим:
+#                                     старі версії програми беруть перший zip у релізі);
+#   Svit.Editor.<версія>.zip        — повний, для першого встановлення: готове середовище всередині.
+# Шрифт Zvin Serif (trial) у репозиторії не лежить — беремо його з попереднього релізу.
 name: release
 on:
   push:
     branches: [main]
-    paths: ["release/**"]
+    paths: ["VERSION"]
+  workflow_dispatch:
 permissions:
   contents: write
+concurrency:
+  group: release
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pillow
+      - name: Fonts from the previous release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prev app/web/fonts
+          for TAG in $(gh release list --limit 30 --json tagName --jq '.[].tagName' | grep -E '^v'); do
+            if gh release download "$TAG" --pattern '*.update.zip' --dir prev --clobber 2>/dev/null \
+               || gh release download "$TAG" --pattern '*.zip' --dir prev --clobber; then break; fi
+          done
+          Z="$(ls prev/*.zip | head -1)"
+          unzip -q "$Z" "*/payload/app/web/fonts/*" -d prev/x
+          find prev/x -path "*/payload/app/web/fonts/*" -type f -exec cp {} app/web/fonts/ \;
+          ls app/web/fonts
+          test -n "$(ls app/web/fonts)"
+      - name: Prebuilt runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          RT="$(tr -d '[:space:]' < runtime/VERSION)"
+          gh release download "runtime-$RT" --pattern 'svit-runtime-*.tar.gz' --dir dist-runtime \
+            || { echo "::error::Немає готового середовища runtime-$RT — дочекайся збірки runtime і запусти release ще раз"; exit 1; }
+          ls -la dist-runtime
+      - name: Build
+        run: SVIT_SIGN_KEY=/nonexistent bash build.sh
+      - name: Guards
+        run: |
+          for Z in dist/*.zip; do
+            if unzip -l "$Z" | grep -q "payload/access_code"; then echo "::error::У $Z код доступу"; exit 1; fi
+            if unzip -p "$Z" "*/payload/*" | grep -aqE "sk-ant-[A-Za-z0-9_-]{20,}"; then echo "::error::У $Z ключ Claude"; exit 1; fi
+          done
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          VER="$(cat VERSION | tr -d '[:space:]')"
-          ZIP="release/Svit Editor $VER.zip"
-          test -f "$ZIP" || { echo "немає $ZIP"; exit 1; }
-          PRE=""
+          VER="$(tr -d '[:space:]' < VERSION)"
+          cp "dist/Svit Editor $VER update.zip" "Svit.Editor.$VER.update.zip"
+          cp "dist/Svit Editor $VER.zip" "Svit.Editor.$VER.zip"
           case "$VER" in *alpha*|*beta*|*rc*) PRE="--prerelease";; *) PRE="--latest";; esac
-          cp "$ZIP" "Svit.Editor.$VER.zip"
           if gh release view "v$VER" >/dev/null 2>&1; then
+            gh release upload "v$VER" "Svit.Editor.$VER.update.zip" --clobber
             gh release upload "v$VER" "Svit.Editor.$VER.zip" --clobber
             gh release edit "v$VER" --notes-file release/notes.md
           else
-            gh release create "v$VER" "Svit.Editor.$VER.zip" --target "$GITHUB_SHA" \
+            gh release create "v$VER" "Svit.Editor.$VER.update.zip" --target "$GITHUB_SHA" \
               --title "Svit Editor $VER" --notes-file release/notes.md $PRE
+            gh release upload "v$VER" "Svit.Editor.$VER.zip"
           fi

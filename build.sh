@@ -29,7 +29,7 @@ cp installer/res/launcher.sh "$APP/Contents/MacOS/SvitInstaller"
 chmod +x "$APP/Contents/MacOS/SvitInstaller"
 
 cp installer/res/installer_ui.py installer/res/installer.html installer/res/header.png \
-   installer/res/AppIcon.icns installer/res/worker.sh installer/res/uninstall.command "$R/"
+   installer/res/AppIcon.icns installer/res/worker.sh installer/res/runtime.sh installer/res/uninstall.command "$R/"
 python3 -c "from PIL import Image; im=Image.open('installer/res/icon.png'); im.thumbnail((256,256)); im.save('$R/icon.png')"
 chmod +x "$R/worker.sh" "$R/uninstall.command"
 
@@ -43,6 +43,8 @@ cp -R app/web/fonts "$R/fonts"
 python3 -c "from PIL import Image; im=Image.open('app/web/icon.png'); im.thumbnail((512,512)); im.save('$R/payload/app/web/icon.png')"
 cp "resolve/Svit Editor.py" "$R/payload/resolve/"
 cp VERSION "$R/payload/VERSION"
+# номер готового середовища, з яким працює ця версія (саме середовище — у реліз runtime-<N>)
+[ -f runtime/VERSION ] && tr -d '[:space:]' < runtime/VERSION > "$R/payload/RUNTIME"
 
 # цифровий підпис: маніфест sha256 усіх файлів + підпис Ed25519 приватним ключем автора
 KEY="${SVIT_SIGN_KEY:-$(cd "$(dirname "$0")/.." && pwd)/svit-signing/ed25519.key}"
@@ -52,5 +54,17 @@ if [ -f "$KEY" ]; then
 else
   echo "УВАГА: немає ключа підпису ($KEY) — збірка НЕ підписана, автооновлення її не прийме"
 fi
-(cd dist && zip -qry "Svit Editor $VER.zip" "Svit Editor Installer.app")
-echo "dist/Svit Editor $VER.zip"
+# легкий архів для оновлень (без середовища: якщо воно змінилось, інсталятор докачає лише його)
+(cd dist && zip -qry "Svit Editor $VER update.zip" "Svit Editor Installer.app")
+echo "dist/Svit Editor $VER update.zip"
+# повний архів для першого встановлення: готові середовища для Apple Silicon та Intel усередині
+RTD="${SVIT_RUNTIME_DIR:-dist-runtime}"
+if ls "$RTD"/svit-runtime-*.tar.gz >/dev/null 2>&1; then
+  mkdir -p "$R/runtime"
+  cp "$RTD"/svit-runtime-"$(cat "$R/payload/RUNTIME")"-*.tar.gz "$R/runtime/"
+  (cd dist && zip -qry -0 "Svit Editor $VER.zip" "Svit Editor Installer.app")   # архіви вже стиснуті
+  rm -rf "$R/runtime"
+  echo "dist/Svit Editor $VER.zip"
+else
+  echo "УВАГА: немає готового середовища в $RTD — повний архів не зібрано"
+fi

@@ -73,6 +73,19 @@ sleep 0.4
 
 WAS_INSTALLED=0
 [ -f "$DIR/VERSION" ] && [ -f "$DIR/app/ui.py" ] && WAS_INSTALLED=1
+# ---- готове середовище (без pip): з інсталятора або з GitHub. Не вийшло — старий шлях через pip.
+. "$RES/runtime.sh"
+RUNTIME_OK=0
+if [ -z "$SVIT_PKGS" ] && rt_wanted; then
+  # системний Python потрібен самому DaVinci, щоб запускати скрипти (Workspace → Scripts)
+  if [ "$WAS_INSTALLED" = "0" ] && ! find_python >/dev/null; then
+    echo "E|nopython|Потрібен Python 3.9 або новіший." >> "$PF"; exit 2
+  fi
+  if rt_install 4 52; then RUNTIME_OK=1; else echo "готове середовище не вдалося — ставлю через pip" >> "$LOG"; fi
+fi
+VENV="$DIR/venv"
+
+if [ "$RUNTIME_OK" != "1" ]; then
 UPDATE=0
 if [ -x "$DIR/venv/bin/python3" ] && "$DIR/venv/bin/python3" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>/dev/null; then
   UPDATE=1
@@ -158,10 +171,14 @@ if [ -z "$SVIT_PKGS" ]; then
   pip_step 53 53 1 300 --only-binary=:all: curl_cffi || echo "curl_cffi failed (не критично)" >> "$LOG"
   p 53 deps "Компоненти готові"
 fi
+fi   # кінець старого шляху через pip
 
 # модель розпізнавання мови: справжній прогрес за розміром завантаженого
-if [ -n "$SVIT_SKIP_MODEL" ] || [ -f "$MODEL_DIR/refs/main" ] && ! ls "$MODEL_DIR/blobs/"*.incomplete >/dev/null 2>&1; then
+if [ -f "$MODEL_DIR/refs/main" ] && ! ls "$MODEL_DIR/blobs/"*.incomplete >/dev/null 2>&1; then
   p 92 model "Модель мови вже на місці"
+elif [ -z "$SVIT_MODEL_NOW" ]; then
+  # 1,5 ГБ не качаємо наперед: програма завантажить модель сама, коли вона вперше знадобиться
+  p 92 model "Модель мови завантажиться, коли вперше знадобиться"
 else
   p 54 model "Завантажую модель мови"
   HF_HUB_DISABLE_PROGRESS_BARS=1 "$VENV/bin/python3" -c "from faster_whisper import WhisperModel; WhisperModel('medium', device='cpu', compute_type='int8')" >> "$LOG" 2>&1 &
@@ -178,8 +195,8 @@ fi
 
 # список встановлених версій — щоб автор міг зафіксувати перевірений набір
 "$VENV/bin/python3" -m pip freeze > "$DIR/installed-versions.txt" 2>/dev/null
-# підміняємо середовище на нове
-if [ "$VENV" = "$DIR/venv-new" ]; then
+# підміняємо середовище на нове (лише для старого шляху через pip)
+if [ "$RUNTIME_OK" != "1" ] && [ "$VENV" = "$DIR/venv-new" ]; then
   rm -rf "$DIR/venv-old"; mv "$DIR/venv" "$DIR/venv-old" && mv "$DIR/venv-new" "$DIR/venv" && rm -rf "$DIR/venv-old"
 fi
 

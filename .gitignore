@@ -7,3 +7,5 @@ __pycache__/
 svit-signing/
 # trial-шрифт: ліцензія не дозволяє публічне поширення вихідників
 app/web/fonts/
+dist-runtime/
+release/*.zip

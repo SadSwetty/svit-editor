@@ -237,6 +237,49 @@ def has_vad():
         return False
 
 
+WHISPER_BYTES = {"tiny": 75_000_000, "base": 145_000_000, "small": 484_000_000, "medium": 1_530_000_000,
+                 "large-v3": 3_090_000_000}
+
+
+def _model_dir(name):
+    return Path.home() / ".cache" / "huggingface" / "hub" / f"models--Systran--faster-whisper-{name}"
+
+
+def model_ready(name):
+    d = _model_dir(name)
+    return any(d.glob("snapshots/*/model.bin")) and not any(d.glob("blobs/*.incomplete"))
+
+
+def ensure_model(name, on_progress, check=lambda: None):
+    """Модель розпізнавання мови не ставиться наперед — завантажуємо її, коли вона вперше потрібна.
+    on_progress(частка, повідомлення)."""
+    if model_ready(name):
+        return
+    import threading
+    err = []
+
+    def dl():
+        try:
+            from faster_whisper.utils import download_model
+            download_model(name)
+        except Exception as e:      # noqa: BLE001
+            err.append(e)
+    th = threading.Thread(target=dl, daemon=True)
+    th.start()
+    total = WHISPER_BYTES.get(name, 1_500_000_000)
+    d = _model_dir(name)
+    _log(f"Завантажую модель мови «{name}» (вперше)")
+    while th.is_alive():
+        check()
+        got = sum(f.stat().st_size for f in d.rglob("*") if f.is_file()) if d.exists() else 0
+        on_progress(min(0.99, got / total),
+                    f"Завантажую модель мови · {got // 1048576} з {total // 1048576} МБ (лише перший раз)")
+        time.sleep(0.5)
+    if err:
+        raise RuntimeError("Не вдалося завантажити модель розпізнавання мови. Перевір інтернет і спробуй ще раз.") \
+            from err[0]
+
+
 class Transcriber:
     def __init__(self, model_name, language):
         self.model_name, self.language, self.model = model_name, language, None
@@ -1499,6 +1542,7 @@ class Job:
         tr = None
         if s.get("transcribe"):
             tr = Transcriber(s.get("whisper_model", "medium"), s.get("language"))
+            ensure_model(tr.model_name, lambda f, m: self.report("listen", 0, m), self.check)
             self.report("listen", 0, "Завантажую модель розпізнавання мови")
             tr.load()
 
@@ -1596,6 +1640,8 @@ class Job:
                 self.report("sound", 0.96, "Слухаю спів і прив'язую слова пісні")
                 try:
                     lines = lyric_lines(lyr)
+                    ensure_model(s.get("whisper_model", "medium"),
+                                 lambda f, m: self.report("sound", 0.96, m), self.check)
                     heard = transcribe_song(mu["path"], mu.get("start", 0), mu.get("end", 30),
                                             s.get("whisper_model", "medium"), s.get("language"), " ".join(lines),
                                             self.check)

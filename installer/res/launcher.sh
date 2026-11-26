@@ -35,6 +35,15 @@ fallback() {
   chmod +x "$f"; open "$f"; exit 0
 }
 
+# готове середовище всередині інсталятора: розпаковуємо за секунди, без pip і без інтернету
+if [ -f "$RES/runtime.sh" ]; then
+  . "$RES/runtime.sh"
+  if rt_wanted && ! rt_ok && ls "$RES/runtime/"svit-runtime-*.tar.gz >/dev/null 2>&1; then
+    osascript -e 'display notification "Готую інсталятор — кілька секунд" with title "Svit Editor"' >/dev/null 2>&1
+    rt_install 0 100 || echo "launcher: готове середовище не розпакувалось" >> "$LOG"
+  fi
+fi
+
 if ! "$VPY" -c "import webview" >/dev/null 2>&1; then
   PYB="$(find_python)"
   if [ -z "$PYB" ]; then

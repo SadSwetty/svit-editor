@@ -188,6 +188,10 @@ def polish():
 
         def apply():
             app = NSApplication.sharedApplication()
+            try:   # готовий Python не є «додатком» macOS — явно робимо вікно звичайною програмою з фокусом
+                app.setActivationPolicy_(0)   # NSApplicationActivationPolicyRegular
+            except Exception:
+                pass
             icon = RES / "icon.png"
             if icon.exists():
                 app.setApplicationIconImage_(NSImage.alloc().initWithContentsOfFile_(str(icon)))
