@@ -4,11 +4,22 @@
 #include <string>
 #include <vector>
 
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#include <spawn.h>
+#include <sys/wait.h>
+extern char** environ;
+#endif
+
 #include "ofxCore.h"
 #include "ofxImageEffect.h"
 #include "ofxParam.h"
 #include "ofxProperty.h"
 #include "svitfilm_core.h"
+
+#ifndef SVIT_VERSION
+#define SVIT_VERSION "dev"
+#endif
 
 #if defined(_WIN32)
 #define SVIT_EXPORT extern "C" __declspec(dllexport)
@@ -93,6 +104,15 @@ void defineChoice(OfxParamSetHandle ps, const char* name, const char* label, con
     if (parent) gProp->propSetString(pp, kOfxParamPropParent, 0, parent);
 }
 
+void defineButton(OfxParamSetHandle ps, const char* name, const char* label, const char* parent,
+                  const char* hint) {
+    OfxPropertySetHandle pp;
+    gParam->paramDefine(ps, kOfxParamTypePushButton, name, &pp);
+    gProp->propSetString(pp, kOfxPropLabel, 0, label);
+    gProp->propSetString(pp, kOfxParamPropHint, 0, hint);
+    if (parent) gProp->propSetString(pp, kOfxParamPropParent, 0, parent);
+}
+
 void defineBool(OfxParamSetHandle ps, const char* name, const char* label, int def, const char* parent,
                 const char* hint) {
     OfxPropertySetHandle pp;
@@ -144,6 +164,38 @@ OfxStatus describeInContext(OfxImageEffectHandle effect, OfxPropertySetHandle /*
     defineGroup(ps, "gCamera", "Camera");
     defineDouble(ps, "vignette", "Vignette", 0.25, 0.0, 1.0, "gCamera", "Darker corners.");
     defineDouble(ps, "weave", "Gate Weave", 0.0, 0.0, 1.0, "gCamera", "Subtle frame jitter like a projector.");
+
+    defineGroup(ps, "gAbout", "Svit Film v" SVIT_VERSION, false);
+    defineButton(ps, "update", "Update Svit Film", "gAbout", "Check GitHub for a new Svit Film version and install it.");
+    return kOfxStatOK;
+}
+
+// ---- оновлення: кнопка запускає Contents/Resources/update.sh окремим процесом (DaVinci не чекає)
+void launchUpdate() {
+#if defined(__APPLE__)
+    Dl_info info;
+    if (!dladdr((const void*)&launchUpdate, &info) || !info.dli_fname) return;
+    std::string bin = info.dli_fname;                       // .../Contents/MacOS/SvitFilm.ofx
+    std::string::size_type k = bin.rfind("/MacOS/");
+    if (k == std::string::npos) return;
+    std::string script = bin.substr(0, k) + "/Resources/update.sh";
+    std::string cmd = "/bin/bash '" + script + "' '" SVIT_VERSION "' >/dev/null 2>&1 &";
+    char* argv[] = {(char*)"/bin/sh", (char*)"-c", (char*)cmd.c_str(), nullptr};
+    pid_t pid;
+    if (posix_spawn(&pid, "/bin/sh", nullptr, nullptr, argv, environ) == 0) {
+        int st; waitpid(pid, &st, 0);                      // sh одразу виходить, скрипт живе у фоні
+    }
+#endif
+}
+
+OfxStatus instanceChanged(OfxPropertySetHandle inArgs) {
+    char* type = nullptr; char* name = nullptr; char* reason = nullptr;
+    gProp->propGetString(inArgs, kOfxPropType, 0, &type);
+    gProp->propGetString(inArgs, kOfxPropName, 0, &name);
+    gProp->propGetString(inArgs, kOfxPropChangeReason, 0, &reason);
+    if (type && name && !std::strcmp(type, kOfxTypeParameter) && !std::strcmp(name, "update") &&
+        (!reason || !std::strcmp(reason, kOfxChangeUserEdited)))
+        launchUpdate();
     return kOfxStatOK;
 }
 
@@ -244,6 +296,7 @@ OfxStatus mainEntry(const char* action, const void* handle, OfxPropertySetHandle
         if (!std::strcmp(action, kOfxActionDescribe)) return describe(eff);
         if (!std::strcmp(action, kOfxImageEffectActionDescribeInContext)) return describeInContext(eff, inArgs);
         if (!std::strcmp(action, kOfxImageEffectActionRender)) return render(eff, inArgs);
+        if (!std::strcmp(action, kOfxActionInstanceChanged)) return instanceChanged(inArgs);
         if (!std::strcmp(action, kOfxActionUnload) || !std::strcmp(action, kOfxActionCreateInstance) ||
             !std::strcmp(action, kOfxActionDestroyInstance))
             return kOfxStatOK;
