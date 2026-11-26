@@ -1,0 +1,40 @@
+# Збирає OFX-плагін Svit Film на Мак-машині GitHub і публікує архів у реліз svit-film-<версія>.
+name: svit-film
+on:
+  push:
+    branches: [main]
+    paths: ["plugins/svit-film/ofx/**"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: bash plugins/svit-film/ofx/build_mac.sh
+      - name: Package
+        run: |
+          cd plugins/svit-film/ofx
+          VER="$(tr -d '[:space:]' < VERSION)"
+          mkdir -p "pkg/Svit Film"
+          cp -R build/SvitFilm.ofx.bundle "pkg/Svit Film/"
+          cp install/* "pkg/Svit Film/"
+          chmod +x "pkg/Svit Film/"*.command
+          (cd pkg && ditto -c -k --sequesterRsrc --keepParent "Svit Film" "../Svit.Film.$VER.zip")
+          ls -la "Svit.Film.$VER.zip"
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd plugins/svit-film/ofx
+          VER="$(tr -d '[:space:]' < VERSION)"
+          TAG="svit-film-$VER"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
+              --title "Svit Film $VER (плагін для DaVinci)" \
+              --notes "Плагін плівки для DaVinci Resolve: Effects → OpenFX → Svit → Svit Film. Розпакуй і запусти «Встановити Svit Film.command»."
+          fi
+          gh release upload "$TAG" "Svit.Film.$VER.zip" --clobber

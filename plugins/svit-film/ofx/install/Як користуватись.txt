@@ -1,0 +1,30 @@
+SVIT FILM — плівка для DaVinci Resolve (OFX-плагін)
+
+ВСТАНОВЛЕННЯ
+1. Двічі клікни «Встановити Svit Film.command» і введи пароль Мака.
+   Якщо macOS не дасть відкрити: правою кнопкою → Відкрити → Відкрити.
+2. Перезапусти DaVinci Resolve.
+
+ДЕ ЗНАЙТИ
+• Edit: Effects → OpenFX → Svit → Svit Film → перетягни на кліп.
+• Color: Effects (праворуч угорі) → Svit → Svit Film → перетягни на ноду.
+  Найкраще на ОСТАННЮ ноду, після основної корекції.
+
+НАЛАШТУВАННЯ
+Input   — що на вході: Rec709 (звичайне відео), DaVinci Intermediate, Sony S-Log3, ARRI LogC3.
+Film    — плівка: Neutral Negative, Warm Day 250, Tungsten Night 500, Pastel Portrait 160,
+          Vivid Slide 100, Faded 70s, BW 400, Bleach Bypass.
+Exposure & Colour — експозиція (стопи), контраст плівки, насиченість, температура, відтінок, вицвітання.
+Halation & Bloom  — червонувате сяйво навколо яскравого, його розмір, м'яке світіння.
+Grain   — зерно, розмір, кольоровість, «заморозити» (за замовчуванням живе щокадру).
+Camera  — віньєтка, дрижання кадру (gate weave).
+Усі повзунки анімуються ключовими кадрами.
+
+ПОРАДИ
+• Кліп: Warm Day 250, Halation 0.6, Grain 0.6, Gate Weave 0.2.
+• Нічний концерт: Tungsten Night 500, Exposure +0.3, Halation 1.0, Bloom 0.4.
+
+ВИДАЛИТИ
+Видали папку /Library/OFX/Plugins/SvitFilm.ofx.bundle і перезапусти DaVinci.
+
+Кольори плівок — власні Svit, не копії профілів інших плагінів.
