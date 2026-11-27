@@ -1760,8 +1760,10 @@ class Job:
             if act == "convert":
                 key = (prof["gamma"], prof.get("gamut"))
                 if key not in made:
-                    fn = luts / f"svit_{prof['gamma']}_{prof.get('gamut') or 'x'}_to_{tgt}.cube"
-                    _c.write_cube(fn, prof["gamma"], prof.get("gamut"), tgt)
+                    ev = max(-3.0, min(2.0, float(self.s.get("log_ev") or 0)))
+                    evs = ("" if not ev else f"_ev{'m' if ev < 0 else 'p'}{abs(ev):.2f}".replace(".", ""))
+                    fn = luts / f"svit_{prof['gamma']}_{prof.get('gamut') or 'x'}_to_{tgt}{evs}.cube"
+                    _c.write_cube(fn, prof["gamma"], prof.get("gamut"), tgt, ev=ev)
                     made[key] = str(fn)
                 item["lut"] = made[key]
             conv[str(src["id"])] = item

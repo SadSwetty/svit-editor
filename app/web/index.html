@@ -238,6 +238,9 @@
         <div class="subhead">Один лог для всього <span class="beta">бета</span><i class="i left" data-tip="Svit читає з кожного відео, у якому профілі воно знято (камери Sony пишуть це в сам файл: PP1/709, S-Log3, HLG). Відео, які вже в обраному лозі, не чіпаються. Решта (709 і інші логи) переводяться в обраний лог через LUT на першій ноді сторінки Color, тож увесь таймлайн можна грейдити однаково. Відео, профіль яких не вдалося визначити, теж не чіпаються, і Svit про них напише.">i</i></div>
         <div class="seg" id="logtgt"><button data-v="">Не чіпати</button><button data-v="slog3_sg3">S-Log3 · S-Gamut3</button><button data-v="slog3_sg3c">S-Log3 · S-Gamut3.Cine</button><button data-v="hlg_2020">HLG3 · BT.2020</button></div>
         <div class="loghint" id="loghint"></div>
+        <div class="fld ovopt" id="logevopt" style="margin-top:12px"><label>Яскравість переведених кадрів <span class="val" id="logevv"></span> <i class="i left" data-tip="Лише для кадрів, які Svit переводить у лог (PP1/709 тощо); справжні лог-кадри не змінюються. Якщо переведені кадри виглядають пересвіченими чи «світяться» поруч зі справжніми лог-кадрами — посунь ліворуч. Крок — чверть стопа.">i</i></label>
+          <input type="range" id="logev" min="-2" max="1" step="0.25">
+          <div class="scale"><span>−2 стопи</span><span>як є</span><span>+1</span></div></div>
       </div>
 
       <div class="tab" data-t="text">
@@ -521,7 +524,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,log_target:"",res:"hd",upscale:false,denoise:""}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,log_target:"",log_ev:0,res:"hd",upscale:false,denoise:""}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -572,6 +575,7 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $("#logev").addEventListener("input",e=>{this.st.log_ev=+e.target.value; this.paint(); this.save()});
     $$("#res button").forEach(b=>b.onclick=()=>{this.st.res=b.dataset.v; this.paint(); this.save()});
     $$("#dn button").forEach(b=>b.onclick=()=>{this.st.denoise=b.dataset.v; this.paint(); this.save()});
     $$("#logtgt button").forEach(b=>b.onclick=()=>{this.st.log_target=b.dataset.v; this.paint(); this.save()});
@@ -639,6 +643,8 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $("#logevopt").style.display = s.log_target ? "" : "none";
+    $("#logev").value=s.log_ev||0; $("#logevv").textContent=(s.log_ev>0?"+":"")+(+(s.log_ev||0)).toFixed(2).replace(/\.?0+$/,"")+" ст.";
     $$("#res button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.res||"hd")));
     $$("#dn button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.denoise||"")));
     $$("#logtgt button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.log_target||"")));

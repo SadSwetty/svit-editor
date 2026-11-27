@@ -73,6 +73,8 @@
     "Монтаж під аудіо": "Edit to audio",
     "Саундтрек влогу": "Vlog soundtrack",
     "Один лог для всього": "One log for everything",
+    "Яскравість переведених кадрів": "Brightness of converted clips",
+    "Лише для кадрів, які Svit переводить у лог (PP1/709 тощо); справжні лог-кадри не змінюються. Якщо переведені кадри виглядають пересвіченими чи «світяться» поруч зі справжніми лог-кадрами — посунь ліворуч. Крок — чверть стопа.": "Only for clips Svit converts into the log (PP1/709 etc.); real log clips don't change. If converted clips look overexposed or glowing next to real log clips, move it left. Step is a quarter stop.",
     "Роздільність": "Resolution", "Якість картинки": "Image quality", "AI-апскейл (Super Scale)": "AI upscale (Super Scale)",
     "Кліпам, меншим за вихід (наприклад Full HD у 4K-таймлайні), DaVinci домалює деталі": "Clips smaller than the output (e.g. Full HD on a 4K timeline) get detail added by DaVinci",
     "Шумодав": "Denoise", "Вимк.": "Off", "Легкий": "Light", "Середній": "Medium", "Сильний": "Strong",

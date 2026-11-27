@@ -212,22 +212,22 @@ def _from_linear(lin, gamma):
     raise ValueError(gamma)
 
 
-def convert(rgb, src_gamma, src_gamut, target):
-    """rgb (…, 3) у профілі джерела → коди обраного логу."""
+def convert(rgb, src_gamma, src_gamut, target, ev=0.0):
+    """rgb (…, 3) у профілі джерела → коди обраного логу. ev — експозиція переведених кадрів у стопах."""
     t = TARGETS[target]
-    lin = _to_linear(rgb, src_gamma)
+    lin = _to_linear(rgb, src_gamma) * (2.0 ** float(ev or 0))
     m = gamut_matrix(src_gamut or ("2020" if src_gamma == "hlg" else "709" if src_gamma == "rec709" else "sg3c"),
                      t["gamut"])
     lin = lin @ m.T
     return np.clip(_from_linear(lin, t["gamma"]), 0.0, 1.0)
 
 
-def write_cube(path, src_gamma, src_gamut, target, size=33):
+def write_cube(path, src_gamma, src_gamut, target, size=33, ev=0.0):
     n = size
     ax = np.linspace(0.0, 1.0, n)
     b, g, r = np.meshgrid(ax, ax, ax, indexing="ij")          # у .cube найшвидше змінюється червоний
     rgb = np.stack([r, g, b], axis=-1).reshape(-1, 3)
-    out = convert(rgb, src_gamma, src_gamut, target)
+    out = convert(rgb, src_gamma, src_gamut, target, ev)
     title = f"Svit {GAMMA_LABEL.get(src_gamma, src_gamma)} to {TARGETS[target]['label']}"
     lines = [f'TITLE "{title}"', f"LUT_3D_SIZE {n}", "DOMAIN_MIN 0 0 0", "DOMAIN_MAX 1 1 1"]
     lines += ["%.6f %.6f %.6f" % tuple(px) for px in out]

@@ -333,6 +333,34 @@ def frame_math(resolution, out_w, out_h, zoom, pan_x, pan_y):
     return round(total, 3), round(-pan_x * max_x, 1), round(pan_y * max_y, 1)
 
 
+def product_name():
+    try:
+        return str(get_resolve().GetProductName() or "DaVinci Resolve")
+    except Exception:
+        return "DaVinci Resolve"
+
+
+def is_studio():
+    """Super Scale, шумодав та інші функції Studio в безкоштовному DaVinci дають водяний знак на картинці."""
+    return "studio" in product_name().lower()
+
+
+def reset_super_scale(by_id):
+    """Прибираємо Super Scale з кліпів (безкоштовний DaVinci ставить через нього водяний знак Studio)."""
+    n = 0
+    for s in by_id.values():
+        try:
+            cur = str(s["item"].GetClipProperty("Super Scale") or "")
+            if cur and cur.strip().lower() not in ("1", "none", "auto", "0", "no scaling"):
+                if s["item"].SetClipProperty("Super Scale", 1):
+                    n += 1
+        except Exception:
+            pass
+    if n:
+        L("Super Scale прибрано з %d кліпів" % n)
+    return n
+
+
 def super_scale(by_id, size):
     """AI-апскейл DaVinci (Super Scale) для кліпів, менших за вихід: 2×/3×/4× за потребою.
     Ставиться на кліп у Media Pool (Clip Attributes → Video), тож діє скрізь, де цей кліп є в проекті."""
@@ -2631,6 +2659,13 @@ def build(sess, data):
     if size and data.get("res") == "4k":
         size = (size[0] * 2, size[1] * 2)           # 4K: 9:16 → 2160×3840, 16:9 → 3840×2160, 4:3 → 2880×2160
     QUALITY["denoise"] = {"low": 0.35, "mid": 0.6, "high": 0.9}.get(data.get("denoise"), 0.0)
+    studio = is_studio()
+    if not studio and (QUALITY["denoise"] or data.get("upscale")):
+        QUALITY["denoise"] = 0.0
+        data["upscale"] = False
+        TEXT_STATE["note"] = (TEXT_STATE.get("note") or "") + (
+            "Це безкоштовний DaVinci Resolve (не Studio): апскейл і шумодав пропущено, щоб на відео не було "
+            "водяного знака «DaVinci Resolve Studio». ")
     L("Вихід: %s, апскейл %s, шумодав %s" % ("%dx%d" % size if size else "як у джерела",
                                             "так" if data.get("upscale") else "ні", data.get("denoise") or "ні"))
     fxs, lks, ov, spd, ts, tone = style_params(data, plan)
@@ -2648,6 +2683,8 @@ def build(sess, data):
         by_id[s["id"]] = dict(s, item=item)
     if data.get("upscale") and size:
         super_scale(by_id, size)
+    elif not studio:
+        reset_super_scale(by_id)
 
     version = int(data.get("version") or 1)
     vtag = "" if version == 1 else " v%d" % version
@@ -2763,7 +2800,7 @@ def main():
         return
 
     sess = Session(resolve)
-    L("Старт. DaVinci %s, проект «%s»" % (resolve.GetVersionString() if hasattr(resolve, "GetVersionString") else "?",
+    L("Старт. %s %s, проект «%s»" % (product_name(), resolve.GetVersionString() if hasattr(resolve, "GetVersionString") else "?",
                                          sess.project.GetName()))
     sess.write_sources()
     try:
