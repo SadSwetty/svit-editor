@@ -1114,14 +1114,7 @@ class Api:
                     "look": st.get("look") if (st.get("look") in engine.LOOKS or st.get("look") == "auto") else "none",
                 },
             }
-            if st.get("log_target") in ("slog3_sg3", "slog3_sg3c", "hlg_2020"):
-                # один лог для всього матеріалу: колір далі робиш сам, тож автоконтраст і вінтажний колір вимкнені
-                try:
-                    ev = max(-3.0, min(2.0, float(st.get("log_ev") or 0)))
-                except (TypeError, ValueError):
-                    ev = 0.0
-                job["settings"].update(log_target=st["log_target"], auto_tone=False, match_exposure=False, look="none",
-                                       log_ev=ev)
+            job["settings"]["only_log"] = bool(st.get("only_log"))
             mu = st.get("music") or {}
             tl = soundtrack_list(st)
             if st.get("music_on") and tl:

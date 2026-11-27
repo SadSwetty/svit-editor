@@ -1503,9 +1503,6 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
     lut_ok = False
     if look:
         lut_ok = apply_look_lut(sess, vi, look, look_strength, stats)
-    conv = [(ti, sg["lut"]) for ti, (src, sg) in zip(vi, metas) if sg.get("lut")]
-    if conv and sess is not None:
-        apply_conv_luts(sess, conv, stats)
     segs_all = [m[1] for m in metas]
     for n, (ti, (src, sg)) in enumerate(zip(vi, metas), 1):
         ze = sg.get("zoom_end")

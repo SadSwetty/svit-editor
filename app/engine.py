@@ -1700,6 +1700,39 @@ def write_srt(path, chunk_lists, upper=True):
 
 # ======================================================================= запуск
 
+def only_log_sources(job):
+    """«Лише лог»: відсіюємо відео, зняті не в лозі (PP1/709, S-Cinetone…). Профіль читаємо з самого файлу Sony.
+    Відео без такої позначки (не Sony, перекодовані) лишаємо — про них пишемо в коментарі."""
+    import colorlog as _c
+    keep, drop, unknown = [], [], []
+    for src in job["sources"]:
+        try:
+            prof = _c.detect(src["path"])
+        except Exception as e:
+            prof = {"gamma": None, "raw": repr(e)}
+        lg = _c.is_log(prof)
+        _log(f"Профіль «{src.get('name')}»: {_c.label(prof)} ({prof.get('raw') or 'у файлі немає позначки'}) → "
+             f"{'беру' if lg is not False else 'не лог, пропускаю'}")
+        if lg is False:
+            drop.append(src)
+        else:
+            keep.append(src)
+            if lg is None:
+                unknown.append(src)
+    if not keep:
+        raise RuntimeError("«Лише лог»: серед вибраних відео немає жодного, знятого в лозі (усі — PP1/709). "
+                           "Вимкни «Лише лог» або вибери інші кліпи.")
+    job["sources"] = keep
+    if not drop and not unknown:
+        return None
+    note = f"Лише лог: взято {len(keep)} відео"
+    if drop:
+        note += f", пропущено не в лозі {len(drop)}: " + ", ".join(x["name"] for x in drop[:8]) + ("…" if len(drop) > 8 else "")
+    if unknown:
+        note += f". Без позначки профілю, взято як є: " + ", ".join(x["name"] for x in unknown[:6]) + ("…" if len(unknown) > 6 else "")
+    return note + "."
+
+
 class Job:
     """Один монтаж. progress(stage, overall 0..1, message, extra) викликається з цього потоку."""
 
@@ -1711,6 +1744,7 @@ class Job:
         self.s = job["settings"]
         self.cost = 0.0
         self.out.mkdir(parents=True, exist_ok=True)
+        self.log_note = only_log_sources(job) if self.s.get("only_log") else None
         total = sum(src["duration"] for src in job["sources"]) or 1.0
         self.total = total
         w_listen = total * WHISPER_SPEED.get(self.s.get("whisper_model", "medium"), 0.22) \
@@ -1719,7 +1753,7 @@ class Job:
         n_refs = len(job.get("refs") or [])
         self.weights = {"prepare": 3, "listen": w_listen, "sound": total * 0.02 + 2,
                         "look": n_frames * 0.15, "refs": n_refs * 12, "plan": 25 + 15, "build": 8}
-        self.warnings = []
+        self.warnings = [self.log_note] if self.log_note else []
         self.wsum = sum(self.weights.values())
 
     def check(self):
@@ -1737,52 +1771,6 @@ class Job:
             self._last_msg = msg
             _log(f"[{stage}] {msg}")
         self.progress(stage, min(0.99, overall), msg, extra)
-
-    def _log_prep(self):
-        import colorlog as _c
-        tgt = self.s.get("log_target")
-        if tgt not in _c.TARGETS:
-            return
-        luts = self.out / "luts"
-        luts.mkdir(parents=True, exist_ok=True)
-        conv, counts = {}, {"same": [], "convert": [], "unknown": [], "skip": []}
-        made = {}
-        srcs = self.job["sources"]
-        for k, src in enumerate(srcs, 1):
-            self.check()
-            self.report("look", 0.99, f"Визначаю лог · {k} з {len(srcs)}", file=src.get("name"))
-            try:
-                prof = _c.detect(src["path"])
-            except Exception as e:
-                prof = {"gamma": None, "gamut": None, "how": None, "raw": repr(e)}
-            act = _c.plan_for(prof, tgt)
-            item = {"action": act, "from": _c.label(prof), "raw": prof.get("raw", "")}
-            if act == "convert":
-                key = (prof["gamma"], prof.get("gamut"))
-                if key not in made:
-                    ev = max(-3.0, min(2.0, float(self.s.get("log_ev") or 0)))
-                    evs = ("" if not ev else f"_ev{'m' if ev < 0 else 'p'}{abs(ev):.2f}".replace(".", ""))
-                    fn = luts / f"svit_{prof['gamma']}_{prof.get('gamut') or 'x'}_to_{tgt}{evs}.cube"
-                    _c.write_cube(fn, prof["gamma"], prof.get("gamut"), tgt, ev=ev)
-                    made[key] = str(fn)
-                item["lut"] = made[key]
-            conv[str(src["id"])] = item
-            counts[act].append(src.get("name", ""))
-            _log(f"Лог «{src.get('name')}»: {item['from']} ({prof.get('how') or 'не визначено'}: {item['raw']}) → "
-                 f"{ {'same': 'вже в цьому лозі, не чіпаю', 'convert': 'перетворюю', 'unknown': 'не визначено, не чіпаю', 'skip': 'інший лог, не чіпаю'}[act] }")
-        self.job["logconv"] = conv
-        lab = _c.TARGETS[tgt]["label"]
-        parts = [f"Колір: усе в {lab}."]
-        if counts["convert"]:
-            parts.append(f"Перетворено {len(counts['convert'])} відео (не лог або інший лог).")
-        if counts["same"]:
-            parts.append(f"Уже в {_c.GAMMA_LABEL[_c.TARGETS[tgt]['gamma']]}, не чіпав: {len(counts['same'])}.")
-        if counts["unknown"]:
-            parts.append(f"Не вдалося визначити профіль, не чіпав: {', '.join(counts['unknown'][:6])}"
-                         f"{'…' if len(counts['unknown']) > 6 else ''}.")
-        if counts["skip"]:
-            parts.append(f"Інший лог (S-Log2 тощо), не чіпав: {', '.join(counts['skip'][:6])}.")
-        self.warnings.append(" ".join(parts))
 
     def _soundtrack_prep(self):
         """Саундтрек влогу: слухаємо кожен трек (темп, такти, енергія, кульмінація) і шукаємо,
@@ -1953,12 +1941,9 @@ class Job:
                 frames[src["id"]] = window_frames(src["path"], times, fp, self.check, src)
                 done_n += len(times)
 
-        # один лог для всього: визначаємо профіль кожного відео, для «не того» — LUT у обраний лог
-        if s.get("log_target") and not job.get("logconv"):
-            self._log_prep()
         # автоконтраст: тон кожного джерела (з уже знятих кадрів або з кількох швидких)
         tone = {}
-        if (s.get("auto_tone", True) or s.get("match_exposure")) and not s.get("log_target"):
+        if s.get("auto_tone", True) or s.get("match_exposure"):
             for src in job["sources"]:
                 self.check()
                 try:
@@ -2609,14 +2594,6 @@ def finalize(job, data, text, out, version, plan=None):
 def finalize_videos(job, data, videos, notes, out, version):
     s = job["settings"]
     out = Path(out)
-    lc = job.get("logconv") or {}
-    for v in videos:                       # LUT переведення в обраний лог — на кожен шматок «не того» джерела
-        for sg in v["segments"]:
-            it = lc.get(str(sg["source"]))
-            if it and it.get("lut"):
-                sg["lut"] = it["lut"]
-            else:
-                sg.pop("lut", None)
     tag = "" if version == 1 else f"_v{version}"
     srt_all = None
     text_all = None
