@@ -284,7 +284,12 @@ class Api:
     def refresh_sources(self, mode):
         try:
             r = self.bridge.send("refresh", {"mode": mode}, timeout=20)
-            return r.get("sources", []) if r else []
+            items = r.get("sources", []) if r else []
+            if items:
+                mem = getattr(self, "_mem_items", {})
+                mem[mode] = items
+                self._mem_items = mem
+            return items
         except Exception:
             return None
 
@@ -1050,6 +1055,14 @@ class Api:
             mode = st.get("source_mode", "selected")
             r = self.bridge.send("refresh", {"mode": mode}, timeout=20)
             items = (r or {}).get("sources", [])
+            mem = getattr(self, "_mem_items", {})
+            if items:
+                mem[mode] = items
+            elif mem.get(mode):
+                # після монтажу DaVinci знімає виділення в Media Pool — беремо ті кліпи, що й показані у вікні
+                items = mem[mode]
+                svlog.log(f"Виділення в Media Pool порожнє — беру попередній список ({len(items)} відео)")
+            self._mem_items = mem
             if not items:
                 raise RuntimeError("Не знайшов відео. Виділи кліпи в Media Pool і натисни «Оновити».")
             sources = []
