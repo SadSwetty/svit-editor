@@ -147,7 +147,7 @@ inline float decodeTFG(float v, int mode) {
     if (mode == 8)                                                          // LogC3
         return v > 5.367655f * 0.010591f + 0.092809f ? (f_pow(10.0f, (v - 0.385537f) / 0.247190f) - 0.052272f) / 5.555556f
                                                     : (v - 0.092809f) / 5.367655f;
-    if (mode == 9) {   // HLG
+    if (mode == 9 || mode == 21 || mode == 22 || mode == 23) {   // HLG (BT.2100) і Sony HLG3/HLG2/HLG1
         float e = v <= 0.5f ? v * v / 3.0f : (f_exp((v - 0.55991073f) / 0.17883277f) + 0.28466892f) / 12.0f;
         return e / 0.2647f;
     }

@@ -26,7 +26,7 @@ namespace svitfilm {
 // ---------------- вибори в інтерфейсі
 enum Input { IN_REC709 = 0, IN_REC2020, IN_APPLE20, IN_ACESCCT, IN_DWG709, IN_DWGDI, IN_CINEON, IN_SLOG3, IN_LOGC3,
              IN_HLG, IN_APPLELOG, IN_APPLELOG2, IN_SLOG2, IN_SLOG3SG3, IN_LOGC4, IN_VLOG, IN_FLOG, IN_FLOG2, IN_DLOG,
-             IN_BMDGEN5, IN_LOG3G10 };
+             IN_BMDGEN5, IN_LOG3G10, IN_SONY_HLG3, IN_SONY_HLG2, IN_SONY_HLG1 };
 static const char* kInputNames[] = {"Rec.709",         "Rec.2020",           "Apple Gamma 2.0",
                                     "ACEScct (AP1)",   "DVR WG/Rec709",      "DVR WG/Intermediate",
                                     "Cineon Film Log", "Sony S-Log3 / SGamut3.Cine", "ARRI LogC3 / AWG3",
@@ -41,8 +41,11 @@ static const char* kInputNames[] = {"Rec.709",         "Rec.2020",           "Ap
                                     "Fujifilm F-Log2 / F-Gamut",
                                     "DJI D-Log / D-Gamut",
                                     "Blackmagic Film Gen 5",
-                                    "RED Log3G10 / REDWideGamutRGB"};
-static const int kNumInputs = 21;
+                                    "RED Log3G10 / REDWideGamutRGB",
+                                    "Sony HLG3 / BT.2020 (A7 III PP10)",
+                                    "Sony HLG2 / BT.2020",
+                                    "Sony HLG1 / BT.2020"};
+static const int kNumInputs = 24;
 
 enum Output { OUT_REC709 = 0, OUT_REC2020, OUT_P3, OUT_APPLE20, OUT_SRGB };
 static const char* kOutputNames[] = {"Rec.709 Gamma 2.4", "Rec.2020 Gamma 2.4", "P3-D65 Gamma 2.6", "Apple Gamma 2.0",
@@ -153,7 +156,8 @@ inline const M3& inMatrix(int in) {
     case IN_DWG709: case IN_DWGDI: return kDWGtoW;
     case IN_SLOG3: return kSG3CtoW;
     case IN_LOGC3: return kAWG3toW;
-    case IN_HLG: case IN_APPLELOG: case IN_FLOG: case IN_FLOG2: return kI;   // Rec.2020 / F-Gamut
+    case IN_HLG: case IN_APPLELOG: case IN_FLOG: case IN_FLOG2:
+    case IN_SONY_HLG3: case IN_SONY_HLG2: case IN_SONY_HLG1: return kI;   // Rec.2020 / F-Gamut
     case IN_APPLELOG2: return kAWG_APPLEtoW;
     case IN_SLOG2: case IN_SLOG3SG3: return kSGAMUTtoW;
     case IN_LOGC4: return kAWG4toW;
@@ -207,7 +211,7 @@ inline float decodeTF(float v, int mode) {
 // LogC4 — ARRI; V-Log — Panasonic; F-Log/F-Log2 — Fujifilm; D-Log — DJI; Gen 5 — Blackmagic; Log3G10 — RED.
 inline float decodeCamera(float v, int mode) {
     switch (mode) {
-    case IN_HLG: {
+    case IN_HLG: case IN_SONY_HLG3: case IN_SONY_HLG2: case IN_SONY_HLG1: {   // Sony HLG1/2/3 — та сама крива BT.2100,
         const float a = 0.17883277f, b = 0.28466892f, c = 0.55991073f;
         float e = v <= 0.5f ? v * v / 3.0f : (std::exp((v - c) / a) + b) / 12.0f;
         return e / 0.2647f;

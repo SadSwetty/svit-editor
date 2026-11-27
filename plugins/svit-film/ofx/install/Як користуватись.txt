@@ -20,7 +20,8 @@ Input      Source — що на вході: Rec.709, Rec.2020, Apple Gamma 2.0, 
            S-Log3/S-Gamut3, ARRI LogC4, Panasonic V-Log, Fujifilm F-Log/F-Log2, DJI D-Log,
            Blackmagic Film Gen 5, RED Log3G10.
            iPhone 17/18 Pro → «Apple Log 2». Sony A7 III → той профіль, яким знімав
-           (PP7 S-Log2 → S-Log2/S-Gamut, PP8/PP9 S-Log3 → S-Log3/S-Gamut3, PP10 HLG → HLG).
+           (PP7 S-Log2 → S-Log2/S-Gamut, PP8/PP9 S-Log3 → S-Log3/S-Gamut3,
+           PP10 HLG3 + BT.2020 → «Sony HLG3 / BT.2020»; є також HLG2 і HLG1).
            Ставь Svit Film на ноду БЕЗ попередньої конвертації (сирий лог із камери).
 Exposure   Exposure (стопи), Blacks, Whites, Temperature, Tint.
 Film       Profile (20 плівок), Push/Pull, Enabled, Profile Status.
