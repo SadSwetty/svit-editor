@@ -605,3 +605,10 @@ textarea.storyidea{min-height:64px}
 .stline{margin-top:3px;opacity:.85}
 .loghint{margin-top:8px;font:11px/1.5 var(--mono);color:var(--ink2)}
 #logtgt{flex-wrap:wrap}
+.pbadge{display:inline-block;font:700 9px var(--mono);letter-spacing:.04em;padding:1px 4px;margin-right:6px;border:1px solid var(--ink);vertical-align:1px;background:var(--paper)}
+.pbadge.p-slog3,.pbadge.p-slog2{background:#cfd6ff}
+.pbadge.p-hlg{background:#ffe2a8}
+.pbadge.p-rec709{background:#e6e6e6}
+.pbadge.p-none{opacity:.5}
+.matprof{margin-top:6px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.04em;opacity:.75}
+#profpick{margin-top:8px;flex-wrap:wrap}

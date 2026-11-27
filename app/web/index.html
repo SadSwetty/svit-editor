@@ -109,6 +109,7 @@
         <button class="btn" onclick="SV.refresh()">↻ Оновити</button>
       </div>
       <div class="names" id="names"></div>
+      <div class="matprof" id="matprof"></div>
       <div class="warn" id="nobridge" style="display:none">Svit Editor відкритий не з DaVinci. Запускай його через DaVinci: Workspace → Scripts → Svit Editor.</div>
     </div>
 
@@ -237,6 +238,9 @@
           <div class="scale"><span>делікатно</span><span>помітно</span><span>повністю</span></div></div>
         <div class="subhead">Лише лог-кадри <span class="beta">бета</span></div>
         <div class="sw" data-k="only_log"><div class="lb">Монтувати лише з того, що знято в лозі<small>Відео в PP1/709 (і інших не-лог профілях) Svit відсіє і не братиме в монтаж</small></div><i class="i up" data-tip="Камери Sony пишуть у кожен файл, у якому профілі його знято: PP1/709, S-Cinetone, S-Log3, S-Log2, HLG. Svit читає це до початку аналізу, тож пропущені відео ще й не коштують часу та грошей. Відео без такої позначки (з айфона, перекодовані) беруться як є — у коментарі після монтажу буде список.">i</i><div class="tog"></div></div>
+        <div class="sw" data-k="one_profile"><div class="lb">Лише один профіль<small>Не змішувати HLG із S-Log чи 709 — у монтаж піде тільки один профіль</small></div><i class="i up" data-tip="«Авто» — той профіль, у якому найбільше матеріалу (за тривалістю). Або вибери сам. Відео без позначки профілю (айфон, перекодовані) в цьому режимі не беруться. Якщо разом з «Лише лог» — вибір серед лог-профілів.">i</i><div class="tog"></div></div>
+        <div class="seg ovopt" id="profpick"><button data-v="auto">Авто</button><button data-v="slog3">S-Log3</button><button data-v="hlg">HLG</button><button data-v="slog2">S-Log2</button><button data-v="rec709">709</button></div>
+        <div class="loghint" id="profsum"></div>
       </div>
 
       <div class="tab" data-t="text">
@@ -520,7 +524,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,only_log:false,res:"hd",upscale:false,denoise:""}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,only_log:false,one_profile:false,profile_pick:"auto",res:"hd",upscale:false,denoise:""}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -571,6 +575,7 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $$("#profpick button").forEach(b=>b.onclick=()=>{this.st.profile_pick=b.dataset.v; this.paint(); this.save()});
     $$("#res button").forEach(b=>b.onclick=()=>{this.st.res=b.dataset.v; this.paint(); this.save()});
     $$("#dn button").forEach(b=>b.onclick=()=>{this.st.denoise=b.dataset.v; this.paint(); this.save()});
     $$("#storyarc button").forEach(b=>b.onclick=()=>{this.st.story_arc=b.dataset.v; this.paint(); this.save()});
@@ -637,6 +642,8 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $$("#profpick button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.profile_pick||"auto")));
+    $("#profpick").style.display = s.one_profile ? "" : "none";
     $$("#res button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.res||"hd")));
     $$("#dn button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.denoise||"")));
     $$("#storyarc button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.story_arc||"auto")));
@@ -684,7 +691,7 @@ const SV = {
     $("#advsum").textContent = [fmt+(s.res==="4k"?" 4K":""), s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
       s.fx_on&&(s.fx_allowed||[]).length ? "ефектів: "+s.fx_allowed.length : "без ефектів",
       s.tr_on&&(s.tr_allowed||[]).length ? "переходів: "+s.tr_allowed.length : "без переходів",
-      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.upscale?["апскейл"]:[]).concat(s.denoise?["шумодав"]:[]).concat(s.only_log?["лише лог"]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
+      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.upscale?["апскейл"]:[]).concat(s.denoise?["шумодав"]:[]).concat(s.only_log?["лише лог"]:[]).concat(s.one_profile?["один профіль"+(s.profile_pick&&s.profile_pick!=="auto"?": "+({slog3:"S-Log3",hlg:"HLG",slog2:"S-Log2",rec709:"709"}[s.profile_pick]):"")]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
     this.estimate();
   },
   save(){ clearTimeout(this._sv); this._sv=setTimeout(()=>this.api("save_settings",this.st),300); this.estimate() },
@@ -849,7 +856,17 @@ const SV = {
     $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '') + (trimmed ? ' · обрізаних ' + trimmed : '');
     $("#clearbtn").style.display = this.st.source_mode==="dropped" ? "inline-block" : "none";
     const restDur=list.slice(6).reduce((a,b)=>a+(b.duration||0),0);
-    $("#names").innerHTML = list.slice(0,6).map(x=>`<span title="${esc(x.name)}${x.trimmed?' — лише обрізана частина':''}">${esc(x.name)} <i>${clock(x.duration||0)}${x.trimmed?' обр.':''}</i></span>`).join("") + (list.length>6?`<span>+${list.length-6} <i>${clock(restDur)}</i></span>`:"");
+    const pf=this.prof||{}, PL={slog3:"S-Log3",slog2:"S-Log2",hlg:"HLG",rec709:"709"};
+    const badge=x=>{ if(!x.path||!(x.path in pf)) return ""; const k=pf[x.path]; return `<b class="pbadge p-${k||"none"}" title="Профіль зйомки">${k?PL[k]:"?"}</b>` };
+    $("#names").innerHTML = list.slice(0,6).map(x=>`<span title="${esc(x.name)}${x.trimmed?' — лише обрізана частина':''}">${badge(x)}${esc(x.name)} <i>${clock(x.duration||0)}${x.trimmed?' обр.':''}</i></span>`).join("") + (list.length>6?`<span>+${list.length-6} <i>${clock(restDur)}</i></span>`:"");
+    const known=list.filter(x=>x.path&&(x.path in pf));
+    if(known.length){ const c={}; known.forEach(x=>{const k=pf[x.path]||"none"; c[k]=(c[k]||0)+1});
+      const txt=["slog3","hlg","slog2","rec709","none"].filter(k=>c[k]).map(k=>(k==="none"?"без позначки":PL[k])+" "+c[k]).join(" · ");
+      $("#matprof").textContent="Профілі: "+txt; $("#profsum").textContent="У вибраних відео: "+txt }
+    else { $("#matprof").textContent=""; $("#profsum").textContent="" }
+    const miss=list.filter(x=>x.path&&!(x.path in pf)).map(x=>x.path);
+    if(miss.length && !this._profBusy){ this._profBusy=true;
+      this.api("profiles", miss).then(r=>{ this._profBusy=false; if(r){ this.prof=Object.assign(this.prof||{}, r); this.renderSources() } }) }
   },
 
   async estimate(){

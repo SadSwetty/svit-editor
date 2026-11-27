@@ -120,3 +120,23 @@ def is_log(prof):
     if not g:
         return None
     return g != "rec709"
+
+
+SHORT = {"slog3": "S-Log3", "slog2": "S-Log2", "hlg": "HLG", "rec709": "709"}
+_CACHE = {}
+
+
+def profile_key(path):
+    """Ключ профілю для вікна й відбору: slog3 / slog2 / hlg / rec709 / None. Кешується за розміром і часом файлу."""
+    p = Path(path)
+    try:
+        st = p.stat()
+        ck = (str(p), st.st_size, int(st.st_mtime))
+    except Exception:
+        return None
+    if ck not in _CACHE:
+        try:
+            _CACHE[ck] = detect(p).get("gamma")
+        except Exception:
+            _CACHE[ck] = None
+    return _CACHE[ck]
