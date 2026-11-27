@@ -1191,7 +1191,10 @@ def ensure_loaded(window, url):
         for k in range(8):
             time.sleep(2.0 if k else 3.0)
             try:
-                if window.evaluate_js("(window.SV && document.getElementById('tabs')) ? 1 : 0") == 1:
+                ok = window.evaluate_js("(typeof SV !== 'undefined' && document.getElementById('tabs')) ? 1 : 0")
+                if str(ok).strip() in ("1", "1.0", "True", "true"):
+                    if k:
+                        svlog.log(f"webui: інтерфейс відкрився (спроба {k + 1})")
                     return
             except Exception:
                 pass
