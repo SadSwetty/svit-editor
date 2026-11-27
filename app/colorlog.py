@@ -24,9 +24,9 @@ def _map_gamma(v):
         return "slog2"
     if "hlg" in v or "2100" in v or "b67" in v:
         return "hlg"
-    if v:
+    if any(x in v for x in ("709", "cinetone", "cine", "still", "movie", "itu", "1886", "2.2", "2.4")):
         return "rec709"        # rec709, rec709-xvycc, s-cinetone, cine1…4, still — «звичайний» (не лог)
-    return None
+    return None                # незнайоме значення — не вгадуємо (у вікні «?» з тим, що записала камера)
 
 
 def _map_gamut(v):
@@ -126,17 +126,22 @@ SHORT = {"slog3": "S-Log3", "slog2": "S-Log2", "hlg": "HLG", "rec709": "709"}
 _CACHE = {}
 
 
-def profile_key(path):
-    """Ключ профілю для вікна й відбору: slog3 / slog2 / hlg / rec709 / None. Кешується за розміром і часом файлу."""
+def profile_info(path):
+    """{"k": slog3 / slog2 / hlg / rec709 / None, "raw": що записала камера}. Кешується за розміром і часом файлу."""
     p = Path(path)
     try:
         st = p.stat()
         ck = (str(p), st.st_size, int(st.st_mtime))
     except Exception:
-        return None
+        return {"k": None, "raw": ""}
     if ck not in _CACHE:
         try:
-            _CACHE[ck] = detect(p).get("gamma")
+            d = detect(p)
+            _CACHE[ck] = {"k": d.get("gamma"), "raw": d.get("raw") or ""}
         except Exception:
-            _CACHE[ck] = None
+            _CACHE[ck] = {"k": None, "raw": ""}
     return _CACHE[ck]
+
+
+def profile_key(path):
+    return profile_info(path)["k"]

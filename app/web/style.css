@@ -612,3 +612,10 @@ textarea.storyidea{min-height:64px}
 .pbadge.p-none{opacity:.5}
 .matprof{margin-top:6px;font:11px var(--mono);text-transform:uppercase;letter-spacing:.04em;opacity:.75}
 #profpick{margin-top:8px;flex-wrap:wrap}
+.names span.more{cursor:pointer;background:var(--mark)}
+.names span.more:hover{background:var(--ink);color:var(--paper)}
+.profrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
+.profrow .plab{font:11px var(--mono);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:6px}
+#srcprof{flex:1;flex-wrap:wrap}
+#srcprof button i{font-style:normal;opacity:.55;margin-left:3px}
+#srcprof button.empty{opacity:.35}
