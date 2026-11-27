@@ -472,6 +472,50 @@ def make_lut(name, m, size=17):
     return path
 
 
+def apply_conv_luts(sess, pairs, stats=None):
+    """Один лог для всього: на кліпи «не того» профілю — LUT переведення в обраний лог (перша нода Color).
+    pairs — [(timeline item, шлях до .cube)]. Кліпи, що вже в цьому лозі, сюди не потрапляють."""
+    if not pairs:
+        return
+    import shutil
+    d = lut_dir()
+    rels = {}
+    for _, src in pairs:
+        if src in rels:
+            continue
+        try:
+            dst = d / Path(src).name
+            shutil.copyfile(src, str(dst))
+            rels[src] = ("Svit Editor/" + dst.name, str(dst))
+        except Exception as e:
+            L("  LUT логу не скопіювався: %s" % e)
+            rels[src] = (None, src)
+    try:
+        sess.project.RefreshLUTList()
+    except Exception:
+        pass
+    ok, how = 0, {}
+    for ti, src in pairs:
+        rel, ab = rels[src]
+        done = False
+        tries = [("item-rel", lambda: rel and ti.SetLUT(1, rel)), ("item-abs", lambda: ti.SetLUT(1, ab)),
+                 ("graph-rel", lambda: rel and ti.GetNodeGraph().SetLUT(1, rel)),
+                 ("graph-abs", lambda: ti.GetNodeGraph().SetLUT(1, ab))]
+        for name, fn in tries:
+            try:
+                if fn():
+                    done = True
+                    how[name] = how.get(name, 0) + 1
+                    break
+            except Exception as e:
+                how["err:" + name] = str(e)[:80]
+        ok += 1 if done else 0
+    L("  Лог: LUT переведення на %d з %d шматків (%s)" % (ok, len(pairs), how))
+    if stats is not None:
+        stats["logconv"] = stats.get("logconv", 0) + ok
+        stats["logconv_total"] = stats.get("logconv_total", 0) + len(pairs)
+
+
 def apply_look_lut(sess, items, look, strength, stats=None):
     """Колір вінтажу на першу ноду сторінки Color — працює навіть без Fusion."""
     if look not in LOOKS:
@@ -1375,6 +1419,9 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
     lut_ok = False
     if look:
         lut_ok = apply_look_lut(sess, vi, look, look_strength, stats)
+    conv = [(ti, sg["lut"]) for ti, (src, sg) in zip(vi, metas) if sg.get("lut")]
+    if conv and sess is not None:
+        apply_conv_luts(sess, conv, stats)
     segs_all = [m[1] for m in metas]
     for n, (ti, (src, sg)) in enumerate(zip(vi, metas), 1):
         ze = sg.get("zoom_end")

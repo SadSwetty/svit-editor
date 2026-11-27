@@ -603,3 +603,5 @@ textarea.storyidea{min-height:64px}
 .stadd .mono{opacity:.7}
 #mfull.stmode .mrange #mrange{background:var(--paper2)}
 .stline{margin-top:3px;opacity:.85}
+.loghint{margin-top:8px;font:11px/1.5 var(--mono);color:var(--ink2)}
+#logtgt{flex-wrap:wrap}

@@ -229,15 +229,9 @@
         <div class="fld ovopt" id="toneopt"><label>Сила корекції <span class="val" id="tnv"></span></label>
           <input type="range" id="tns" min="10" max="100" step="5">
           <div class="scale"><span>делікатно</span><span>помітно</span><span>повністю</span></div></div>
-        <div class="subhead">Камера і лог <span class="beta">скоро</span></div>
-        <div class="soon">
-          <div class="grid">
-            <div class="fld"><label>Камера</label><select disabled><option>напр. Sony A7 IV</option></select></div>
-            <div class="fld"><label>Лог-профіль / гама</label><select disabled><option>напр. S-Log3 / S-Gamut3.Cine</option></select></div>
-          </div>
-          <button class="btn" disabled>Підібрати автоматично</button>
-          <small>У наступному оновленні: вкажеш камеру й лог, у якому знімав, і Svit правильно переведе в нормальний колір.</small>
-        </div>
+        <div class="subhead">Один лог для всього <span class="beta">бета</span><i class="i left" data-tip="Svit читає з кожного відео, у якому профілі воно знято (камери Sony пишуть це в сам файл: PP1/709, S-Log3, HLG). Відео, які вже в обраному лозі, не чіпаються. Решта (709 і інші логи) переводяться в обраний лог через LUT на першій ноді сторінки Color, тож увесь таймлайн можна грейдити однаково. Відео, профіль яких не вдалося визначити, теж не чіпаються, і Svit про них напише.">i</i></div>
+        <div class="seg" id="logtgt"><button data-v="">Не чіпати</button><button data-v="slog3_sg3">S-Log3 · S-Gamut3</button><button data-v="slog3_sg3c">S-Log3 · S-Gamut3.Cine</button><button data-v="hlg_2020">HLG3 · BT.2020</button></div>
+        <div class="loghint" id="loghint"></div>
       </div>
 
       <div class="tab" data-t="text">
@@ -521,7 +515,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,log_target:""}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -572,6 +566,7 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $$("#logtgt button").forEach(b=>b.onclick=()=>{this.st.log_target=b.dataset.v; this.paint(); this.save()});
     $$("#storyarc button").forEach(b=>b.onclick=()=>{this.st.story_arc=b.dataset.v; this.paint(); this.save()});
     $("#storyw").addEventListener("input",e=>{this.st.story_weight=+e.target.value; this.paint(); this.save()});
     $("#storyidea").addEventListener("input",e=>{this.st.story_idea=e.target.value; clearTimeout(this.stT); this.stT=setTimeout(()=>this.save(),400)});
@@ -636,6 +631,8 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $$("#logtgt button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.log_target||"")));
+    $("#loghint").textContent = s.log_target ? "Кадри не в цьому лозі (PP1/709, інший лог) перейдуть у нього, а ті, що вже в ньому, Svit не чіпає. Автоконтраст і вінтажний колір у цьому режимі вимкнені: колір робиш сам." : "Кожне відео лишається у своєму профілі.";
     $$("#storyarc button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.story_arc||"auto")));
     $("#storyopt").classList.toggle("off",!s.story_on);
     $("#storyw").value=s.story_weight; $("#storyv").textContent=s.story_weight+"%";
@@ -681,7 +678,7 @@ const SV = {
     $("#advsum").textContent = [fmt, s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
       s.fx_on&&(s.fx_allowed||[]).length ? "ефектів: "+s.fx_allowed.length : "без ефектів",
       s.tr_on&&(s.tr_allowed||[]).length ? "переходів: "+s.tr_allowed.length : "без переходів",
-      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone?["автоконтраст"]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
+      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone&&!s.log_target?["автоконтраст"]:[]).concat(s.log_target?["усе в "+({slog3_sg3:"S-Log3 / S-Gamut3",slog3_sg3c:"S-Log3 / S-Gamut3.Cine",hlg_2020:"HLG3 / BT.2020"}[s.log_target]||s.log_target)]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
     this.estimate();
   },
   save(){ clearTimeout(this._sv); this._sv=setTimeout(()=>this.api("save_settings",this.st),300); this.estimate() },
