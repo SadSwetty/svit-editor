@@ -153,6 +153,12 @@
           <div class="fmts" id="fmts"></div></div>
         <div class="fld" style="margin-top:16px"><label>Частота кадрів (FPS) <i class="i left" data-tip="Скільки кадрів за секунду матиме таймлайн і готове відео. 24 — кіно, 25 — стандарт для Європи, 30 — соцмережі, 60 — дуже плавно. «Як у джерела» — без змін.">i</i></label>
           <div class="seg" id="fps"><button data-v="src">Як у джерела</button><button data-v="24">24</button><button data-v="25">25</button><button data-v="30">30</button><button data-v="60">60</button></div></div>
+        <div class="fld" style="margin-top:16px"><label>Роздільність <i class="i left" data-tip="Розмір таймлайну й готового відео. 4K — удвічі більше з кожного боку: 9:16 → 2160×3840, 16:9 → 3840×2160, 4:3 → 2880×2160. Монтувати 4K важче для Мака: якщо лагає, увімкни проксі або кеш рендеру.">i</i></label>
+          <div class="seg" id="res"><button data-v="hd">Full HD</button><button data-v="4k">4K</button></div></div>
+        <div class="subhead">Якість картинки <span class="beta">бета</span></div>
+        <div class="sw" data-k="upscale"><div class="lb">AI-апскейл (Super Scale)<small>Кліпам, меншим за вихід (наприклад Full HD у 4K-таймлайні), DaVinci домалює деталі</small></div><i class="i up" data-tip="Super Scale з DaVinci Studio: 2×, 3× або 4× — Svit сам вирахує, скільки треба кожному кліпу. Кліпи, яким вистачає роздільності, не чіпаються. Ставиться на кліп у Media Pool (Clip Attributes → Video). Важке для Мака: для плавного перегляду зроби Optimized Media.">i</i><div class="tog"></div></div>
+        <div class="fld" style="margin-top:12px"><label>Шумодав <i class="i left" data-tip="Прибирає цифровий шум (темні сцени, високе ISO на концертах). Окремий вузол Remove Noise першим у Fusion кожного кліпу — його можна підкрутити чи вимкнути вручну. Сильніший шумодав м'якшить дрібні деталі.">i</i></label>
+          <div class="seg" id="dn"><button data-v="">Вимк.</button><button data-v="low">Легкий</button><button data-v="mid">Середній</button><button data-v="high">Сильний</button></div></div>
         <div class="subhead">Cinematic <span class="beta">бета</span><i class="i" data-tip="Режим для кліпів, лірик-відео і короткого кіно. Claude монтує не як швидку нарізку для TikTok, а як кліп: довші плани, що дихають, повільні плавні наїзди, склейки на фразах і рядках пісні, крупні плани на приспів, деталі між куплетами. Якщо ти зняв кілька дублів під трек — увімкни музику, і Svit сам вирівняє дублі з піснею, щоб губи збігались.">i</i></div>
         <div class="sw" data-k="cinematic" style="margin-top:6px"><div class="lb">Cinematic mode<small>Монтаж як у кліпах і кіно, а не як швидка нарізка</small></div><div class="tog"></div></div>
         <div class="cinehelp">Для кліпу, лірик-відео, короткого фільму. Довші плани, повільні наїзди, склейки на фразах пісні, крупні плани на приспів.</div>
@@ -515,7 +521,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,log_target:""}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,log_target:"",res:"hd",upscale:false,denoise:""}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -566,6 +572,8 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
+    $$("#res button").forEach(b=>b.onclick=()=>{this.st.res=b.dataset.v; this.paint(); this.save()});
+    $$("#dn button").forEach(b=>b.onclick=()=>{this.st.denoise=b.dataset.v; this.paint(); this.save()});
     $$("#logtgt button").forEach(b=>b.onclick=()=>{this.st.log_target=b.dataset.v; this.paint(); this.save()});
     $$("#storyarc button").forEach(b=>b.onclick=()=>{this.st.story_arc=b.dataset.v; this.paint(); this.save()});
     $("#storyw").addEventListener("input",e=>{this.st.story_weight=+e.target.value; this.paint(); this.save()});
@@ -631,6 +639,8 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
+    $$("#res button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.res||"hd")));
+    $$("#dn button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.denoise||"")));
     $$("#logtgt button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.log_target||"")));
     $("#loghint").textContent = s.log_target ? "Кадри не в цьому лозі (PP1/709, інший лог) перейдуть у нього, а ті, що вже в ньому, Svit не чіпає. Автоконтраст і вінтажний колір у цьому режимі вимкнені: колір робиш сам." : "Кожне відео лишається у своєму профілі.";
     $$("#storyarc button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.story_arc||"auto")));
@@ -675,10 +685,10 @@ const SV = {
     this.renderMusic();
     $("#adv").classList.toggle("on",!!s.adv_open); $("#advtoggle").classList.toggle("on",!!s.adv_open);
     const fmt = s.format==="src" ? "як у джерела" : s.format;
-    $("#advsum").textContent = [fmt, s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
+    $("#advsum").textContent = [fmt+(s.res==="4k"?" 4K":""), s.fps==="src"?"FPS як у джерела":s.fps+" fps", PACES[s.pace]||"", [s.zoom_crop?"кадрування":"",s.zoom_dynamic?"динамічний зум":""].filter(Boolean).join(" + ")||"без зумів",
       s.fx_on&&(s.fx_allowed||[]).length ? "ефектів: "+s.fx_allowed.length : "без ефектів",
       s.tr_on&&(s.tr_allowed||[]).length ? "переходів: "+s.tr_allowed.length : "без переходів",
-      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone&&!s.log_target?["автоконтраст"]:[]).concat(s.log_target?["усе в "+({slog3_sg3:"S-Log3 / S-Gamut3",slog3_sg3c:"S-Log3 / S-Gamut3.Cine",hlg_2020:"HLG3 / BT.2020"}[s.log_target]||s.log_target)]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
+      "абстракція "+s.abstract+"%"].concat(s.ov_blur?["дрімі "+s.ov_blur_strength+"%"]:[]).concat(s.auto_tone&&!s.log_target?["автоконтраст"]:[]).concat(s.upscale?["апскейл"]:[]).concat(s.denoise?["шумодав"]:[]).concat(s.log_target?["усе в "+({slog3_sg3:"S-Log3 / S-Gamut3",slog3_sg3c:"S-Log3 / S-Gamut3.Cine",hlg_2020:"HLG3 / BT.2020"}[s.log_target]||s.log_target)]:[]).concat(s.cinematic?["cinematic "+s.cinematic_level+"%"]:[]).concat(s.story_on?["сюжет за змістом"]:[]).concat(s.ov_hal?["halation "+s.ov_hal_strength+"%"]:[]).concat((s.look&&s.look!=="none")?[s.look==="auto"?"вінтаж: авто":"вінтаж: "+($(`.lkcard[data-lk=${s.look}] b`)||{}).textContent]:[]).join(" · ");
     this.estimate();
   },
   save(){ clearTimeout(this._sv); this._sv=setTimeout(()=>this.api("save_settings",this.st),300); this.estimate() },

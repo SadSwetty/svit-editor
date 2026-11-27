@@ -2641,6 +2641,8 @@ def finalize_videos(job, data, videos, notes, out, version):
         if svit_text:
             import textfx
             W, H = textfx.canvas_size(s.get("format", "9:16"), res)
+            if s.get("res") == "4k" and s.get("format") in textfx.SIZES:
+                W, H = W * 2, H * 2
 
         def as_lines(chunks):
             return [{"start": c[0]["start"], "end": c[-1]["end"], "text": " ".join(w["word"] for w in c)} for c in chunks]

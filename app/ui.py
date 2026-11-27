@@ -766,6 +766,9 @@ class Api:
                                           "layout": st.get("layout", "one"),
                                           "auto_render": bool(st.get("auto_render")),
                                           "fps": st.get("fps", "src"), "stamp": stamp,
+                                          "res": "4k" if st.get("res") == "4k" else "hd",
+                                          "upscale": bool(st.get("upscale")),
+                                          "denoise": st.get("denoise") if st.get("denoise") in ("low", "mid", "high") else "",
                                           "gap": engine.VIDEO_GAP,
                                           "fx_strength": float(st.get("fx_strength", 50)) / 100.0,
                                           "look_strength": float(st.get("look_strength", 60)) / 100.0,
@@ -1101,6 +1104,7 @@ class Api:
                     "text_style": {k: st.get("text_style", {}).get(k, d) for k, d in textfx.DEFAULT_STYLE.items()}
                     if isinstance(st.get("text_style"), dict) else dict(textfx.DEFAULT_STYLE),
                     "format": fmt,
+                    "res": "4k" if st.get("res") == "4k" else "hd",
                     "ui_lang": "en" if st.get("ui_lang") == "en" else "uk",
                     "auto_tone": bool(st.get("auto_tone", True)),
                     "match_exposure": bool(st.get("match_exposure")),

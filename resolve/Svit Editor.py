@@ -333,6 +333,34 @@ def frame_math(resolution, out_w, out_h, zoom, pan_x, pan_y):
     return round(total, 3), round(-pan_x * max_x, 1), round(pan_y * max_y, 1)
 
 
+def super_scale(by_id, size):
+    """AI-апскейл DaVinci (Super Scale) для кліпів, менших за вихід: 2×/3×/4× за потребою.
+    Ставиться на кліп у Media Pool (Clip Attributes → Video), тож діє скрізь, де цей кліп є в проекті."""
+    done, kept = [], 0
+    for s in by_id.values():
+        try:
+            w, h = [int(x) for x in str(s.get("resolution") or "").lower().split("x")[:2]]
+        except Exception:
+            continue
+        if w <= 0 or h <= 0:
+            continue
+        need = max(size[0] / float(w), size[1] / float(h))     # кадр заповнює формат
+        if need <= 1.05:
+            kept += 1
+            continue
+        k = 2 if need <= 2.0 else (3 if need <= 3.0 else 4)
+        ok = False
+        for args in ((k,), (str(k),)):
+            try:
+                if s["item"].SetClipProperty("Super Scale", *args):
+                    ok = True
+                    break
+            except Exception:
+                pass
+        done.append("%s %s×%s" % (s.get("name", "?"), k, "" if ok else " (не вдалось)"))
+    L("Super Scale: %s; без апскейлу (достатня роздільність): %d" % (", ".join(done) or "не потрібен", kept))
+
+
 def setup_timeline(tl, size, fps=None):
     if not size and not fps:
         return
@@ -687,6 +715,7 @@ def flicker_keys(a, b, depth, base=1.0, step=2.0):
 # глобальні множники вигляду (повзунки «Вигляд» після монтажу): фантоми і зерно
 # ghost — множник фантомів; grain — кількість зерна 0…1 (None = як задумано фактурою); live — живе налаштування
 STYLE = {"ghost": 1.0, "grain": None, "live": False}
+QUALITY = {"denoise": 0.0}
 SVIT_COMP = "Svit"            # композиція з монтажу Svit
 LOOK_COMP = "Svit Look"       # композиція з вікна «Мій таймлайн»
 
@@ -1085,9 +1114,31 @@ def commit_comp(ti, comp, label, verbose=False, comp_name=SVIT_COMP):
         return "помилка: %s" % e
 
 
+_DN_LOGGED = [False]
+
+
+def add_denoise(comp, chain, cur, amount):
+    """Шумодав першим вузлом (до зумів і ефектів): вбудований у Fusion Remove Noise. Сила — через Blend."""
+    t = _nm(chain(_tool(comp, "RemoveNoise")), "SvDenoise")
+    if not _DN_LOGGED[0]:
+        _DN_LOGGED[0] = True
+        try:
+            lst = t.GetInputList() or {}
+            names = [(v.GetAttrs() or {}).get("INPS_ID") for v in (lst.values() if isinstance(lst, dict) else lst)]
+            L("  Remove Noise: входи %s" % [n for n in names if n][:40])
+        except Exception:
+            pass
+    try:
+        t.SetInput("Blend", float(amount))
+    except Exception:
+        pass
+    cur[0] = t
+    return "%.0f%%" % (amount * 100)
+
+
 def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_strength=0.6,
                  tin=None, tout=None, lut_ok=False, verbose=False, overlay=None, tone=None, speed=0.6,
-                 comp_name=SVIT_COMP, meta=None, tr_cap=None):
+                 comp_name=SVIT_COMP, meta=None, tr_cap=None, denoise=0.0):
     """Плавний наїзд і ефекти через Fusion: MediaIn → [сповільнення] → [рух/тряска] → [розмиття] →
     [Ч/Б] → [світіння] → [зерно] → [спалах] → MediaOut. Повертає (зроблено, помилки)."""
     fx = set(fx or ()) - {"slowmo"}          # швидкість відео не змінюємо
@@ -1096,7 +1147,9 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
     tout = tout if tout in TRANSITIONS else None
     overlay = overlay or {}
     has_ov = any(float(v or 0) > 0 for v in overlay.values())
-    if not fx and not ratio and not look and not tin and not tout and not has_ov and not tone and not STYLE["live"]:
+    denoise = max(0.0, min(1.0, float(denoise or 0)))
+    if not fx and not ratio and not look and not tin and not tout and not has_ov and not tone and not STYLE["live"] \
+            and not denoise:
         return [], []
     done, errs = [], []
     comp = None
@@ -1141,6 +1194,9 @@ def apply_fusion(ti, ratio=None, fx=(), strength=0.5, label="", look=None, look_
                 done.append(name + ("(" + how + ")" if how else ""))
             except Exception as e:
                 errs.append("%s: %s" % (name, e))
+
+        if denoise:
+            step("шумодав", lambda: add_denoise(comp, chain, cur, denoise))
 
         def f():
             bc = _nm(chain(_tool(comp, "BrightnessContrast")), "SvTone")
@@ -1431,12 +1487,14 @@ def append_video(mp, tl, video, by_id, size, sess=None, at=None, fx_strength=0.5
         if stats is not None:
             stats["total"] = stats.get("total", 0) + 1
         tn = (tone or {}).get(str(sg["source"]))
-        if ratio or sg.get("fx") or look or tin or tout or overlay or tn:
+        dn = QUALITY["denoise"]
+        if ratio or sg.get("fx") or look or tin or tout or overlay or tn or dn:
             done, errs = apply_fusion(ti, ratio, sg.get("fx") or (), fx_strength,
                                       "#%d %s %.1f–%.1f" % (n, src.get("name", ""), sg["start"], sg["end"]),
                                       look, look_strength, tin, tout, lut_ok=lut_ok, overlay=overlay, tone=tn, speed=speed,
                                       meta={"src": str(sg["source"]), "fx": list(sg.get("fx") or ()), "ratio": ratio,
-                                            "tin": tin, "tout": tout, "look": video.get("look"), "tone": tn},
+                                            "tin": tin, "tout": tout, "look": video.get("look"), "tone": tn, "dn": dn},
+                                      denoise=dn,
                                       verbose=(stats is not None and stats.get("total", 0) <= 2))
             if stats is not None:
                 try:
@@ -2256,7 +2314,8 @@ def tune_item(ti, info, P, comp_name):
 
 def _meta(info, tone=None):
     return {"src": info.get("src"), "fx": list(info.get("fx") or ()), "ratio": info.get("ratio"),
-            "tin": info.get("tin"), "tout": info.get("tout"), "look": info.get("look"), "tone": tone}
+            "tin": info.get("tin"), "tout": info.get("tout"), "look": info.get("look"), "tone": tone,
+            "dn": info.get("dn") or 0}
 
 
 def read_meta(ti):
@@ -2408,7 +2467,8 @@ def restyle(sess, data):
                             _, errs = apply_fusion(ti, info.get("ratio"), info.get("fx") or (), fxs, info["label"],
                                                    None, lks, info.get("tin"), info.get("tout"), overlay=None,
                                                    tone=P["tone"](info), speed=spd, comp_name=SVIT_COMP,
-                                                   meta=_meta(info, P["tone"](info)), tr_cap=info.get("cap"))
+                                                   meta=_meta(info, P["tone"](info)), tr_cap=info.get("cap"),
+                                                   denoise=info.get("dn") or 0)
                         finally:
                             STYLE["grain"], STYLE["live"] = g0, lv0
                     stats["rebuilt"] += 1
@@ -2424,7 +2484,7 @@ def restyle(sess, data):
                                            info.get("look"), lks, info.get("tin"), info.get("tout"),
                                            overlay=ov, tone=tn_i, speed=spd, comp_name=info.get("comp", comp_name),
                                            meta=_meta(info, tn_i) if (not manual or info.get("comp")) else None,
-                                           tr_cap=info.get("cap"))
+                                           tr_cap=info.get("cap"), denoise=info.get("dn") or 0)
                     stats["rebuilt"] += 1
                 stats["fail" if errs else "ok"] += 1
                 n += 1
@@ -2568,6 +2628,11 @@ def build(sess, data):
         TPL[0] = find_title_template(mp)       # шукаємо до створення нових папок
     plan, stamp = data["plan"], data["stamp"]
     size = SIZES.get(data.get("format"), (1080, 1920))
+    if size and data.get("res") == "4k":
+        size = (size[0] * 2, size[1] * 2)           # 4K: 9:16 → 2160×3840, 16:9 → 3840×2160, 4:3 → 2880×2160
+    QUALITY["denoise"] = {"low": 0.35, "mid": 0.6, "high": 0.9}.get(data.get("denoise"), 0.0)
+    L("Вихід: %s, апскейл %s, шумодав %s" % ("%dx%d" % size if size else "як у джерела",
+                                            "так" if data.get("upscale") else "ні", data.get("denoise") or "ні"))
     fxs, lks, ov, spd, ts, tone = style_params(data, plan)
     L("Автоконтраст (сила %.0f%%): %s; швидкість переходів %.0f%%" % (ts * 100, tone, spd * 100))
     stats = {"ok": 0, "fail": 0, "errors": []}
@@ -2581,6 +2646,8 @@ def build(sess, data):
         if item is None:
             raise RuntimeError("Кліп «%s» більше не знайдено в Media Pool." % s["name"])
         by_id[s["id"]] = dict(s, item=item)
+    if data.get("upscale") and size:
+        super_scale(by_id, size)
 
     version = int(data.get("version") or 1)
     vtag = "" if version == 1 else " v%d" % version
