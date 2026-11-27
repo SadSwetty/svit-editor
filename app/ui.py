@@ -248,6 +248,11 @@ class Api:
                 "refs": self.list_refs(), "whatsnew": self._whatsnew(cfg)}
 
     @staticmethod
+    def _dur_sec(st):
+        m = str(st.get("dur_mode") or "auto")
+        return int(st.get("dur_custom") or 20) if m == "custom" else (int(m) if m in ("15", "30", "60") else 0)
+
+    @staticmethod
     def _dur_text(st):
         m = str(st.get("dur_mode") or "auto")
         n = int(st.get("dur_custom") or 20) if m == "custom" else (int(m) if m in ("15", "30", "60") else 0)
@@ -1085,6 +1090,7 @@ class Api:
                 "settings": {
                     "num_videos": st.get("num") or "скільки вважаєш за потрібне за запитом",
                     "video_length": self._dur_text(st),
+                    "target_sec": self._dur_sec(st),
                     "format_label": FORMAT_LABELS.get(fmt, fmt),
                     "layout": layout, "layout_label": LAYOUT_LABELS[layout],
                     "subtitles": bool(st.get("subtitles")),

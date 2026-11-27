@@ -1486,12 +1486,67 @@ def plan_rotation(plan, job):
     return rot
 
 
+def fit_length(segs, target, job, used, title=""):
+    """Довжина ролика = заданій автором (±1 с), коли монтаж не під біт: Claude часто дає на кілька секунд
+    менше чи більше. Зайве обрізаємо з кінця; бракує — подовжуємо останній шматок, а далі добиваємо
+    короткими шматками з вільних моментів інших джерел."""
+    if not segs or not target:
+        return segs
+    durations = {src["id"]: float(src["duration"]) for src in job["sources"]}
+    total = sum(x["end"] - x["start"] for x in segs)
+    before = total
+    if total > target + 1.0:
+        while len(segs) > 1 and total - (segs[-1]["end"] - segs[-1]["start"]) >= target - 0.5:
+            total -= segs[-1]["end"] - segs[-1]["start"]
+            segs.pop()
+        over = total - target
+        if over > 0.05:
+            segs[-1]["end"] = round(max(segs[-1]["start"] + 0.5, segs[-1]["end"] - over), 3)
+    elif total < target - 1.0:
+        need = target - total
+        last = segs[-1]
+        sdur = durations.get(last["source"], last["end"])
+        later = [a for a, b in used.get(last["source"], []) if a >= last["end"] - 1e-3]
+        room = min(sdur, (min(later) - GAP) if later else sdur) - last["end"]
+        add = max(0.0, min(need, room, 3.0))          # одним планом — не довше ніж на 3 с
+        if add > 0.05:
+            last["end"] = round(last["end"] + add, 3)
+            need -= add
+        lens = sorted(x["end"] - x["start"] for x in segs)
+        chunk = max(1.5, min(4.0, lens[len(lens) // 2])) if lens else 2.5
+        order = sorted(durations, key=lambda sid: sum(1 for x in segs if x["source"] == sid))
+        k = 0
+        while need > 0.3 and k < 60:
+            sid = order[k % len(order)]
+            k += 1
+            if sid == segs[-1]["source"] or durations[sid] < 1.0:
+                if len(order) > 1:
+                    continue
+            dur = min(chunk, need) if need - chunk > 0.8 else need
+            st = free_start(used.get(sid, []), dur, durations[sid] * ((k * 0.37) % 1.0), durations[sid])
+            if st is None:
+                continue
+            item = {"source": sid, "start": round(st, 3), "end": round(st + dur, 3), "zoom": 1.0,
+                    "pan_x": 0.0, "pan_y": 0.0, "auto": True}
+            if "zoom_end" in segs[-1]:
+                item["zoom_end"] = 1.06
+            used.setdefault(sid, []).append((st, st + dur))
+            segs.append(item)
+            need -= dur
+    total = sum(x["end"] - x["start"] for x in segs)
+    if abs(total - before) > 0.05:
+        _log(f"Довжина «{title}»: від Claude {before:.1f} с → {total:.1f} с (задано {target:.0f} с)")
+    return segs
+
+
 def clean_plan(plan, job, data, prev_videos=None):
     videos, used = [], {}
     s = job.get("settings", {})
     rot = plan_rotation(plan, job)
     for n, v in enumerate(plan.get("videos", [])):
         segs = clean_segments(v.get("segments", []), job, data, used)
+        if not job.get("music_info") and s.get("target_sec"):
+            segs = fit_length(segs, float(s["target_sec"]), job, used, v.get("title", ""))
         for x in segs:
             if str(x["source"]) in rot:
                 x["rot"] = rot[str(x["source"])]
