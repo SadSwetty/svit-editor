@@ -74,7 +74,10 @@ def web_root():
     dst = HOME / "webui" / VERSION
     try:
         if not (dst / "index.html").exists():
-            shutil.rmtree(HOME / "webui", ignore_errors=True)
+            # старі версії прибираємо, але попередню лишаємо: під час оновлення старе вікно ще може її віддавати
+            olds = sorted([d for d in (HOME / "webui").glob("*") if d.is_dir()], key=lambda d: d.stat().st_mtime)
+            for d in olds[:-1]:
+                shutil.rmtree(d, ignore_errors=True)
             shutil.copytree(src, dst)
             clear_webkit_cache()
         return dst
@@ -1162,10 +1165,52 @@ def bind_drop(window, api):
         print("Перетягування недоступне:", e)
 
 
+def wait_port_free(port=42001, limit=12.0):
+    """Вбудований сервер інтерфейсу завжди на одному порту. Після оновлення старе вікно ще кілька секунд живе
+    і тримає його — чекаємо, поки звільнить, інакше нове вікно відкриє сторінку зі старого процесу (404)."""
+    import socket
+    t0 = time.time()
+    while time.time() - t0 < limit:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sk:
+            sk.settimeout(0.3)
+            busy = sk.connect_ex(("127.0.0.1", port)) == 0
+        if not busy:
+            if time.time() - t0 > 0.5:
+                svlog.log(f"webui: порт {port} звільнився за {time.time() - t0:.1f} с")
+            return
+        time.sleep(0.4)
+    svlog.log(f"webui: порт {port} досі зайнятий (відкрите інше вікно Svit?)")
+
+
+def ensure_loaded(window, url):
+    """Якщо сторінка не відкрилась (наприклад, під час оновлення ще жило старе вікно з тією самою адресою
+    і віддало 404) — перевантажуємо інтерфейс, поки не з'явиться."""
+    import threading
+
+    def run():
+        for k in range(8):
+            time.sleep(2.0 if k else 3.0)
+            try:
+                if window.evaluate_js("(window.SV && document.getElementById('tabs')) ? 1 : 0") == 1:
+                    return
+            except Exception:
+                pass
+            svlog.log(f"webui: інтерфейс не відкрився, перевантажую ({k + 1})")
+            try:
+                if k % 2 == 0:
+                    window.evaluate_js("location.reload()")
+                elif url:
+                    window.load_url(url)
+            except Exception as e:
+                svlog.log(f"webui: перевантаження не вдалось: {e!r}")
+    threading.Thread(target=run, daemon=True).start()
+
+
 def macos_polish(window, api=None):
     """Назва й іконка в Dock, темне оформлення, вікно поверх DaVinci."""
     if api is not None:
         bind_drop(window, api)
+    ensure_loaded(window, getattr(window, "_svit_url", None) or "")
     try:
         from AppKit import NSApplication, NSImage, NSAppearance
         from PyObjCTools import AppHelper
@@ -1200,11 +1245,17 @@ def main():
 
     import webview
     api = Api(Bridge(args.session))
-    win = webview.create_window("Svit Editor", url=str(web_root() / "index.html"), js_api=api,
+    wait_port_free()
+    ui_url = str(web_root() / "index.html")
+    win = webview.create_window("Svit Editor", url=ui_url, js_api=api,
                                 width=780, height=920, min_size=(640, 640),
                                 background_color="#111114", text_select=True,
                                 on_top=bool(engine.load_cfg().get("on_top", True)))
     api.window = win
+    try:
+        win._svit_url = ui_url
+    except Exception:
+        pass
 
     def on_closed():
         if api.restart_requested:
