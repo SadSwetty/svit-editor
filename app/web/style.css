@@ -589,3 +589,17 @@ textarea.lyrics{width:100%;min-height:170px;margin-top:8px;font:14px/1.5 var(--m
 
 textarea.storyidea{min-height:64px}
 #storyarc{flex-wrap:wrap}
+/* саундтрек влогу */
+#stbox{margin-top:4px}
+#stbox .subhead{margin-top:14px}
+.stlist{display:flex;flex-direction:column;gap:6px;margin:8px 0 10px}
+.sttrack{display:flex;align-items:center;gap:10px;border:1.5px solid var(--ink);background:var(--paper);padding:6px 10px;font:12px var(--mono)}
+.sttrack b{font:900 15px var(--cond);background:var(--ink);color:var(--paper);min-width:22px;text-align:center;padding:0 4px}
+.sttrack.main b{background:var(--mark);color:var(--ink);border:1px solid var(--ink)}
+.sttrack em{margin-left:auto;font-style:normal;opacity:.6}
+.sttrack i{font-style:normal;cursor:pointer;padding:0 4px;border:1px solid transparent}
+.sttrack i:hover{border-color:var(--ink);background:var(--mark)}
+.stadd{display:flex;align-items:center;gap:12px;margin-bottom:6px;font:11px var(--mono);text-transform:uppercase}
+.stadd .mono{opacity:.7}
+#mfull.stmode .mrange #mrange{background:var(--paper2)}
+.stline{margin-top:3px;opacity:.85}

@@ -733,6 +733,52 @@ SYSTEM_PROMPT = """Ти — досвідчений монтажер відео �
 Пиши JSON компактно, без зайвих пробілів і переносів; notes, why і caption — коротко."""
 
 
+def _mmss(t):
+    t = max(0, int(round(t)))
+    return f"{t // 60}:{t % 60:02d}"
+
+
+def soundtrack_text(job):
+    """Опис треків саундтреку для Claude і правила музичних змін."""
+    st = job["soundtrack"]
+    tracks = job["st_tracks"]
+    lines = []
+    for tid, p in tracks.items():
+        en = " ".join(str(e) for e in p["energy"])
+        lines.append(f"Трек №{tid} «{p['name']}»: {_mmss(p['duration'])}, {p['bpm']:.0f} BPM; енергія кожні 10 с "
+                     f"(0–9): {en}; найсильніша частина {_mmss(p['peak'][0])}–{_mmss(p['peak'][1])}")
+    names = {str(x["id"]): x.get("name") for x in job["sources"]}
+    fl = [f"- у джерелі №{sid} («{names.get(sid, sid)}») звучить трек №{f['track']}: секунда джерела t = "
+          f"момент треку t{f['offset']:+.1f} с"
+          for sid, f in (job.get("st_found") or {}).items() if f["track"] in tracks]
+    use_all = st.get("use_all")
+    return (
+        "САУНДТРЕК ВЛОГУ — музика з кількох треків, яка розповідає історію разом з картинкою.\n"
+        "Монтаж НЕ під біт: темп задають мова, події й сюжет (як у звичайному монтажі, поле end). Музика — "
+        "підкладка: програма сама зробить плавні переходи між треками (крос-фейд з початку такту), приглушить "
+        "музику там, де говорять, і плавно загасить у кінці.\n"
+        + "\n".join(lines) + "\n"
+        + ("ЗНАЙДЕНО У ВІДЕО (цей трек реально грає в кадрі — коли ставиш такий шматок, програма сама переведе "
+           "музику саме в цей трек і в це місце, синхронно з відео; це найкрасивіший перехід — будуй на ньому "
+           "зміну настрою):\n" + "\n".join(fl) + "\n" if fl else "")
+        + "ЯК ПОЗНАЧИТИ МУЗИКУ: у списку segments ПЕРЕД шматком, з якого має звучати трек, встав об'єкт "
+        "{\"music\": №треку, \"from\": секунда треку}. Перший елемент segments кожного відео — такий об'єкт. "
+        "{\"music\": 0} — тиша (лише голос і звук відео), коли тиша сильніша за музику.\n"
+        "Як обирати:\n"
+        "- кожен трек — свій розділ історії: зміна місця, часу дня, настрою, нова тема; міняй трек на поворотах "
+        "сюжету, не частіше ніж раз на 30–40 с; переходь у новий трек на склейці з сильною зміною картинки;\n"
+        "- настрій треку відповідає змісту: спокійні треки (низька енергія) — під розмови й тихі моменти, "
+        "енергійні — під дію, дорогу, кульмінацію; найсильнішу частину треку (кульмінацію) став на "
+        "кульмінацію історії;\n"
+        "- from: звідки взяти трек — початок (0) для нового розділу, або найсильніша частина для кульмінації;\n"
+        "- там, де довго говорять, краще спокійний трек; де без слів — музика на повну, склейки можна ставити "
+        "в ритм треку;\n"
+        + ("- автор хоче, щоб прозвучали ВСІ треки: використай кожен трек хоча б раз (у різних відео або в "
+           "одному довгому).\n" if use_all else
+           "- бери лише ті треки, що пасують до історії; невідповідні не використовуй.\n")
+    )
+
+
 def compress_segments(segs, window):
     """Склеює фрази у вікна по window секунд, щоб вмістити дуже довгий матеріал."""
     out, cur = [], None
@@ -979,6 +1025,8 @@ def build_content(job, data, frames, refs, seg_window=0, frame_step=1, ref_video
         content.append({"type": "text", "text": "ГРУПИ СХОЖИХ ДЖЕРЕЛ (знімають той самий об'єкт чи локацію — "
                         "не став їх поруч, з кожної групи бери кілька найкращих моментів, а не все підряд): "
                         + visual_groups_text(job)})
+    if job.get("soundtrack") and job.get("st_tracks"):
+        content.append({"type": "text", "text": soundtrack_text(job)})
     if job.get("music_info"):
         import music as _m
         content.append({"type": "text", "text": _m.music_text(job["music_info"])})
@@ -1107,6 +1155,24 @@ def _vkey(job, sid):
     return ("g", g) if g else ("s", sid)
 
 
+def attach_cues(raw):
+    """Музичні маркери саундтреку {"music": №, "from": с} прив'язуємо до наступного шматка (поле mcue)."""
+    out, pend = [], None
+    for x in raw:
+        if isinstance(x, dict) and "music" in x and "source" not in x:
+            try:
+                tid = int(round(_f(x.get("music"), 0)))
+            except Exception:
+                tid = 0
+            pend = {"track": str(tid) if tid > 0 else "0", "from": round(max(0.0, _f(x.get("from"), 0.0)), 2)}
+            continue
+        if pend is not None and isinstance(x, dict):
+            x = dict(x, mcue=pend)
+            pend = None
+        out.append(x)
+    return out
+
+
 def spread_raw(raw, job):
     """Не ставимо підряд шматки з одного джерела чи групи схожих — переставляємо порядок.
     Синхронізовані з піснею (ліпсінк) можуть іти підряд — це безперервний спів."""
@@ -1162,11 +1228,13 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
     segs = []
     _auto_zoom = {}
     raw = [seg_from_list(x, grid is not None) if isinstance(x, (list, tuple)) else x for x in raw]
+    raw = attach_cues(raw)
     raw = spread_raw([x for x in raw if isinstance(x, dict)], job)
     seen_key = {}            # що вже було в цьому ролику: ключ схожості → кадрування
     reframed = [0]
     story = bool(s.get("story_on"))
     whole = story and s.get("story_whole", True)
+    voiced = story or bool(job.get("soundtrack"))     # де говорять — там музика притихає, звук відео лишається
 
     def reframe(item, reuse=False):
         """Повтор того самого об'єкта — інше кадрування, щоб читалось як новий план."""
@@ -1263,7 +1331,7 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
             segs.append(item)
             continue
         en = min(sdur, _f(sg.get("end"), st))
-        spans = speech_spans(data, sid) if story else []
+        spans = speech_spans(data, sid) if voiced else []
         if whole and spans:
             st, en = snap_phrase(st, en, spans, sdur)
         if en - st < 0.3:
@@ -1283,7 +1351,9 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
         st, en = cut
         reframe(item)
         item.update(start=round(st, 3), end=round(en, 3), tighten=bool(sg.get("tighten")))
-        if story and speech_frac(st, en, spans) > 0.3:
+        if sg.get("mcue"):
+            item["mcue"] = sg["mcue"]
+        if voiced and speech_frac(st, en, spans) > 0.3:
             item["voice"] = True
         used.setdefault(sid, []).append((st, en))
         segs.append(item)
@@ -1307,6 +1377,7 @@ def clean_segments(raw, job, data, used, beat_from=0, beat_to=None):
             for p in pieces[1:]:
                 p.pop("tr", None)
                 p.pop("fx", None)
+                p.pop("mcue", None)
             out += pieces
         else:
             out.append(it)
@@ -1667,6 +1738,61 @@ class Job:
             _log(f"[{stage}] {msg}")
         self.progress(stage, min(0.99, overall), msg, extra)
 
+    def _soundtrack_prep(self):
+        """Саундтрек влогу: слухаємо кожен трек (темп, такти, енергія, кульмінація) і шукаємо,
+        чи не звучить якийсь із треків у самих відео — туди можна зробити «живий» перехід."""
+        import music as _m
+        st = self.job["soundtrack"]
+        tracks, feats = {}, []
+        lst = st.get("tracks") or []
+        for k, t in enumerate(lst, 1):
+            self.check()
+            self.report("sound", 0.05 + 0.4 * (k - 1) / max(1, len(lst)), f"Слухаю треки · {k} з {len(lst)}",
+                        file=t.get("name"))
+            try:
+                prof = _m.track_profile(t["path"])
+                prof["name"] = t.get("name") or Path(t["path"]).name
+                tracks[str(t["id"])] = prof
+                if st.get("detect", True):
+                    feats.append((str(t["id"]), _m.song_features(t["path"])))
+                _log(f"Трек №{t['id']} «{prof['name']}»: {prof['duration']:.0f} с, {prof['bpm']:.0f} BPM, "
+                     f"кульмінація {prof['peak'][0]:.0f}–{prof['peak'][1]:.0f} с")
+            except Cancelled:
+                raise
+            except Exception as e:
+                _log(f"Трек «{t.get('name')}» не прочитався: {e!r}")
+                self.warnings.append(f"Трек «{t.get('name')}» не вдалося прочитати — його пропущено.")
+        self.job["st_tracks"] = tracks
+        found = {}
+        if feats:
+            srcs = self.job["sources"]
+            for k, src in enumerate(srcs, 1):
+                self.check()
+                self.report("sound", 0.45 + 0.55 * (k - 1) / max(1, len(srcs)),
+                            f"Шукаю треки у відео · {k} з {len(srcs)}", file=src.get("name"))
+                try:
+                    vf = _m.video_features(src["path"])
+                    hit = _m.find_track([f for _, f in feats], vf)
+                except Cancelled:
+                    raise
+                except Exception as e:
+                    _log(f"Пошук треку в «{src.get('name')}»: {e!r}")
+                    continue
+                if hit:
+                    tid = feats[hit[0]][0]
+                    off = round(hit[1] + src_off(src), 3)
+                    found[str(src["id"])] = {"track": tid, "offset": off, "conf": hit[2]}
+                    _log(f"У «{src.get('name')}» звучить трек №{tid} «{tracks[tid]['name']}»: "
+                         f"секунда відео t = {off:+.1f} с треку, впевненість {hit[2]}")
+        self.job["st_found"] = found
+        if not tracks:
+            self.warnings.append("Жоден трек не прочитався — змонтовано без музики.")
+            self.job.pop("soundtrack", None)
+        try:
+            (self.out / "job.json").write_text(json.dumps(self.job, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception:
+            pass
+
     def _sync_takes(self, _m, song_path):
         """Lip-sync: для кожного джерела шукаємо, яке місце пісні в ньому звучить.
         Якщо автор позначив ліпсінк-відео — слухаємо лише їх і з м'якшим порогом."""
@@ -1842,6 +1968,9 @@ class Job:
                 except Exception as e:
                     _log(f"Слова пісні: не вдалося прив'язати: {e!r}")
             (self.out / "job.json").write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8")
+
+        if job.get("soundtrack") and not job.get("st_tracks"):
+            self._soundtrack_prep()
 
         ref_videos = []
         rlist = job.get("refs") or []
@@ -2037,6 +2166,9 @@ def plan_text(videos, only=None):
         pos = 0.0
         for k, sg in enumerate(v["segments"], 1):
             d = sg["end"] - sg["start"]
+            if sg.get("mcue"):
+                c = sg["mcue"]
+                lines.append(f"  ♪ {{\"music\": {c['track']}, \"from\": {c.get('from', 0)}}}")
             z = (f"перехід {sg['tr']}, " if sg.get("tr") else "") + (f"{sg['shot']}, " if sg.get("shot") else "") + f"zoom {sg.get('zoom', 1.0):.2f}" + (f"→{sg['zoom_end']:.2f}" if sg.get("zoom_end") else "") + \
                 (f", fx {'+'.join(sg['fx'])}" if sg.get("fx") else "")
             lines.append(f"  #{k} [{pos:.1f}–{pos + d:.1f}] джерело {sg['source']}, {sg['start']:.1f}–{sg['end']:.1f} с, {z}")
@@ -2325,10 +2457,97 @@ def duck_music(job, videos, out, version):
             _log(f"Приглушення музики не вдалося ({e!r}) — трек на A2 без приглушення")
 
 
+def _auto_cues(segs, tracks, use_all, total, shift=0):
+    """Claude не позначив музику — розставляємо треки самі: рівні розділи, зміна на склейці без голосу."""
+    import math
+    import music as _m
+    ids = list(tracks)
+    if not ids or total <= 0:
+        return []
+    k = len(ids) if use_all else max(1, min(len(ids), math.ceil(total / 75.0)))
+    k = max(1, min(k, int(total // 20) or 1))
+    starts, t = [], 0.0
+    for x in segs:
+        starts.append((t, bool(x.get("voice"))))
+        t += x["end"] - x["start"]
+    cues = []
+    for j in range(k):
+        want = total * j / k
+        if j == 0:
+            at = 0.0
+        else:
+            near = [(abs(a - want) + (6.0 if v else 0.0), a) for a, v in starts if abs(a - want) < 15 and a > 5]
+            at = min(near)[1] if near else min(starts, key=lambda z: abs(z[0] - want))[0]
+        tid = ids[(j + shift) % len(ids)]
+        cues.append({"at": at, "track": tid, "from": _m.snap_to_bar(0.0, tracks[tid])})
+    return cues
+
+
+def build_soundtrack(job, videos, out, version):
+    """Саундтрек влогу: для кожного ролика збираємо одну музичну доріжку з кількох треків
+    (маркери Claude + «живі» переходи, де трек звучить у самому відео) і кладемо її на A2."""
+    st, tracks = job.get("soundtrack"), job.get("st_tracks")
+    if not (st and tracks):
+        return
+    import music as _m
+    found = job.get("st_found") or {}
+    use_all = bool(st.get("use_all"))
+    try:
+        for i, v in enumerate(videos, 1):
+            t, cues, spans, live = 0.0, [], [], 0
+            for x in v["segments"]:
+                d = x["end"] - x["start"]
+                c = x.get("mcue")
+                if c:
+                    tid = str(c.get("track"))
+                    if tid == "0":
+                        cues.append({"at": t, "track": None, "src": "claude"})
+                    elif tid in tracks:
+                        cues.append({"at": t, "track": tid, "from": _m.snap_to_bar(_f(c.get("from")), tracks[tid]),
+                                     "src": "claude"})
+                f = found.get(str(x["source"]))
+                if f and f["track"] in tracks and d >= 2.5:
+                    song_t = x["start"] + f["offset"]
+                    if 0 <= song_t <= tracks[f["track"]]["duration"] - 3:
+                        last = cues[-1] if cues else None
+                        cont = last and last.get("track") == f["track"] and last.get("live") and \
+                            abs(last["from"] + (t - last["at"]) - song_t) < 0.3
+                        if not cont:
+                            cues = [q for q in cues if abs(q["at"] - t) > 0.01]
+                            cues.append({"at": t, "track": f["track"], "from": round(song_t, 3), "xfade": 1.6,
+                                         "live": True, "src": "live"})
+                            live += 1
+                if x.get("voice"):
+                    spans.append((t, t + d))
+                t += d
+            total = t
+            if not any(q["src"] == "claude" for q in cues):
+                auto = _auto_cues(v["segments"], tracks, use_all, total, shift=i - 1)
+                livets = [q["at"] for q in cues]
+                cues += [q for q in auto if all(abs(q["at"] - lt) > 8 for lt in livets)]
+                _log(f"Саундтрек, ролик {i}: Claude не позначив музику — розставив {len(auto)} трек(и) сам")
+            cues.sort(key=lambda q: q["at"])
+            p = Path(out) / f"soundtrack_v{version}_{i}.wav"
+            played = _m.soundtrack_bed(tracks, cues, total, spans, p)
+            if not played:
+                v.pop("music", None)
+                continue
+            v["music"] = {"path": str(p), "start": 0.0, "end": round(total, 3), "track": 2}
+            v["voice"] = True
+            v["soundtrack"] = [{"at": a, "track": tid, "name": tracks[tid]["name"], "from": frm, "to": b}
+                               for a, tid, frm, b in played]
+            _log(f"Саундтрек, ролик {i} ({total:.0f} с): " + "; ".join(
+                f"{_mmss(a)} №{tid} «{tracks[tid]['name']}» з {_mmss(frm)}" for a, tid, frm, b in played)
+                + f"; живих переходів {live}; голос на {len(spans)} ділянках")
+    finally:
+        _m.clear_cache()
+
+
 def finalize(job, data, text, out, version, plan=None):
     plan = plan if plan is not None else parse_json(text)
     videos = clean_plan(plan, job, data)
     duck_music(job, videos, out, version)
+    build_soundtrack(job, videos, out, version)
     if not videos:
         raise RuntimeError("Claude не зміг скласти план: " + str(plan.get("notes", "")))
     try:                     # поворот джерел пам'ятаємо для наступних правок
@@ -2523,6 +2742,7 @@ def revise(job_dir, edit_text, progress, cancel_event, rng=None):
         for x in videos:
             x["music"] = {k: mus[k] for k in ("path", "start", "end")}
         duck_music(job, videos, job_dir, version)
+    build_soundtrack(job, videos, job_dir, version)
     result = finalize_videos(job, data, videos, notes, job_dir, version)
     result.update({"cost": round(cost, 4), "month_total": month_total,
                    "tokens_in": usage.input_tokens, "tokens_out": usage.output_tokens,

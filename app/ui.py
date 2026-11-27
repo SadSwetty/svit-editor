@@ -47,6 +47,23 @@ def clear_webkit_cache():
             pass
 
 
+def soundtrack_list(st):
+    """Треки саундтреку з налаштувань вікна: основний + додаткові. Режим вмикається, коли є кілька треків
+    (або увімкнено «Саундтрек влогу» з одним треком)."""
+    mu = st.get("music") or {}
+    items = ([mu] if mu.get("path") else []) + [x for x in (st.get("music_more") or []) if isinstance(x, dict)]
+    out, seen = [], set()
+    for x in items:
+        p = str(x.get("path") or "")
+        if not p or p in seen or not Path(p).exists():
+            continue
+        seen.add(p)
+        out.append({"id": len(out) + 1, "path": p, "name": x.get("name") or Path(p).name})
+    if len(out) >= 2 or (out and st.get("music_multi")):
+        return out[:12]
+    return []
+
+
 def web_root():
     """Інтерфейс відкриваємо з окремої теки для кожної версії: вбудований браузер macOS кешує сторінку
     за адресою, і після оновлення інакше показував би старий інтерфейс (без нових вкладок)."""
@@ -327,7 +344,7 @@ class Api:
                 target = self.window.evaluate_js("SV.takeDropTarget()") or "material"
             except Exception:
                 target = "material"
-            paths = []
+            paths, audio = [], []
             for f in files:
                 p = f.get("pywebviewFullPath")
                 if not p:
@@ -337,14 +354,26 @@ class Api:
                     self._js("refAdded", self.add_ref_path(str(pp)))
                     continue
                 if pp.suffix.lower() in music.AUDIO_EXT:
-                    self._js("musicLoading", pp.name)
-                    self._js("musicSet", self.set_music(str(pp)))
+                    audio.append(str(pp))
                     continue
                 if pp.is_dir():
                     paths += [str(x) for x in sorted(pp.rglob("*"))
                               if x.suffix.lower() in self.VIDEO_EXT and not x.name.startswith(".")]
                 elif pp.suffix.lower() in self.VIDEO_EXT:
                     paths.append(str(pp))
+            if audio:
+                # перший трек — основний (якщо його ще немає), решта — у саундтрек
+                try:
+                    has = bool(self.window.evaluate_js("SV.hasMusic()"))
+                except Exception:
+                    has = False
+                if not has:
+                    first = audio.pop(0)
+                    self._js("musicLoading", Path(first).name)
+                    self._js("musicSet", self.set_music(first))
+                more = [r for r in (self.track_info(p) for p in audio) if r]
+                if more:
+                    self._js("musicMore", more)
             if not paths:
                 return
             self._js("droppedStart", len(paths))
@@ -479,6 +508,34 @@ class Api:
         except Exception:
             _close()
         return True
+
+    def pick_music_more(self):
+        """Додати ще треки до саундтреку (можна кілька файлів одразу)."""
+        import webview
+        files = self.window.create_file_dialog(
+            webview.OPEN_DIALOG, allow_multiple=True,
+            file_types=("Аудіо (" + ";".join("*" + e for e in sorted(music.AUDIO_EXT)) + ")", "Усі файли (*.*)"))
+        self.silence()
+        out = []
+        for f in files or []:
+            r = self.track_info(f)
+            if r:
+                out.append(r)
+        return out
+
+    def track_info(self, path):
+        try:
+            import av
+            c = av.open(str(path))
+            try:
+                if not c.streams.audio:
+                    return None
+                d = float(c.duration or 0) / 1e6
+            finally:
+                c.close()
+        except Exception:
+            return None
+        return {"path": str(path), "name": Path(path).name, "duration": round(d, 2)}
 
     def set_music(self, path):
         try:
@@ -1051,7 +1108,16 @@ class Api:
                 },
             }
             mu = st.get("music") or {}
-            if st.get("music_on") and mu.get("path") and Path(mu["path"]).exists():
+            tl = soundtrack_list(st)
+            if st.get("music_on") and tl:
+                # саундтрек влогу: кілька треків, музика за сюжетом, переходи і притишення під голос
+                job["soundtrack"] = {"tracks": tl, "use_all": bool(st.get("music_all")),
+                                     "detect": bool(st.get("music_detect", True))}
+                job["settings"]["transcribe"] = True
+                job["settings"]["lyrics"] = ""
+                job["settings"]["lipsync"] = []
+                job["settings"]["lip_auto"] = False
+            elif st.get("music_on") and mu.get("path") and Path(mu["path"]).exists():
                 job["music"] = {"path": mu["path"], "start": float(mu.get("start", 0)),
                                 "end": float(mu.get("end", 30))}
                 job["settings"]["video_length"] = f"рівно довжина фрагмента пісні ({float(mu.get('end', 30)) - float(mu.get('start', 0)):.0f} с)"

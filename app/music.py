@@ -328,3 +328,205 @@ def ducked_bed(path, start, end, voice, out_path, bed_db=-4.0, duck_db=-17.0, ra
         w.setframerate(sr)
         w.writeframes((y * 32767).astype(np.int16).tobytes())
     return n / sr
+
+
+# ======================================================================= саундтрек влогу: кілька треків
+
+_STEREO_CACHE = {}
+
+
+def _stereo_full(path, sr=48000):
+    """Увесь трек у стерео (int16, щоб не тримати в пам'яті float32). Кешується на час збірки."""
+    key = (str(path), sr)
+    if key not in _STEREO_CACHE:
+        y = decode_stereo(path, 0, 1e9, sr)
+        _STEREO_CACHE[key] = (np.clip(y, -1, 1) * 32767).astype(np.int16)
+    return _STEREO_CACHE[key]
+
+
+def track_profile(path):
+    """Короткий опис треку для Claude і для склейок: тривалість, темп, удари й такти по всьому треку,
+    енергія кожні 10 с (0–9) і найгучніша ділянка (приблизно приспів / кульмінація)."""
+    y = decode_mono(path)
+    dur = len(y) / SR
+    env = onset_envelope(y)
+    fps = SR / HOP
+    bpm = estimate_bpm(env, fps)
+    beats = track_beats(env, fps, bpm)
+    if len(beats) < 4:
+        beats = np.arange(0.0, dur, 60.0 / bpm)
+    on = [env[min(len(env) - 1, int(b * fps))] for b in beats]
+    phase = int(np.argmax([sum(on[p::4]) for p in range(4)])) if len(on) >= 8 else 0
+    bars = [round(float(b), 3) for b in beats[phase::4]]
+    step = 10.0
+    rms = []
+    for a in np.arange(0.0, dur, step):
+        seg = y[int(a * SR):int(min(dur, a + step) * SR)]
+        rms.append(float(np.sqrt(np.mean(seg ** 2))) if len(seg) else 0.0)
+    r = np.array(rms) if rms else np.zeros(1)
+    lo, hi = np.percentile(r, 5), np.percentile(r, 98)
+    lo = min(lo, 0.5 * hi)          # рівний за гучністю трек — не роздуваємо дрібні різниці до 0…9
+    energy = [int(max(0, min(9, round(9 * (v - lo) / max(hi - lo, 1e-9))))) for v in r]
+    win = max(1, min(len(r), 3))
+    sm = np.convolve(r, np.ones(win) / win, mode="valid") if len(r) >= win else r
+    k = int(np.argmax(sm)) if len(sm) else 0
+    if len(beats) > 3:
+        bpm = 60.0 / float(np.median(np.diff(beats)))
+    return {"path": str(path), "duration": round(dur, 2), "bpm": round(bpm, 1),
+            "beats": [round(float(b), 3) for b in beats], "bars": bars, "energy": energy,
+            "peak": [round(k * step, 1), round(min(dur, (k + win) * step), 1)]}
+
+
+def snap_to_bar(t, prof, tol=1.2):
+    """Секунда треку → найближчий початок такту (або удар), щоб трек входив у ритм, а не з півноти."""
+    for grid in (prof.get("bars") or [], prof.get("beats") or []):
+        if grid:
+            b = min(grid, key=lambda x: abs(x - t))
+            if abs(b - t) <= tol:
+                return float(b)
+    return float(t)
+
+
+def video_features(video_path):
+    yv = decode_mono(video_path)
+    return {"env": onset_envelope(yv), "chroma": chroma(yv), "dur": len(yv) / SR}
+
+
+def find_track(track_feats, vfeat, min_conf=1.3):
+    """Чи звучить у відео один із треків. track_feats — [features] (song_features), vfeat — video_features.
+    Повертає (індекс треку, зсув, впевненість) або None: момент треку = секунда відео + зсув."""
+    fps = SR / HOP
+    b0, cb = vfeat["env"], vfeat["chroma"]
+    if len(b0) < fps * 6:
+        return None
+    best = None
+    for ti, tf in enumerate(track_feats):
+        a = tf["env"].astype(np.float64).copy()
+        b = b0.astype(np.float64).copy()
+        a[:12] = a[-12:] = 0
+        b[:12] = b[-12:] = 0
+        a, b = np.log1p(a), np.log1p(b)
+        a = (a - a.mean()) / (a.std() or 1.0)
+        b = (b - b.mean()) / (b.std() or 1.0)
+        ks = np.concatenate([np.arange(len(a)), np.arange(-len(b) + 1, 0)])
+        ov = np.minimum(len(a), ks + len(b)) - np.maximum(0, ks)
+        valid = ov > max(fps * 6, 0.25 * min(len(b), len(a)))
+        if not valid.any():
+            continue
+        norm = np.sqrt(np.maximum(ov, 1))
+
+        def z(x):
+            sv = x[valid]
+            return (x - sv.mean()) / (sv.std() or 1.0)
+        score = z(_xcorr(a, b) / norm)
+        ca = tf.get("chroma")
+        if ca is not None and len(ca) == len(a) and len(cb) == len(b):
+            cc = sum(_xcorr(ca[:, j].astype(np.float64), cb[:, j].astype(np.float64)) for j in range(12))
+            score = score + 1.3 * z(cc / norm)
+        score = np.where(valid, score, -1e9)
+        i = int(np.argmax(score))
+        far = valid & (np.abs(ks - ks[i]) > fps * 0.5)
+        second = float(score[far].max()) if far.any() else 0.0
+        conf = float((score[i] - second) / float(score[valid].std() or 1.0))
+        if conf >= min_conf and (best is None or conf > best[2]):
+            best = (ti, round(float(ks[i] / fps), 3), round(conf, 2))
+    return best
+
+
+def _duck_gain(n, sr, voice, bed_db, duck_db, ramp):
+    t = np.arange(n) / sr
+    g_db = np.full(n, bed_db, np.float32)
+    for a, b in voice:
+        a0, b1 = max(0.0, a - ramp), b + ramp
+        i0, i1 = int(a0 * sr), min(n, int(b1 * sr) + 1)
+        if i1 <= i0:
+            continue
+        tt = t[i0:i1]
+        k = np.minimum(np.clip((tt - a0) / ramp, 0, 1), np.clip((b1 - tt) / ramp, 0, 1))
+        g_db[i0:i1] = np.minimum(g_db[i0:i1], bed_db + (duck_db - bed_db) * k)
+    return (10 ** (g_db / 20.0)).astype(np.float32)
+
+
+def soundtrack_bed(tracks, cues, total, voice, out_path, xfade=3.0, bed_db=-3.0, duck_db=-16.0,
+                   ramp=0.45, end_fade=3.5, sr=48000, log=None):
+    """Музична доріжка влогу з кількох треків.
+    tracks — {id: профіль (track_profile)}; cues — [{"at": с ролика, "track": id або 0 (тиша), "from": с треку,
+    "xfade": с}], відсортовані; total — довжина ролика; voice — [(від, до)] де говорять (там музика притихає).
+    Переходи між треками — плавний крос-фейд (рівна потужність), трек входить з початку такту.
+    Якщо трек закінчився раніше за наступну зміну — сам переходимо в наступний трек списку.
+    Повертає [(at, track, from, до)] — що реально звучить, для журналу."""
+    n = int(round(total * sr))
+    mix = np.zeros((n, 2), np.float32)
+    ids = [k for k in tracks]
+    cues = sorted([c for c in cues if 0 <= c["at"] < total - 0.5], key=lambda c: c["at"])
+    if not cues or cues[0]["at"] > 0.05:
+        first = cues[0] if cues else {"track": ids[0], "from": 0.0}
+        cues = [{"at": 0.0, "track": first["track"], "from": first.get("from", 0.0)}] + cues
+    played = []
+    i = 0
+    while i < len(cues):
+        c = cues[i]
+        at = float(c["at"])
+        nxt = float(cues[i + 1]["at"]) if i + 1 < len(cues) else total
+        tid = c.get("track")
+        if not tid or tid not in tracks:
+            i += 1
+            continue
+        prof = tracks[tid]
+        tdur = prof["duration"]
+        frm = max(0.0, min(float(c.get("from", 0.0)), tdur - 4.0))
+        xf = float(c.get("xfade", xfade))
+        run = nxt - at
+        left = tdur - frm
+        if left < run - 0.5:
+            # трек скінчився раніше — далі наступний трек плейлиста з його початку, той самий плавний перехід
+            if len(ids) > 1:
+                k = (ids.index(tid) + 1) % len(ids)
+                nt = ids[k]
+                cut = at + max(4.0, left - xfade)
+                cues.insert(i + 1, {"at": round(cut, 2), "track": nt, "from": snap_to_bar(0.0, tracks[nt]),
+                                    "auto": True})
+                nxt = cut
+                run = nxt - at
+            else:
+                run = left
+        pre = min(xf / 2, at, frm) if at > 0 else 0.0           # новий трек починає звучати трохи до склейки
+        post = 0.0 if nxt >= total - 1e-3 else min(xf / 2, max(0.0, tdur - frm - run))
+        y = _stereo_full(prof["path"], sr)
+        a_i = int(round((frm - pre) * sr))
+        b_i = int(round((frm + run + post) * sr))
+        piece = y[max(0, a_i):min(len(y), b_i)].astype(np.float32) / 32768.0
+        m = len(piece)
+        if not m:
+            i += 1
+            continue
+        g = np.ones(m, np.float32)
+        fin = int(round((2 * pre if at > 0 else 0.4) * sr))
+        fout = int(round((2 * post if nxt < total - 1e-3 else 0) * sr))
+        if fin > 1:
+            fin = min(fin, m)
+            g[:fin] *= np.sin(np.linspace(0, np.pi / 2, fin)) ** 1
+        if fout > 1:
+            fout = min(fout, m)
+            g[-fout:] *= np.cos(np.linspace(0, np.pi / 2, fout))
+        o = int(round((at - pre) * sr))
+        o0, o1 = max(0, o), min(n, o + m)
+        if o1 > o0:
+            mix[o0:o1] += piece[o0 - o:o1 - o] * g[o0 - o:o1 - o, None]
+        played.append((round(at, 2), tid, round(frm, 2), round(at + run, 2)))
+        i += 1
+    if end_fade > 0 and n:
+        k = min(n, int(end_fade * sr))
+        mix[-k:] *= np.linspace(1, 0, k)[:, None] ** 1.5
+    mix *= _duck_gain(n, sr, voice, bed_db, duck_db, ramp)[:, None]
+    mix = np.clip(mix, -1, 1)
+    with wave.open(str(out_path), "wb") as w:
+        w.setnchannels(2)
+        w.setsampwidth(2)
+        w.setframerate(sr)
+        w.writeframes((mix * 32767).astype(np.int16).tobytes())
+    return played
+
+
+def clear_cache():
+    _STEREO_CACHE.clear()

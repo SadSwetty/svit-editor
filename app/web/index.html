@@ -123,7 +123,17 @@
             <span class="transport"><button class="tbtn" id="mstop" onclick="SV.stopMusic()" title="Стоп"><i class="ic-stop"></i></button><button class="tbtn" id="mplay" onclick="SV.playMusic()" title="Грати / пауза (пробіл)"><i class="ic-play"></i></button></span><button class="btn" onclick="SV.pickMusic()">Інший трек</button></div>
           <div class="wave" id="wave"><canvas id="wavec"></canvas><div class="mhead" id="mhead" onpointerdown="SV.headDrag(event)"></div></div>
           <div class="mhint">Пробіл — грати / пауза · синю лінію можна тягати</div>
-          <div class="mrange"><span id="mrange">—</span><span class="mono">тягни ручки — вибери шматок пісні</span></div>
+          <div class="mrange"><span id="mrange">—</span><span class="mono" id="mrangehint">тягни ручки — вибери шматок пісні</span></div>
+        </div>
+        <div id="stbox">
+          <div class="subhead">Саундтрек влогу <span class="beta">бета</span><i class="i left" data-tip="Кілька треків на один влог. Claude розуміє, про що історія, і ставить кожен трек на свій розділ: спокійний під розмови, енергійний під дію, кульмінацію треку на кульмінацію історії. Переходи між треками плавні, з початку такту, а там, де говорять, музика притихає. Монтаж тоді не під біт, а за змістом.">i</i></div>
+          <div class="stlist" id="stlist"></div>
+          <div class="stadd"><button class="btn" onclick="SV.addTracks()">+ Ще треки</button><span class="mono" id="stcount"></span></div>
+          <div id="stopts">
+            <div class="sw" data-k="music_multi" id="sw_multi"><div class="lb">Саундтрек з одного треку<small>Монтаж за змістом, а трек — підкладкою, що притихає під голос</small></div><div class="tog"></div></div>
+            <div class="sw" data-k="music_all"><div class="lb">Використати всі треки<small>Кожен трек прозвучить. Вимкнено — Claude візьме лише ті, що пасують до історії</small></div><div class="tog"></div></div>
+            <div class="sw" data-k="music_detect"><div class="lb">Шукати треки у відео<small>Якщо трек грає в кадрі (вечірка, машина, концерт) — музика перейде саме в нього, синхронно</small></div><i class="i up" data-tip="Svit слухає звук кожного відео і порівнює з треками. Де знайшов — у монтажі музика плавно переходить у цей трек і в те саме місце пісні, що звучить у кадрі, тож перехід виходить «живий». Займає трохи часу на довгому матеріалі.">i</i><div class="tog"></div></div>
+          </div>
         </div>
       </div>
     </div>
@@ -511,7 +521,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -618,7 +628,7 @@ const SV = {
     const s=this.st;
     $$("#dur button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.dur_mode||"auto")));
     $("#durcust").style.display = s.dur_mode==="custom" ? "inline-flex" : "none"; if(document.activeElement!==$("#dursec")) $("#dursec").value=s.dur_custom||20;
-    $("#durnote").textContent = s.music_on&&s.music&&s.music.path ? "з музикою — довжина = вибраний шматок треку" : "";
+    $("#durnote").textContent = s.music_on&&s.music&&s.music.path&&!this.soundtrack() ? "з музикою — довжина = вибраний шматок треку" : "";
     $("#prompt").value=s.prompt; if(document.activeElement!==$("#lyrics")) $("#lyrics").value=s.lyrics||""; this.lyrStat(); this.lipInfo(); $("#num").value=s.num; $("#len").selectedIndex=s.len||0; $("#lang").value=s.language||"";
     $("#whisper").value=s.whisper_model; $("#model").value=s.model;
     $$("#srcmode button").forEach(b=>b.classList.toggle("on",b.dataset.v===s.source_mode));
@@ -664,6 +674,7 @@ const SV = {
     $("#abstr").value=s.abstract; $("#abval").textContent=s.abstract+"%";
     const ab=s.abstract; $("#abhint").textContent = ab<=15?"Класика: чиста історія, суворі правила монтажу":ab<=40?"Основа класична + 1–2 знахідки: match cut, контраст тиші й вибуху":ab<=65?"Асоціативно: візуальні рими, нелінійність, сміливий ритм":ab<=85?"Експеримент: кліпове мислення, свідомі jump cut'и, контрасти":"Артхаус: монтаж як сон чи знайдена плівка — lost wave, dreamcore";
     $("#musicbody").classList.toggle("on",!!s.music_on);
+    this.stPaint();
     this.renderMusic();
     $("#adv").classList.toggle("on",!!s.adv_open); $("#advtoggle").classList.toggle("on",!!s.adv_open);
     const fmt = s.format==="src" ? "як у джерела" : s.format;
@@ -678,6 +689,32 @@ const SV = {
   // ---- музика
   mPeaks:null, range:null, audio:null,
   async pickMusic(){ const r=await this.api("pick_music"); if(r) this.musicSet(r) },
+  hasMusic(){ return !!(this.st.music && this.st.music.path) },
+  tracks(){ const m=this.st.music; return (m&&m.path?[m]:[]).concat(this.st.music_more||[]) },
+  soundtrack(){ const n=this.tracks().length; return !!this.st.music_on && (n>=2 || (n===1 && !!this.st.music_multi)) },
+  async addTracks(){ const r=await this.api("pick_music_more"); if(r&&r.length) this.musicMore(r) },
+  musicMore(list){
+    const have=new Set(this.tracks().map(t=>t.path)); const add=(list||[]).filter(t=>t&&t.path&&!have.has(t.path));
+    if(!add.length) return;
+    this.st.music_more=(this.st.music_more||[]).concat(add.map(t=>({path:t.path,name:t.name,duration:t.duration}))).slice(0,11);
+    this.st.music_on=true; this.paint(); this.save();
+    this.toast(add.length===1?"Трек додано в саундтрек":"Додано треків: "+add.length) },
+  removeTrack(i){
+    if(i===0){ const more=this.st.music_more||[];
+      if(more.length){ const nx=more.shift(); this.st.music_more=more;
+        this.api("set_music", nx.path).then(r=>{ if(r&&!r.error) this.musicSet(r) }) }
+      else this.st.music=null }
+    else this.st.music_more.splice(i-1,1);
+    this.paint(); this.save() },
+  stPaint(){
+    const tr=this.tracks(), on=this.soundtrack();
+    $("#stlist").innerHTML=tr.map((t,i)=>'<span class="sttrack'+(i===0?' main':'')+'"><b>'+(i+1)+'</b>'+esc(t.name)+'<em>'+tfmt(t.duration||0)+'</em><i onclick="SV.removeTrack('+i+')" title="Прибрати">✕</i></span>').join("");
+    $("#stbox").style.display=tr.length?"block":"none";
+    $("#stcount").textContent = tr.length>=2 ? tr.length+" "+plural(tr.length,"трек","треки","треків")+" · музика змінюється за історією" : "додай ще треки, щоб музика змінювалась за історією";
+    $("#sw_multi").style.display = tr.length===1 ? "" : "none";
+    $("#stopts").querySelectorAll('[data-k="music_all"],[data-k="music_detect"]').forEach(e=>e.style.display=on?"":"none");
+    $("#mfull").classList.toggle("stmode", on);
+    $("#mrangehint").textContent = on ? "у саундтреку Claude сам вибирає, звідки брати трек" : "тягни ручки — вибери шматок пісні" },
   musicLoading(name){ this.st.music_on=true; this.paint(); $("#mempty").innerHTML="<span>Слухаю «"+esc(name)+"»…</span>" },
   musicSet(r){
     if(!r) return;
@@ -934,7 +971,7 @@ const SV = {
       this.styleInit(r);
       $("#editchips").innerHTML = EDIT_CHIPS.map((c,i)=>`<span class="chip" onclick="SV.editChip(${i})">${c}</span>`).join("");
       $("#dones").innerHTML = "Витрачено " + coin(15) + " <b>" + money(r.cost) + "</b> · цього місяця " + money(r.month_total) + (ver>1 ? " · нова версія таймлайну вже в DaVinci" : " · таймлайн уже в DaVinci");
-      $("#vids").innerHTML = r.videos.map((v,i)=>`<div class="vid" style="animation-delay:${.1+i*.06}s"><div class="n">${i+1}</div><div><div class="t noi">${esc(v.title)}</div><div class="w noi">${esc(v.why||"")}</div></div><div class="d">${dur(v.duration)}</div></div>`).join("");
+      $("#vids").innerHTML = r.videos.map((v,i)=>`<div class="vid" style="animation-delay:${.1+i*.06}s"><div class="n">${i+1}</div><div><div class="t noi">${esc(v.title)}</div><div class="w noi">${esc(v.why||"")}</div>${(v.soundtrack||[]).length?`<div class="w noi stline">♪ ${v.soundtrack.map(q=>tfmt(q.at)+" "+esc(q.name.replace(/\.[^.]+$/,""))).join(" → ")}</div>`:""}</div><div class="d">${dur(v.duration)}</div></div>`).join("");
       const nt=[r.notes?I18N.t("Коментар монтажера: ")+r.notes:"", I18N.t(r.fusion_line||"")].filter(Boolean).join("\n\n");
       if(nt){ $("#note").style.display="block"; $("#note").textContent=nt } else $("#note").style.display="none";
       $("#spend").innerHTML=coin(16)+" "+money(r.month_total);
