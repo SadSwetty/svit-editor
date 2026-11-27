@@ -281,17 +281,6 @@ class Api:
         s["num_videos_n"] = int(st.get("num") or 0) or None
         return engine.estimate(float(total_sec or 0), int(n_sources or 0), s, int(n_shots or 0), int(n_refs or 0))
 
-    def profiles(self, paths):
-        """Профіль зйомки кожного відео для підписів у вікні: S-Log3 / HLG / S-Log2 / 709 / None."""
-        import colorlog
-        out = {}
-        for p in (paths or [])[:400]:
-            try:
-                out[p] = colorlog.profile_info(p)
-            except Exception:
-                out[p] = {"k": None, "raw": ""}
-        return out
-
     def refresh_sources(self, mode):
         try:
             r = self.bridge.send("refresh", {"mode": mode}, timeout=20)
@@ -1125,10 +1114,6 @@ class Api:
                     "look": st.get("look") if (st.get("look") in engine.LOOKS or st.get("look") == "auto") else "none",
                 },
             }
-            pf = st.get("profile_filter") or "all"
-            job["settings"]["only_log"] = pf == "log"
-            job["settings"]["one_profile"] = pf in ("slog3", "hlg", "slog2", "rec709")
-            job["settings"]["profile_pick"] = pf if pf in ("slog3", "hlg", "slog2", "rec709") else "auto"
             mu = st.get("music") or {}
             tl = soundtrack_list(st)
             if st.get("music_on") and tl:

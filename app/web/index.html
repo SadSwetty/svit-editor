@@ -109,10 +109,6 @@
         <button class="btn" onclick="SV.refresh()">↻ Оновити</button>
       </div>
       <div class="names" id="names"></div>
-      <div class="profrow" id="profrow">
-        <span class="mono plab">Профіль зйомки <i class="i left" data-tip="Камери Sony пишуть у кожен файл, у якому профілі його знято (S-Log3, HLG, S-Log2 чи звичайний 709) — Svit читає це сам, кастомні PP теж. Вибери, з яких відео монтувати: решта не аналізується й нічого не коштує. Наведи на позначку біля файлу, щоб побачити, що саме записала камера.">i</i></span>
-        <div class="seg" id="srcprof"><button data-v="all">Усі</button><button data-v="slog3">S-Log3</button><button data-v="hlg">HLG</button><button data-v="slog2">S-Log2</button><button data-v="rec709">709</button><button data-v="log">Будь-який лог</button></div>
-      </div>
       <div class="warn" id="nobridge" style="display:none">Svit Editor відкритий не з DaVinci. Запускай його через DaVinci: Workspace → Scripts → Svit Editor.</div>
     </div>
 
@@ -522,7 +518,7 @@ const SV = {
     this.st = Object.assign({prompt:"",source_mode:"selected",num:"",len:0,format:"9:16",layout:"one",subtitles:true,
       auto_render:false,transcribe:true,frames:true,language:"",whisper_model:"medium",model:"claude-sonnet-5-5",
       fps:"30",pace:"normal",zoom_crop:true,zoom_dynamic:true,zoom_strength:35,adv_open:false,adv_tab:"frame",
-      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,profile_filter:"all",res:"hd",upscale:false,denoise:""}, s.settings||{});
+      music_on:false,music:null,fx_on:true,fx_allowed:["shake","flash","blur_in","glow"],fx_strength:50,abstract:25,look:"none",look_strength:60,tr_on:true,tr_allowed:["zoom","whip","dip","glitch"],ov_blur:false,ov_blur_strength:30,ov_hal:false,ov_hal_strength:40,tr_speed:60,auto_tone:true,auto_tone_strength:70,lyrics:"",lyrics_upper:false,text_mode:"svit",text_style:{font:"",size:50,color:"#FFFFFF",outline:0,shadow:40,glow:0,halation:0,pos:"bottom",anim:"fade",anim_strength:50,anim_smooth:50,rap:0,accent:"#E0352B"},dur_mode:"auto",dur_custom:20,song_sync:true,beta_updates:false,cinematic:false,cinematic_level:60,take_sync:true,match_exposure:false,adjust_fx:false,story_on:false,story_arc:"auto",story_idea:"",story_weight:70,story_whole:true,story_voice:true,music_more:[],music_multi:false,music_all:true,music_detect:true,res:"hd",upscale:false,denoise:""}, s.settings||{});
     this.st.fx_allowed=(this.st.fx_allowed||[]).filter(x=>x!=="slowmo");
     this.sources = s.sources || {};
     this.shots = s.shots || [];
@@ -573,7 +569,6 @@ const SV = {
     $$("#srcmode button").forEach(b=>b.onclick=()=>{this.st.source_mode=b.dataset.v; this.paint(); this.refresh()});
     $$("#layout button").forEach(b=>b.onclick=()=>{this.st.layout=b.dataset.v; this.paint(); this.save()});
     $$("#fps button").forEach(b=>b.onclick=()=>{this.st.fps=b.dataset.v; this.paint(); this.save()});
-    $$("#srcprof button").forEach(b=>b.onclick=()=>{this.st.profile_filter=b.dataset.v; this.paint(); this.renderSources(); this.save()});
     $$("#res button").forEach(b=>b.onclick=()=>{this.st.res=b.dataset.v; this.paint(); this.save()});
     $$("#dn button").forEach(b=>b.onclick=()=>{this.st.denoise=b.dataset.v; this.paint(); this.save()});
     $$("#storyarc button").forEach(b=>b.onclick=()=>{this.st.story_arc=b.dataset.v; this.paint(); this.save()});
@@ -640,7 +635,6 @@ const SV = {
     $$(".fmt").forEach(b=>b.classList.toggle("on",b.dataset.v===s.format));
     $$(".sw").forEach(b=>b.classList.toggle("on",!!s[b.dataset.k]));
     $$("#fps button").forEach(b=>b.classList.toggle("on",b.dataset.v===String(s.fps)));
-    $$("#srcprof button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.profile_filter||"all")));
     $$("#res button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.res||"hd")));
     $$("#dn button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.denoise||"")));
     $$("#storyarc button").forEach(b=>b.classList.toggle("on",b.dataset.v===(s.story_arc||"auto")));
@@ -841,42 +835,22 @@ const SV = {
     this.renderSources(); this.save();
   },
   cur(){ return this.sources[this.st.source_mode] || [] },
-  profOf(x){ const p=(this.prof||{})[x.path]; return p===undefined ? undefined : (p&&p.k)||null },
-  curF(){   // з урахуванням відбору за профілем (поки профіль невідомий — відео лишається)
-    const f=this.st.profile_filter||"all", list=this.cur();
-    if(f==="all") return list;
-    return list.filter(x=>{ const k=this.profOf(x); if(k===undefined) return true;
-      return f==="log" ? k!=="rec709" : k===f }) },
+  curF(){ return this.cur() },
   toggleAllNames(){ this.namesAll=!this.namesAll; this.renderSources() },
   renderSources(){
     const all=this.cur(), list=this.curF(), tot=list.reduce((a,b)=>a+(b.duration||0),0);
-    const PL={slog3:"S-Log3",slog2:"S-Log2",hlg:"HLG",rec709:"709"};
-    $("#profrow").style.display = all.length ? "" : "none";
     if(!all.length){ $("#matbig").textContent="Нічого не вибрано";
       $("#matsub").textContent = {selected:"Виділи кліпи в Media Pool і натисни «Оновити»",folder:"Відкрий потрібну папку в Media Pool і натисни «Оновити»",timeline:"Відкрий таймлайн з кліпами і натисни «Оновити»",dropped:"Перетягни кліпи з DaVinci або Finder прямо в це вікно"}[this.st.source_mode];
       $("#clearbtn").style.display="none";
       $("#names").innerHTML=""; this.estimate(); return }
-    // лічильники на кнопках профілів
-    const cnt={all:all.length,log:0}; all.forEach(x=>{ const k=this.profOf(x); if(k) { cnt[k]=(cnt[k]||0)+1; if(k!=="rec709") cnt.log++ } });
-    const ready=all.every(x=>this.profOf(x)!==undefined);
-    $$("#srcprof button").forEach(b=>{ const v=b.dataset.v, base=I18N.t({all:"Усі",log:"Будь-який лог"}[v]||PL[v]);
-      b.innerHTML=esc(base)+(ready||v==="all"?' <i>'+(cnt[v]||0)+'</i>':''); b.classList.toggle("empty", ready && v!=="all" && !cnt[v]) });
-    if(!list.length){ $("#matbig").textContent="0 відео"; $("#matsub").textContent="У цьому профілі немає жодного відео — вибери інший";
-      $("#names").innerHTML=""; this.estimate(); return }
     $("#matbig").textContent = list.length + " " + plural(list.length,"відео","відео","відео");
     const longest=Math.max(...list.map(x=>x.duration||0));
     const trimmed=list.filter(x=>x.trimmed).length;
-    const off=all.length-list.length;
-    $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '') + (trimmed ? ' · обрізаних ' + trimmed : '') + (off ? ' · відсіяно ' + off : '');
+    $("#matsub").innerHTML = 'разом <b class="mtot">' + clock(tot) + '</b> · ' + dur(tot) + (list.length>1 ? ' · найдовше ' + clock(longest) : '') + (trimmed ? ' · обрізаних ' + trimmed : '');
     $("#clearbtn").style.display = this.st.source_mode==="dropped" ? "inline-block" : "none";
-    const pf=this.prof||{};
-    const badge=x=>{ if(!x.path||!(x.path in pf)) return ""; const p=pf[x.path]||{}, k=p.k; return `<b class="pbadge p-${k||"none"}" title="${esc(p.raw ? "Камера записала: "+p.raw : "У файлі немає позначки профілю")}">${k?PL[k]:"?"}</b>` };
     const show=this.namesAll ? list : list.slice(0,6), rest=list.slice(6), restDur=rest.reduce((a,b)=>a+(b.duration||0),0);
-    $("#names").innerHTML = show.map(x=>`<span title="${esc(x.name)}${x.trimmed?' — лише обрізана частина':''}">${badge(x)}${esc(x.name)} <i>${clock(x.duration||0)}${x.trimmed?' обр.':''}</i></span>`).join("")
+    $("#names").innerHTML = show.map(x=>`<span title="${esc(x.name)}${x.trimmed?' — лише обрізана частина':''}">${esc(x.name)} <i>${clock(x.duration||0)}${x.trimmed?' обр.':''}</i></span>`).join("")
       + (list.length>6 ? (this.namesAll ? `<span class="more" onclick="SV.toggleAllNames()">згорнути</span>` : `<span class="more" onclick="SV.toggleAllNames()" title="Показати всі">+${rest.length} <i>${clock(restDur)}</i></span>`) : "");
-    const miss=all.filter(x=>x.path&&!(x.path in pf)).map(x=>x.path);
-    if(miss.length && !this._profBusy){ this._profBusy=true;
-      this.api("profiles", miss).then(r=>{ this._profBusy=false; if(r){ this.prof=Object.assign(this.prof||{}, r); this.renderSources() } }) }
     this.estimate();
   },
 

@@ -1700,52 +1700,6 @@ def write_srt(path, chunk_lists, upper=True):
 
 # ======================================================================= запуск
 
-def filter_profiles(job):
-    """Відбір джерел за профілем зйомки (читаємо з самого файлу Sony).
-    only_log — лише лог (S-Log3, S-Log2, HLG); one_profile — лише один профіль, щоб не мішати HLG із S-Log:
-    profile_pick = "auto" (де найбільше матеріалу) або slog3 / hlg / slog2 / rec709."""
-    import colorlog as _c
-    s = job.get("settings", {})
-    only_log, one = bool(s.get("only_log")), bool(s.get("one_profile"))
-    srcs = job["sources"]
-    keys = {}
-    for src in srcs:
-        k = _c.profile_key(src["path"])
-        keys[src["id"]] = k
-        _log(f"Профіль «{src.get('name')}»: {_c.SHORT.get(k, 'без позначки')}")
-    name = lambda k: _c.SHORT.get(k, "без позначки")
-    cand = [x for x in srcs if not (only_log and keys[x["id"]] == "rec709")]
-    if one:
-        cand = [x for x in cand if keys[x["id"]]]
-        tot = {}
-        for x in cand:
-            tot[keys[x["id"]]] = tot.get(keys[x["id"]], 0.0) + float(x.get("duration") or 0)
-        pick = s.get("profile_pick") or "auto"
-        if pick != "auto" and pick not in tot:
-            have = ", ".join(f"{name(k)}" for k in tot) or "жодного з позначкою"
-            raise RuntimeError(f"«Лише один профіль»: серед вибраних відео немає {name(pick)} (є: {have}).")
-        if pick == "auto":
-            pick = max(tot, key=tot.get) if tot else None
-        cand = [x for x in cand if keys[x["id"]] == pick]
-    if not cand:
-        raise RuntimeError("Серед вибраних відео немає жодного, що підходить під відбір за профілем"
-                           + (" (усі — PP1/709)." if only_log else ".") + " Зміни відбір у Розширені → Колір.")
-    dropped = [x for x in srcs if x not in cand]
-    job["sources"] = cand
-    if not dropped:
-        return None
-    by = {}
-    for x in dropped:
-        by.setdefault(name(keys[x["id"]]), []).append(x["name"])
-    kept = {}
-    for x in cand:
-        kept[name(keys[x["id"]])] = kept.get(name(keys[x["id"]]), 0) + 1
-    note = ("Відбір за профілем: взято " + ", ".join(f"{k} — {n}" for k, n in kept.items())
-            + "; пропущено " + "; ".join(f"{k}: {len(v)} ({', '.join(v[:5])}{'…' if len(v) > 5 else ''})"
-                                       for k, v in by.items()))
-    return note + "."
-
-
 class Job:
     """Один монтаж. progress(stage, overall 0..1, message, extra) викликається з цього потоку."""
 
@@ -1757,7 +1711,6 @@ class Job:
         self.s = job["settings"]
         self.cost = 0.0
         self.out.mkdir(parents=True, exist_ok=True)
-        self.log_note = filter_profiles(job) if (self.s.get("only_log") or self.s.get("one_profile")) else None
         total = sum(src["duration"] for src in job["sources"]) or 1.0
         self.total = total
         w_listen = total * WHISPER_SPEED.get(self.s.get("whisper_model", "medium"), 0.22) \
@@ -1766,7 +1719,7 @@ class Job:
         n_refs = len(job.get("refs") or [])
         self.weights = {"prepare": 3, "listen": w_listen, "sound": total * 0.02 + 2,
                         "look": n_frames * 0.15, "refs": n_refs * 12, "plan": 25 + 15, "build": 8}
-        self.warnings = [self.log_note] if self.log_note else []
+        self.warnings = []
         self.wsum = sum(self.weights.values())
 
     def check(self):
